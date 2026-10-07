@@ -227,3 +227,44 @@ class ZScript:
         if t >= self.T:
             return Inlet(active=False), "settle"
         return self.prog(t), self.prog.phase_label(t)
+
+
+# ----------------------------------------------------------------------------- physics as search variables
+# Own search box for the ten shared coefficients (+ the return-law switch); log scale where the range spans decades.
+# Nothing here is taken from V0.5: the optimiser starts at the geometric/arithmetic middle of each range.
+PHYSICS_BOUNDS = OrderedDict(
+    cp=(0.1, 1.5, "log"), beta=(0.5, 10.0, "log"), nu=(1e-4, 1e-2, "log"), D=(1e-8, 1e-5, "log"),
+    kappa_Q=(20.0, 400.0, "log"), kappa_c=(0.2, 3.0, "log"), kappa_t=(0.1, 1.5, "lin"), kappa_r=(0.0, 1.0, "lin"),
+    B_dep=(50.0, 1500.0, "log"), p_dep=(1.0, 4.0, "lin"), return_law=(0.0, 1.0, "switch"))
+
+
+class PhysicsSpace:
+    n = len(PHYSICS_BOUNDS)
+    names = list(PHYSICS_BOUNDS)
+
+    def decode(self, x):
+        x = np.clip(np.asarray(x, float), 0, 1)
+        out = {}
+        for (k, (lo, hi, kind)), xi in zip(PHYSICS_BOUNDS.items(), x):
+            if kind == "log":
+                out[k] = float(lo * (hi / lo) ** xi)
+            elif kind == "switch":
+                out[k] = "v1" if xi < 0.5 else "v05"
+            else:
+                out[k] = float(lo + (hi - lo) * xi)
+        return out
+
+    def encode(self, d):
+        x = []
+        for k, (lo, hi, kind) in PHYSICS_BOUNDS.items():
+            v = d[k]
+            if kind == "log":
+                x.append(math.log(v / lo) / math.log(hi / lo))
+            elif kind == "switch":
+                x.append(0.25 if v == "v1" else 0.75)
+            else:
+                x.append((v - lo) / (hi - lo))
+        return np.clip(np.array(x), 0, 1)
+
+
+PHYSICS = PhysicsSpace()

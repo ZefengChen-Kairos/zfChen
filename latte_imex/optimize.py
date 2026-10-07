@@ -16,7 +16,8 @@ from .solver import Solver, Params, Numerics
 
 def simulate(prog, physics, N, T_max=None):
     """Full programme at resolution N, no snapshots. Returns (c, mask, stats)."""
-    P = Params(**physics, return_law="v05")
+    phys = dict(physics); law = phys.pop("return_law", "v05")
+    P = Params(**phys, return_law=law)
     num = Numerics(N=N)
     sol = Solver(P, num)
     T = prog.duration if T_max is None else min(T_max, prog.duration)
@@ -68,6 +69,90 @@ def evaluate(args):
         return dict(loss=10.0, ok=False, elapsed=time.time() - t0, err=f"{type(e).__name__}: {e}")
 
 
+def evaluate_joint(args):
+    """One (candidate, pattern) pair of a joint physics+actions search."""
+    name, x_act, physics, N, sigma = args
+    return evaluate((name, x_act, N, physics, sigma))
+
+
+def split_joint(x, names):
+    """x = [physics | actions(name1) | actions(name2) ...]"""
+    k = controls.PHYSICS.n
+    physics = controls.PHYSICS.decode(x[:k])
+    parts = {}
+    for nm in names:
+        n = controls.SPACES[nm].n
+        parts[nm] = np.asarray(x[k:k + n]); k += n
+    return physics, parts
+
+
+def main_joint(a):
+    """Joint CMA-ES over the shared physics vector and the action vectors of several patterns."""
+    import cma
+    names = a.name.split(",")
+    out = a.out or "runs/opt/joint_" + "_".join(names); os.makedirs(out, exist_ok=True)
+    sigma = a.blur * a.N
+    x0 = [0.5 * np.ones(controls.PHYSICS.n)]
+    for nm in names:
+        sp = controls.SPACES[nm]; xa = 0.5 * np.ones(sp.n)
+        warm = os.path.join("runs/opt", nm, "best.json")
+        if a.warm and os.path.exists(warm):
+            with open(warm) as f:
+                xa = sp.encode(json.load(f)["params"])
+        x0.append(xa)
+    x0 = np.concatenate(x0)
+    opts = {"bounds": [0, 1], "seed": a.seed, "verbose": -9}
+    if a.popsize:
+        opts["popsize"] = a.popsize
+    es = cma.CMAEvolutionStrategy(x0, a.sigma0, opts)
+    pool = Pool(a.workers)
+    best = dict(loss=1e9); history = []
+    print(f"[joint {names}] n={len(x0)} popsize={es.popsize} N={a.N} workers={a.workers} out={out}", flush=True)
+    t_start = time.time()
+    for g in range(a.gens):
+        if os.path.exists(os.path.join(out, "STOP")):
+            print("STOP file found", flush=True); break
+        X = es.ask()
+        jobs, index = [], []
+        for i, x in enumerate(X):
+            physics, parts = split_joint(x, names)
+            for nm in names:
+                jobs.append((nm, parts[nm], physics, a.N, sigma)); index.append(i)
+        res = pool.map(evaluate_joint, jobs)
+        per = [[] for _ in X]
+        for i, r in zip(index, res):
+            per[i].append(r)
+        losses = [float(np.mean([r["loss"] for r in rs])) for rs in per]
+        es.tell(X, losses)
+        k = int(np.argmin(losses))
+        history.append(dict(gen=g, best=losses[k], mean=float(np.mean(losses)), elapsed=time.time() - t_start,
+                            per_pattern={nm: r["loss"] for nm, r in zip(names, per[k])}))
+        if losses[k] < best["loss"]:
+            physics, parts = split_joint(X[k], names)
+            best = dict(loss=losses[k], gen=g, x=[float(v) for v in X[k]], physics=physics,
+                        per_pattern={nm: r for nm, r in zip(names, per[k])},
+                        params={nm: controls.SPACES[nm].decode(parts[nm]) for nm in names})
+            with open(os.path.join(out, "best.json"), "w") as f:
+                json.dump(best, f, indent=1)
+            for nm in names:
+                prog, cfg, p = controls.build(nm, parts[nm], physics=physics)
+                with open(os.path.join(out, f"best_{nm}.json"), "w") as f:
+                    json.dump(dict(loss=per[k][names.index(nm)]["loss"], gen=g, params=p, physics=physics, config=cfg), f, indent=1)
+                c, mask, stats = simulate(prog, physics, a.N)
+                compare_png(os.path.join(out, f"best_{nm}.png"), c, mask, target_at(nm, a.N),
+                            title=f"gen {g} loss {per[k][names.index(nm)]['loss']:.3f} N={a.N}")
+        with open(os.path.join(out, "history.json"), "w") as f:
+            json.dump(history, f)
+        ph = best["physics"]
+        print(f"[joint] gen {g:3d} best {losses[k]:.4f} mean {np.mean(losses):.4f} global {best['loss']:.4f}@{best['gen']} "
+              f"sigma {es.sigma:.3f} per {history[-1]['per_pattern']} phys cp={ph['cp']:.2f} beta={ph['beta']:.1f} "
+              f"nu={ph['nu']:.1e} D={ph['D']:.1e} kQ={ph['kappa_Q']:.0f} kc={ph['kappa_c']:.2f} kt={ph['kappa_t']:.2f} "
+              f"kr={ph['kappa_r']:.2f} B={ph['B_dep']:.0f} p={ph['p_dep']:.2f} law={ph['return_law']} "
+              f"total {time.time()-t_start:.0f}s", flush=True)
+    pool.close()
+    print(f"[joint] done. best loss {best['loss']:.4f}", flush=True)
+
+
 def compare_png(path, c, mask, w, title=""):
     import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
     from . import render
@@ -92,11 +177,15 @@ def main():
     ap.add_argument("--out", default=None)
     ap.add_argument("--blur", type=float, default=0.015, help="Gaussian sigma in cup diameters")
     ap.add_argument("--x0", default=None, help="json file with a starting physical parameter dict")
+    ap.add_argument("--joint", action="store_true", help="name is a comma list; search shared physics + all action vectors")
+    ap.add_argument("--warm", action="store_true", help="joint: start action vectors from runs/opt/<name>/best.json")
     a = ap.parse_args()
+    if a.joint:
+        main_joint(a); return
     import cma
     name = a.name; sp = controls.SPACES[name]
     out = a.out or f"runs/opt/{name}"; os.makedirs(out, exist_ok=True)
-    physics = dict(controls.V05_PHYSICS)
+    physics = dict(controls.V05_PHYSICS, return_law="v05")
     sigma = a.blur * a.N
     x0 = 0.5 * np.ones(sp.n)
     if a.x0:
