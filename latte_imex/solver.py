@@ -46,6 +46,8 @@ class Numerics:
     cg_tol: float = 1e-10
     cg_maxiter: int = 500
     kernel_quadrature: int = 3
+    scan_safety: float = 0.5        # frame_dt <= scan_safety * min(h, r1, r2) / scan_speed
+    explicit_mixing_limit: float = 0.05   # D*dt/h^2 below this: explicit mixing update instead of a PCG solve
 
 
 @dataclass
@@ -60,6 +62,7 @@ class Inlet:
     r1: float = 0.04               # footprint ellipse semi-axes [D_L]
     r2: float = 0.04
     phi: float = 0.0               # footprint orientation [rad]
+    scan_speed: float = 0.0        # bound on the hit-point speed [D_L/s] (limits the control-frame length)
 
 
 # --------------------------------------------------------------------------- grid
@@ -195,25 +198,34 @@ class Solver:
 
     # ----- inlet fields -----------------------------------------------------
     def kernel(self, inlet: Inlet):
-        """Normalised compact ellipse kernel K on cells, sum(K)*area = 1 inside the cup."""
+        """Normalised compact ellipse kernel K on cells, sum(K)*area = 1 inside the cup.
+        Evaluated only on the bounding box of the footprint; sub-cell quadrature adapts to thin footprints."""
         g = self.g
         r1, r2, phi = max(inlet.r1, 1.5 * g.h), max(inlet.r2, 1.5 * g.h), inlet.phi
         x0, y0 = inlet.x_hit
-        q = self.num.kernel_quadrature
+        q = max(self.num.kernel_quadrature, int(math.ceil(4 * g.h / min(r1, r2))))
+        q = min(q, 12)
+        R = max(r1, r2)
+        i0 = max(0, int((x0 - R + 0.5) / g.h) - 1); i1 = min(g.N, int((x0 + R + 0.5) / g.h) + 2)
+        j0 = max(0, int((y0 - R + 0.5) / g.h) - 1); j1 = min(g.N, int((y0 + R + 0.5) / g.h) + 2)
         K = np.zeros((g.N, g.N))
+        if i1 <= i0 or j1 <= j0:
+            raise ValueError("inlet footprint outside the grid")
+        xs = g.x[j0:j1, i0:i1]; ys = g.y[j0:j1, i0:i1]
         offs = (np.arange(q) + 0.5) / q - 0.5
         cphi, sphi = math.cos(phi), math.sin(phi)
+        Kl = np.zeros_like(xs)
         for ox in offs:
             for oy in offs:
-                dx = g.x + ox * g.h - x0
-                dy = g.y + oy * g.h - y0
+                dx = xs + ox * g.h - x0
+                dy = ys + oy * g.h - y0
                 a = (cphi * dx + sphi * dy) / r1
                 b = (-sphi * dx + cphi * dy) / r2
-                K += np.maximum(0.0, 1.0 - a * a - b * b) ** 2
-        K *= 3.0 / (math.pi * r1 * r2) / (q * q)
-        K *= g.mask
+                Kl += np.maximum(0.0, 1.0 - a * a - b * b) ** 2
+        Kl *= g.mask[j0:j1, i0:i1]
+        K[j0:j1, i0:i1] = Kl
         Z = K.sum() * g.area
-        if Z < 1e-6:
+        if Z <= 0:
             raise ValueError("inlet footprint does not intersect the cup")
         return K / Z, Z
 
@@ -330,7 +342,12 @@ class Solver:
             self.stats["cg_visc"] += it1 + it2
             qx_new = np.where(mask, lsn * ux_new, 0.0)
             qy_new = np.where(mask, lsn * uy_new, 0.0)
-        if P.D > 0:
+        if P.D > 0 and P.D * dt / (h * h) < self.num.explicit_mixing_limit:
+            lfx, lfy = g.face_avg(lsn)
+            c_new = np.where(mask, m_new / lsn, 0.0)
+            m_new = m_new + dt * g.diffusion(P.D * lfx, P.D * lfy, c_new)
+            m_new = np.where(mask, np.clip(m_new, 0.0, l_new), 0.0)
+        elif P.D > 0:
             lfx, lfy = g.face_avg(lsn)
             kmx, kmy = P.D * lfx, P.D * lfy
             dmix = lsn + dt / (h * h) * (np.pad(kmx, ((0, 0), (1, 0))) + np.pad(kmx, ((0, 0), (0, 1)))
@@ -356,6 +373,9 @@ class Solver:
     # ----- one control frame ---------------------------------------------------
     def advance_frame(self, inlet: Inlet, frame_dt=None):
         frame_dt = frame_dt or self.num.frame_dt
+        if inlet.active and inlet.S_eff > 0 and inlet.scan_speed > 0:
+            lim = self.num.scan_safety * min(self.g.h, inlet.r1, inlet.r2) / inlet.scan_speed
+            frame_dt = min(frame_dt, max(lim, 1e-4))
         s, Lam, vsx, vsy, chi = self.inlet_fields(inlet)
         g = self.g
         lsafe = np.where(g.mask, self.l, 1.0)

@@ -6,13 +6,13 @@ ORDER = ["heart", "push_heart", "layered_heart", "tulip", "leaf", "swan"]
 CN = dict(heart="大白心", push_heart="推推乐", layered_heart="千层心", tulip="压纹郁金香", leaf="树叶", swan="天鹅")
 
 
-def main(root="runs/final"):
+def main(root="runs/final", label=""):
     items, rows = [], []
     for p in ORDER:
         d = os.path.join(root, p)
         z = np.load(os.path.join(d, "final_state.npz"))
         c = np.where(z["mask"], z["m"] / np.where(z["mask"], z["l"], 1), np.nan)
-        items.append((f"{p} / {CN[p]}", c, z["mask"]))
+        items.append((f"{p} / {CN[p]}{label}", c, z["mask"]))
         m = json.load(open(os.path.join(d, "metrics.json")))
         st, L = m["stats"], m["ledger"]
         rows.append(dict(pattern=p, cn=CN[p], T=m["T"], steps=st["steps"], frames=st["frames"],
@@ -29,4 +29,5 @@ def main(root="runs/final"):
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    main(sys.argv[1] if len(sys.argv) > 1 else "runs/final", sys.argv[2] if len(sys.argv) > 2 else "")

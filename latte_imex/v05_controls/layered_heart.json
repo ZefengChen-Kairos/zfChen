@@ -1,0 +1,203 @@
+{
+  "action": "layered_heart",
+  "parameters": {
+    "cp": 0.3,
+    "beta": 3.0,
+    "nu": 0.001,
+    "D": 1e-07,
+    "kappa_Q": 125.0,
+    "kappa_c": 1.0,
+    "kappa_t": 0.7,
+    "kappa_r": 0.3,
+    "B_dep": 240.0,
+    "p_dep": 2.0
+  },
+  "phases": [
+    {
+      "duration": 3.2,
+      "start": [
+        0.0,
+        0.08
+      ],
+      "end": [
+        0.0,
+        0.14
+      ],
+      "Q": 0.02025,
+      "radius": 0.008,
+      "amplitude": 0.025,
+      "frequency": 2.5,
+      "jet": [
+        0.0,
+        -1.2
+      ],
+      "U_perp": 0.4,
+      "Q_end": 0.045,
+      "amplitude_end": 0.045,
+      "flow_modulation": 0.85,
+      "flow_frequency": 5.0,
+      "flow_phase": 3.141592653589793,
+      "jet_amplitude_x": 1.4,
+      "jet_frequency": 2.5,
+      "jet_phase": 1.5707963267948966
+    },
+    {
+      "duration": 3.2,
+      "start": [
+        0.0,
+        0.14
+      ],
+      "end": [
+        0.0,
+        0.14
+      ],
+      "Q": 0.045,
+      "radius": 0.008,
+      "amplitude": 0.045,
+      "frequency": 2.5,
+      "jet": [
+        0.0,
+        -1.2
+      ],
+      "U_perp": 0.4,
+      "Q_end": 0.045,
+      "amplitude_end": 0.045,
+      "flow_modulation": 0.85,
+      "flow_frequency": 5.0,
+      "flow_phase": 3.141592653589793,
+      "jet_amplitude_x": 1.4,
+      "jet_frequency": 2.5,
+      "jet_phase": 1.5707963267948966
+    },
+    {
+      "duration": 1.0,
+      "start": [
+        0.0,
+        0.14
+      ],
+      "end": [
+        0.0,
+        -0.32
+      ],
+      "Q": 0.015,
+      "radius": 0.0038,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.0,
+        -1.8
+      ],
+      "U_perp": 0.4,
+      "Q_end": 0.002,
+      "radius_end": 0.0015
+    },
+    {
+      "duration": 0.7,
+      "start": [
+        0.0,
+        -0.32
+      ],
+      "end": [
+        0.0,
+        -0.32
+      ],
+      "Q": 0,
+      "radius": 0.035,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.0,
+        -0.25
+      ],
+      "U_perp": 0.4
+    }
+  ],
+  "units": {
+    "length": "reference_cup_diameter",
+    "time": "second"
+  },
+  "source": "manual_synthetic_observed_inlet",
+  "phase_flow_units": "effective_input_rate_before_chi",
+  "inlet_geometry": "continuity_ellipse",
+  "continuous_actions": true,
+  "max_jet_angle_degrees": 60.0,
+  "return_law": {
+    "mode": "return_speed"
+  },
+  "strain_law": {
+    "mode": "face_normal_corner_shear",
+    "wall": "staircase_slip",
+    "layer_weight": "harmonic",
+    "constitutive": "constant_newtonian_nu"
+  },
+  "cg_law": {
+    "mode": "device_controlled_cg",
+    "check_interval": 4,
+    "rtol": 1e-11,
+    "atol": 1e-13,
+    "maxiter": 300,
+    "true_residual_limit": 1e-09,
+    "recursive_true_residual_margin": 1e-10,
+    "threshold_rule": "min(max(atol,rtol*norm_rhs),margin*max(norm_rhs,1e-14))"
+  },
+  "name": "layered_heart",
+  "profile": "selected_unified_768",
+  "numerics": {
+    "domain": "disk",
+    "cfl": 0.7,
+    "scan_safety": 0.5,
+    "max_dt": 0.004166666666666667,
+    "quadrature": 4,
+    "scalar_limiter": "superbee",
+    "cg_check_interval": 4,
+    "implicit_preconditioner": "mass"
+  },
+  "shared_parameters_sha256": "83f7126013bff6bf46dd0a598aebfac0970dd3a5c8f38707106eb614c205310c",
+  "replay_output_times": [
+    0.0,
+    0.22903225806451616,
+    0.4580645161290323,
+    0.6870967741935485,
+    0.9161290322580646,
+    1.1451612903225807,
+    1.374193548387097,
+    1.6032258064516132,
+    1.8322580645161293,
+    2.0612903225806454,
+    2.2903225806451615,
+    2.5193548387096776,
+    2.748387096774194,
+    2.9774193548387102,
+    3.2,
+    3.2064516129032263,
+    3.4354838709677424,
+    3.6645161290322585,
+    3.8935483870967746,
+    4.122580645161291,
+    4.351612903225807,
+    4.580645161290323,
+    4.8096774193548395,
+    5.038709677419355,
+    5.267741935483872,
+    5.496774193548388,
+    5.725806451612904,
+    5.9548387096774205,
+    6.183870967741936,
+    6.4,
+    6.532258064516129,
+    6.7935483870967746,
+    7.054838709677419,
+    7.316129032258065,
+    7.4,
+    7.577419354838709,
+    7.838709677419355,
+    8.1
+  ],
+  "replay_scope": "Fresh uniform brown; complete effective phases and actual archived stops. Legacy unrecorded near-event source queries are not a bitwise-replay claim.",
+  "selected_from": {
+    "run": "runs/v1_unified/high_resolution/layer768/layered_advance0_cached_n768",
+    "config_sha256": "1f93a11330a9ad63dfaef450f5ce4a2e0e6afefe21db014ec53ae1cdddf042fa",
+    "raw_states_sha256": "566e167d831c2d1a95142347f6819002ba40fbd5b00524416eea5467b7f57db8",
+    "metrics_sha256": "fbbd713f5043628a371945b64fe1a3b54b49368e402e7f6ec9c998e5ec6a41e3"
+  }
+}

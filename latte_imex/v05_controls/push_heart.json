@@ -1,0 +1,271 @@
+{
+  "action": "push_heart",
+  "parameters": {
+    "cp": 0.3,
+    "beta": 3.0,
+    "nu": 0.001,
+    "D": 1e-07,
+    "kappa_Q": 125.0,
+    "kappa_c": 1.0,
+    "kappa_t": 0.7,
+    "kappa_r": 0.3,
+    "B_dep": 240.0,
+    "p_dep": 2.0
+  },
+  "phases": [
+    {
+      "duration": 1.25,
+      "start": [
+        0,
+        0.14
+      ],
+      "end": [
+        0,
+        0.015
+      ],
+      "Q": 0.085,
+      "radius": 0.015,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0,
+        -1.2
+      ],
+      "U_perp": 0.4
+    },
+    {
+      "duration": 0.18,
+      "start": [
+        0.0,
+        0.015
+      ],
+      "end": [
+        0,
+        0.2
+      ],
+      "Q": 0,
+      "radius": 0.035,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.0,
+        0.0
+      ],
+      "U_perp": 0.4,
+      "purpose": "assumed_zero_flow_reposition"
+    },
+    {
+      "duration": 1.1,
+      "start": [
+        0,
+        0.2
+      ],
+      "end": [
+        0,
+        0.10400000000000001
+      ],
+      "Q": 0.075,
+      "radius": 0.0145,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0,
+        -1.2
+      ],
+      "U_perp": 0.4
+    },
+    {
+      "duration": 0.18,
+      "start": [
+        0.0,
+        0.10400000000000001
+      ],
+      "end": [
+        0,
+        0.26
+      ],
+      "Q": 0,
+      "radius": 0.035,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.0,
+        0.0
+      ],
+      "U_perp": 0.4,
+      "purpose": "assumed_zero_flow_reposition"
+    },
+    {
+      "duration": 0.75,
+      "start": [
+        0,
+        0.26
+      ],
+      "end": [
+        0,
+        0.2
+      ],
+      "Q": 0.065,
+      "radius": 0.0125,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0,
+        -1.2
+      ],
+      "U_perp": 0.4
+    },
+    {
+      "duration": 0.18,
+      "start": [
+        0.0,
+        0.2
+      ],
+      "end": [
+        0,
+        0.26
+      ],
+      "Q": 0,
+      "radius": 0.035,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.0,
+        0.0
+      ],
+      "U_perp": 0.4,
+      "purpose": "assumed_zero_flow_reposition"
+    },
+    {
+      "duration": 1.1,
+      "start": [
+        0,
+        0.26
+      ],
+      "end": [
+        0,
+        -0.3
+      ],
+      "Q": 0.018,
+      "radius": 0.0038,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0,
+        -1.8
+      ],
+      "U_perp": 0.4,
+      "Q_end": 0.0018,
+      "radius_end": 0.0015
+    },
+    {
+      "duration": 0.35,
+      "start": [
+        0,
+        -0.3
+      ],
+      "end": [
+        0,
+        -0.3
+      ],
+      "Q": 0,
+      "radius": 0.035,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.0,
+        -0.25
+      ],
+      "U_perp": 0.4
+    }
+  ],
+  "units": {
+    "length": "reference_cup_diameter",
+    "time": "second"
+  },
+  "source": "manual_synthetic_observed_inlet",
+  "phase_flow_units": "effective_input_rate_before_chi",
+  "inlet_geometry": "continuity_ellipse",
+  "continuous_actions": true,
+  "max_jet_angle_degrees": 60.0,
+  "return_law": {
+    "mode": "return_speed"
+  },
+  "strain_law": {
+    "mode": "face_normal_corner_shear",
+    "wall": "staircase_slip",
+    "layer_weight": "harmonic",
+    "constitutive": "constant_newtonian_nu"
+  },
+  "cg_law": {
+    "mode": "device_controlled_cg",
+    "check_interval": 4,
+    "rtol": 1e-11,
+    "atol": 1e-13,
+    "maxiter": 300,
+    "true_residual_limit": 1e-09,
+    "recursive_true_residual_margin": 1e-10,
+    "threshold_rule": "min(max(atol,rtol*norm_rhs),margin*max(norm_rhs,1e-14))"
+  },
+  "name": "push_heart",
+  "profile": "selected_unified_768",
+  "numerics": {
+    "domain": "disk",
+    "cfl": 0.7,
+    "scan_safety": 0.5,
+    "max_dt": 0.004166666666666667,
+    "quadrature": 4,
+    "scalar_limiter": "superbee",
+    "cg_check_interval": 4,
+    "implicit_preconditioner": "mass"
+  },
+  "shared_parameters_sha256": "83f7126013bff6bf46dd0a598aebfac0970dd3a5c8f38707106eb614c205310c",
+  "replay_output_times": [
+    0.0,
+    0.16419354838709677,
+    0.32838709677419353,
+    0.4925806451612903,
+    0.6567741935483871,
+    0.8209677419354838,
+    0.9851612903225806,
+    1.1493548387096775,
+    1.25,
+    1.3135483870967741,
+    1.43,
+    1.4777419354838708,
+    1.6419354838709677,
+    1.8061290322580645,
+    1.9703225806451612,
+    2.134516129032258,
+    2.298709677419355,
+    2.4629032258064516,
+    2.5300000000000002,
+    2.6270967741935483,
+    2.7100000000000004,
+    2.791290322580645,
+    2.9554838709677416,
+    3.1196774193548387,
+    3.2838709677419353,
+    3.448064516129032,
+    3.4600000000000004,
+    3.612258064516129,
+    3.6400000000000006,
+    3.7764516129032257,
+    3.9406451612903224,
+    4.104838709677419,
+    4.269032258064516,
+    4.433225806451612,
+    4.59741935483871,
+    4.74,
+    4.7616129032258065,
+    4.925806451612903,
+    5.09
+  ],
+  "replay_scope": "Fresh uniform brown; complete effective phases and actual archived stops. Legacy unrecorded near-event source queries are not a bitwise-replay claim.",
+  "selected_from": {
+    "run": "runs/v1_unified/high_resolution/push768/push_tapered_n768",
+    "config_sha256": "4ba648b91c2f104a0eee72be34c00aec5a07c11a17e7d194833f2bb07066250b",
+    "raw_states_sha256": "ffa7b726617c3bef60727e0e24fff38a9b12cbcc6b7f8002a59ebed17aad57e4",
+    "metrics_sha256": "31fe33bbb71ea586297a91ab5a8bf124ad20634d0e9a4f12cc772240e98ee0a5"
+  }
+}

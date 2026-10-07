@@ -1,0 +1,393 @@
+{
+  "action": "swan",
+  "parameters": {
+    "cp": 0.3,
+    "beta": 3.0,
+    "nu": 0.001,
+    "D": 1e-07,
+    "kappa_Q": 125.0,
+    "kappa_c": 1.0,
+    "kappa_t": 0.7,
+    "kappa_r": 0.3,
+    "B_dep": 240.0,
+    "p_dep": 2.0
+  },
+  "phases": [
+    {
+      "duration": 3.2,
+      "start": [
+        0.0,
+        -0.020000000000000004
+      ],
+      "end": [
+        0.0,
+        0.04000000000000001
+      ],
+      "Q": 0.02025,
+      "radius": 0.008,
+      "amplitude": 0.025,
+      "frequency": 2.5,
+      "jet": [
+        0.0,
+        -1.2
+      ],
+      "U_perp": 0.4,
+      "Q_end": 0.045,
+      "amplitude_end": 0.045,
+      "flow_modulation": 0.85,
+      "flow_frequency": 5.0,
+      "flow_phase": 3.141592653589793,
+      "jet_amplitude_x": 1.4,
+      "jet_frequency": 2.5,
+      "jet_phase": 1.5707963267948966
+    },
+    {
+      "duration": 3.2,
+      "start": [
+        0.0,
+        0.04000000000000001
+      ],
+      "end": [
+        0.0,
+        0.04000000000000001
+      ],
+      "Q": 0.045,
+      "radius": 0.008,
+      "amplitude": 0.045,
+      "frequency": 2.5,
+      "jet": [
+        0.0,
+        -1.2
+      ],
+      "U_perp": 0.4,
+      "Q_end": 0.045,
+      "amplitude_end": 0.045,
+      "flow_modulation": 0.85,
+      "flow_frequency": 5.0,
+      "flow_phase": 3.141592653589793,
+      "jet_amplitude_x": 1.4,
+      "jet_frequency": 2.5,
+      "jet_phase": 1.5707963267948966
+    },
+    {
+      "duration": 0.18,
+      "start": [
+        -8.817456953860943e-17,
+        0.04000000000000001
+      ],
+      "end": [
+        -0.025,
+        0.04
+      ],
+      "Q": 0,
+      "radius": 0.035,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.0,
+        0.0
+      ],
+      "U_perp": 0.4,
+      "purpose": "assumed_zero_flow_reposition"
+    },
+    {
+      "duration": 2.4,
+      "start": [
+        -0.025,
+        0.04
+      ],
+      "end": [
+        0.23,
+        0.27
+      ],
+      "Q": 0.025,
+      "radius": 0.0104,
+      "amplitude": 0.075,
+      "frequency": 2.5,
+      "jet": [
+        0.0,
+        -0.7
+      ],
+      "U_perp": 0.4,
+      "Q_end": 0.012,
+      "amplitude_end": 0.014,
+      "flow_modulation": 0.6,
+      "flow_frequency": 5.0
+    },
+    {
+      "duration": 0.18,
+      "start": [
+        0.22999999999999998,
+        0.27
+      ],
+      "end": [
+        0.24,
+        0.3
+      ],
+      "Q": 0,
+      "radius": 0.035,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.0,
+        0.0
+      ],
+      "U_perp": 0.4,
+      "purpose": "assumed_zero_flow_reposition"
+    },
+    {
+      "duration": 0.65,
+      "start": [
+        0.24,
+        0.3
+      ],
+      "end": [
+        -0.06,
+        -0.08
+      ],
+      "Q": 0.011,
+      "radius": 0.0019,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        -1.1,
+        -1.55
+      ],
+      "U_perp": 0.4
+    },
+    {
+      "duration": 0.18,
+      "start": [
+        -0.06,
+        -0.08
+      ],
+      "end": [
+        -0.085,
+        -0.06
+      ],
+      "Q": 0,
+      "radius": 0.035,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.0,
+        0.0
+      ],
+      "U_perp": 0.4,
+      "purpose": "assumed_zero_flow_reposition"
+    },
+    {
+      "duration": 1.0,
+      "start": [
+        -0.085,
+        -0.06
+      ],
+      "end": [
+        -0.18,
+        0.28
+      ],
+      "Q": 0.009,
+      "radius": 0.0105,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.0,
+        0.3
+      ],
+      "U_perp": 0.4,
+      "bezier_controls": [
+        [
+          -0.43,
+          0.05
+        ],
+        [
+          -0.05,
+          0.19
+        ]
+      ]
+    },
+    {
+      "duration": 0.25,
+      "start": [
+        -0.18,
+        0.28
+      ],
+      "end": [
+        -0.17,
+        0.292
+      ],
+      "Q": 0.012,
+      "radius": 0.012,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.1,
+        0.1
+      ],
+      "U_perp": 0.4
+    },
+    {
+      "duration": 0.18,
+      "start": [
+        -0.17,
+        0.292
+      ],
+      "end": [
+        -0.174,
+        0.303
+      ],
+      "Q": 0,
+      "radius": 0.035,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.0,
+        0.0
+      ],
+      "U_perp": 0.4,
+      "purpose": "assumed_zero_flow_reposition"
+    },
+    {
+      "duration": 0.22,
+      "start": [
+        -0.174,
+        0.303
+      ],
+      "end": [
+        -0.245,
+        0.292
+      ],
+      "Q": 0.009,
+      "radius": 0.0019,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        -2.0,
+        -0.3
+      ],
+      "U_perp": 0.4,
+      "Q_end": 0.0018,
+      "radius_end": 0.0012
+    },
+    {
+      "duration": 0.7,
+      "start": [
+        -0.245,
+        0.292
+      ],
+      "end": [
+        -0.245,
+        0.292
+      ],
+      "Q": 0.0,
+      "radius": 0.035,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.0,
+        -0.25
+      ],
+      "U_perp": 0.4
+    }
+  ],
+  "units": {
+    "length": "reference_cup_diameter",
+    "time": "second"
+  },
+  "source": "manual_synthetic_observed_inlet",
+  "phase_flow_units": "effective_input_rate_before_chi",
+  "inlet_geometry": "continuity_ellipse",
+  "continuous_actions": true,
+  "max_jet_angle_degrees": 60.0,
+  "return_law": {
+    "mode": "return_speed"
+  },
+  "strain_law": {
+    "mode": "face_normal_corner_shear",
+    "wall": "staircase_slip",
+    "layer_weight": "harmonic",
+    "constitutive": "constant_newtonian_nu"
+  },
+  "cg_law": {
+    "mode": "device_controlled_cg",
+    "check_interval": 4,
+    "rtol": 1e-11,
+    "atol": 1e-13,
+    "maxiter": 300,
+    "true_residual_limit": 1e-09,
+    "recursive_true_residual_margin": 1e-10,
+    "threshold_rule": "min(max(atol,rtol*norm_rhs),margin*max(norm_rhs,1e-14))"
+  },
+  "name": "swan",
+  "profile": "selected_unified_768",
+  "numerics": {
+    "domain": "disk",
+    "cfl": 0.7,
+    "scan_safety": 0.5,
+    "max_dt": 0.004166666666666667,
+    "quadrature": 4,
+    "scalar_limiter": "superbee",
+    "cg_check_interval": 4,
+    "implicit_preconditioner": "mass"
+  },
+  "shared_parameters_sha256": "83f7126013bff6bf46dd0a598aebfac0970dd3a5c8f38707106eb614c205310c",
+  "replay_output_times": [
+    0.0,
+    0.31897435897435894,
+    0.6379487179487179,
+    0.9569230769230768,
+    1.2758974358974358,
+    1.5948717948717948,
+    1.9138461538461535,
+    2.2328205128205125,
+    2.5517948717948715,
+    2.8707692307692305,
+    3.1897435897435895,
+    3.2,
+    3.5087179487179485,
+    3.827692307692307,
+    4.1466666666666665,
+    4.465641025641025,
+    4.7846153846153845,
+    5.103589743589743,
+    5.422564102564102,
+    5.741538461538461,
+    6.06051282051282,
+    6.379487179487179,
+    6.4,
+    6.58,
+    6.698461538461538,
+    7.017435897435897,
+    7.336410256410256,
+    7.655384615384614,
+    7.974358974358974,
+    8.293333333333333,
+    8.612307692307692,
+    8.93128205128205,
+    8.98,
+    9.16,
+    9.250256410256409,
+    9.569230769230769,
+    9.81,
+    9.99,
+    10.125128205128204,
+    10.44153846153846,
+    10.757948717948716,
+    10.99,
+    11.074358974358974,
+    11.24,
+    11.39076923076923,
+    11.42,
+    11.64,
+    11.707179487179486,
+    12.023589743589742,
+    12.34
+  ],
+  "replay_scope": "Fresh uniform brown; complete effective phases and actual archived stops. Legacy unrecorded near-event source queries are not a bitwise-replay claim.",
+  "selected_from": {
+    "run": "runs/v1_unified/high_resolution/swan_refine768/swan_curved_neck_smallhead_cached_n768",
+    "config_sha256": "9d105f38832f3d43299515b526130f91465cdc11c8473050d1d3bebd32e97589",
+    "raw_states_sha256": "27c81c20bfe542ad248466434226464aa40359fcdd26f20b354c10d99b41d83c",
+    "metrics_sha256": "a75baad6c99b2a4ab058e3828b42af74ba669f769a32f9a3a36c3f3da01715b8"
+  }
+}

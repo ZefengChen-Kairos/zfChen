@@ -1,0 +1,315 @@
+{
+  "action": "tulip",
+  "parameters": {
+    "cp": 0.3,
+    "beta": 3.0,
+    "nu": 0.001,
+    "D": 1e-07,
+    "kappa_Q": 125.0,
+    "kappa_c": 1.0,
+    "kappa_t": 0.7,
+    "kappa_r": 0.3,
+    "B_dep": 240.0,
+    "p_dep": 2.0
+  },
+  "phases": [
+    {
+      "duration": 3.2,
+      "start": [
+        0.0,
+        0.08
+      ],
+      "end": [
+        0.0,
+        0.14
+      ],
+      "Q": 0.02025,
+      "radius": 0.008,
+      "amplitude": 0.025,
+      "frequency": 2.5,
+      "jet": [
+        0.0,
+        -1.2
+      ],
+      "U_perp": 0.4,
+      "Q_end": 0.045,
+      "amplitude_end": 0.045,
+      "flow_modulation": 0.85,
+      "flow_frequency": 5.0,
+      "flow_phase": 3.141592653589793,
+      "jet_amplitude_x": 1.4,
+      "jet_frequency": 2.5,
+      "jet_phase": 1.5707963267948966
+    },
+    {
+      "duration": 3.2,
+      "start": [
+        0.0,
+        0.14
+      ],
+      "end": [
+        0.0,
+        0.14
+      ],
+      "Q": 0.045,
+      "radius": 0.008,
+      "amplitude": 0.045,
+      "frequency": 2.5,
+      "jet": [
+        0.0,
+        -1.2
+      ],
+      "U_perp": 0.4,
+      "Q_end": 0.045,
+      "amplitude_end": 0.045,
+      "flow_modulation": 0.85,
+      "flow_frequency": 5.0,
+      "flow_phase": 3.141592653589793,
+      "jet_amplitude_x": 1.4,
+      "jet_frequency": 2.5,
+      "jet_phase": 1.5707963267948966
+    },
+    {
+      "duration": 0.18,
+      "start": [
+        -8.817456953860943e-17,
+        0.14
+      ],
+      "end": [
+        0.0,
+        0.24
+      ],
+      "Q": 0,
+      "radius": 0.035,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.0,
+        0.0
+      ],
+      "U_perp": 0.4,
+      "purpose": "assumed_zero_flow_reposition"
+    },
+    {
+      "duration": 1.6,
+      "start": [
+        0.0,
+        0.24
+      ],
+      "end": [
+        0.0,
+        0.2
+      ],
+      "Q": 0.045,
+      "radius": 0.008,
+      "amplitude": 0.032,
+      "frequency": 2.5,
+      "jet": [
+        0.0,
+        -1.2
+      ],
+      "U_perp": 0.4,
+      "jet_amplitude_x": 1.4,
+      "jet_frequency": 2.5,
+      "jet_phase": 1.5707963267948966,
+      "flow_modulation": 0.85,
+      "flow_frequency": 5.0,
+      "flow_phase": 3.141592653589793
+    },
+    {
+      "duration": 0.18,
+      "start": [
+        -3.135095805817224e-17,
+        0.2
+      ],
+      "end": [
+        0.0,
+        0.31
+      ],
+      "Q": 0,
+      "radius": 0.035,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.0,
+        0.0
+      ],
+      "U_perp": 0.4,
+      "purpose": "assumed_zero_flow_reposition"
+    },
+    {
+      "duration": 0.6,
+      "start": [
+        0.0,
+        0.31
+      ],
+      "end": [
+        0.0,
+        0.25
+      ],
+      "Q": 0.028,
+      "radius": 0.018,
+      "amplitude": 0.02,
+      "frequency": 2.5,
+      "jet": [
+        0.0,
+        -0.25
+      ],
+      "U_perp": 0.4
+    },
+    {
+      "duration": 0.18,
+      "start": [
+        7.347880794884118e-18,
+        0.25
+      ],
+      "end": [
+        0.0,
+        0.35
+      ],
+      "Q": 0,
+      "radius": 0.035,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.0,
+        0.0
+      ],
+      "U_perp": 0.4,
+      "purpose": "assumed_zero_flow_reposition"
+    },
+    {
+      "duration": 0.85,
+      "start": [
+        0.0,
+        0.35
+      ],
+      "end": [
+        0.0,
+        -0.27
+      ],
+      "Q": 0.018,
+      "radius": 0.0038,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.0,
+        -1.8
+      ],
+      "U_perp": 0.4,
+      "Q_end": 0.0018,
+      "radius_end": 0.0015
+    },
+    {
+      "duration": 0.7,
+      "start": [
+        0.0,
+        -0.27
+      ],
+      "end": [
+        0.0,
+        -0.27
+      ],
+      "Q": 0,
+      "radius": 0.035,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.0,
+        -0.25
+      ],
+      "U_perp": 0.4
+    }
+  ],
+  "units": {
+    "length": "reference_cup_diameter",
+    "time": "second"
+  },
+  "source": "manual_synthetic_observed_inlet",
+  "phase_flow_units": "effective_input_rate_before_chi",
+  "inlet_geometry": "continuity_ellipse",
+  "continuous_actions": true,
+  "max_jet_angle_degrees": 60.0,
+  "return_law": {
+    "mode": "return_speed"
+  },
+  "strain_law": {
+    "mode": "face_normal_corner_shear",
+    "wall": "staircase_slip",
+    "layer_weight": "harmonic",
+    "constitutive": "constant_newtonian_nu"
+  },
+  "cg_law": {
+    "mode": "device_controlled_cg",
+    "check_interval": 4,
+    "rtol": 1e-11,
+    "atol": 1e-13,
+    "maxiter": 300,
+    "true_residual_limit": 1e-09,
+    "recursive_true_residual_margin": 1e-10,
+    "threshold_rule": "min(max(atol,rtol*norm_rhs),margin*max(norm_rhs,1e-14))"
+  },
+  "name": "tulip",
+  "profile": "selected_unified_768",
+  "numerics": {
+    "domain": "disk",
+    "cfl": 0.7,
+    "scan_safety": 0.5,
+    "max_dt": 0.004166666666666667,
+    "quadrature": 4,
+    "scalar_limiter": "superbee",
+    "cg_check_interval": 4,
+    "implicit_preconditioner": "mass"
+  },
+  "shared_parameters_sha256": "83f7126013bff6bf46dd0a598aebfac0970dd3a5c8f38707106eb614c205310c",
+  "replay_output_times": [
+    0.0,
+    0.322258064516129,
+    0.644516129032258,
+    0.9667741935483869,
+    1.289032258064516,
+    1.611290322580645,
+    1.9335483870967738,
+    2.255806451612903,
+    2.578064516129032,
+    2.900322580645161,
+    3.2,
+    3.22258064516129,
+    3.544838709677419,
+    3.8670967741935476,
+    4.189354838709677,
+    4.511612903225806,
+    4.833870967741935,
+    5.156129032258064,
+    5.478387096774193,
+    5.800645161290322,
+    6.122903225806451,
+    6.4,
+    6.551935483870967,
+    6.58,
+    6.896774193548386,
+    7.241612903225805,
+    7.5864516129032245,
+    7.931290322580644,
+    8.18,
+    8.276129032258064,
+    8.36,
+    8.620967741935482,
+    8.959999999999999,
+    8.965806451612902,
+    9.139999999999999,
+    9.31064516129032,
+    9.65548387096774,
+    9.989999999999998,
+    10.00032258064516,
+    10.34516129032258,
+    10.689999999999998
+  ],
+  "replay_scope": "Fresh uniform brown; complete effective phases and actual archived stops. Legacy unrecorded near-event source queries are not a bitwise-replay claim.",
+  "selected_from": {
+    "run": "runs/v1_unified/return_candidates/tulip_notch768/R_tulip_notch1_slowmiddle_cached_n768",
+    "config_sha256": "704ae864f63c27a80876755420537a99abfa7d40a0ea1a51d40070b6f975e0bb",
+    "raw_states_sha256": "d7637f12a25912e3bd400f480aec73a05add12d8505d0e7fe390506f729632f4",
+    "metrics_sha256": "c55299e26e518bef646228b67c75f998e28c35b221ced3f620ecc3718487cc8d"
+  }
+}

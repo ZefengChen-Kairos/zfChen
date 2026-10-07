@@ -1,0 +1,182 @@
+{
+  "action": "heart",
+  "parameters": {
+    "cp": 0.3,
+    "beta": 3.0,
+    "nu": 0.001,
+    "D": 1e-07,
+    "kappa_Q": 125.0,
+    "kappa_c": 1.0,
+    "kappa_t": 0.7,
+    "kappa_r": 0.3,
+    "B_dep": 240.0,
+    "p_dep": 2.0
+  },
+  "phases": [
+    {
+      "duration": 4.0,
+      "start": [
+        0,
+        0.2
+      ],
+      "end": [
+        0,
+        0.16
+      ],
+      "Q": 0.05,
+      "radius": 0.022,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0,
+        -0.5
+      ],
+      "U_perp": 0.4
+    },
+    {
+      "duration": 1.6,
+      "start": [
+        0,
+        0.16
+      ],
+      "end": [
+        0,
+        0
+      ],
+      "Q": 0.03,
+      "radius": 0.018699999999999998,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0,
+        -0.5
+      ],
+      "U_perp": 0.4
+    },
+    {
+      "duration": 0.825,
+      "start": [
+        0,
+        0
+      ],
+      "end": [
+        0,
+        -0.27
+      ],
+      "Q": 0.015,
+      "Q_end": 0.0018,
+      "radius": 0.0038,
+      "radius_end": 0.0015,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0,
+        -1.8
+      ],
+      "U_perp": 0.4
+    },
+    {
+      "duration": 0.5,
+      "start": [
+        0,
+        -0.27
+      ],
+      "end": [
+        0,
+        -0.27
+      ],
+      "Q": 0,
+      "radius": 0.035,
+      "amplitude": 0.0,
+      "frequency": 0.0,
+      "jet": [
+        0.0,
+        -0.25
+      ],
+      "U_perp": 0.4
+    }
+  ],
+  "units": {
+    "length": "reference_cup_diameter",
+    "time": "second"
+  },
+  "source": "manual_synthetic_observed_inlet",
+  "phase_flow_units": "effective_input_rate_before_chi",
+  "inlet_geometry": "continuity_ellipse",
+  "continuous_actions": true,
+  "max_jet_angle_degrees": 60.0,
+  "return_law": {
+    "mode": "return_speed"
+  },
+  "strain_law": {
+    "mode": "face_normal_corner_shear",
+    "wall": "staircase_slip",
+    "layer_weight": "harmonic",
+    "constitutive": "constant_newtonian_nu"
+  },
+  "cg_law": {
+    "mode": "device_controlled_cg",
+    "check_interval": 4,
+    "rtol": 1e-11,
+    "atol": 1e-13,
+    "maxiter": 300,
+    "true_residual_limit": 1e-09,
+    "recursive_true_residual_margin": 1e-10,
+    "threshold_rule": "min(max(atol,rtol*norm_rhs),margin*max(norm_rhs,1e-14))"
+  },
+  "name": "heart",
+  "profile": "selected_unified_768",
+  "numerics": {
+    "domain": "disk",
+    "cfl": 0.7,
+    "scan_safety": 0.5,
+    "max_dt": 0.004166666666666667,
+    "quadrature": 4,
+    "scalar_limiter": "superbee",
+    "cg_check_interval": 4,
+    "implicit_preconditioner": "mass"
+  },
+  "shared_parameters_sha256": "83f7126013bff6bf46dd0a598aebfac0970dd3a5c8f38707106eb614c205310c",
+  "replay_output_times": [
+    0.0,
+    0.24193548387096775,
+    0.4838709677419355,
+    0.7258064516129032,
+    0.967741935483871,
+    1.2096774193548387,
+    1.4516129032258065,
+    1.6935483870967742,
+    1.935483870967742,
+    2.17741935483871,
+    2.4193548387096775,
+    2.661290322580645,
+    2.903225806451613,
+    3.145161290322581,
+    3.3870967741935485,
+    3.629032258064516,
+    3.870967741935484,
+    4.0,
+    4.112903225806452,
+    4.35483870967742,
+    4.596774193548387,
+    4.838709677419355,
+    5.080645161290323,
+    5.32258064516129,
+    5.564516129032258,
+    5.6,
+    5.808064516129033,
+    6.031451612903226,
+    6.254838709677419,
+    6.425,
+    6.478225806451613,
+    6.701612903225806,
+    6.925
+  ],
+  "replay_scope": "Fresh uniform brown; complete effective phases and actual archived stops. Legacy unrecorded near-event source queries are not a bitwise-replay claim.",
+  "selected_from": {
+    "run": "runs/v1_unified/heart_refine/heart768_short_full_cut/heart768_short_full_fine_cut",
+    "config_sha256": "2800497cc474fd78a43e1ef68fb4f5280417b10d9c38ead7e3f0c477b457a34f",
+    "raw_states_sha256": "71691ece7f2055c66d0d748db47676e3ddcb8af9f40d1e8bb7ff0ccf1a79da80",
+    "metrics_sha256": "a2f3f244cdb3374a0633a5b32a6e2175282caabe38d18009c319c486ce8947b3"
+  }
+}
