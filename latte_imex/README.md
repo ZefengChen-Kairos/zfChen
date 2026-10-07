@@ -46,3 +46,21 @@ maps it affinely to the unit cup (weak-perspective view of a circle), rotates so
 and converts saturation to a whiteness field `w ∈ [0,1]` by Otsu split.  The loss in `optimize.py` is
 `mean|G_σ(s) − G_σ(w)| + 0.5(1 − IoU) + 0.5|ΔA|` with `s = clip(c/0.6, 0, 1)`, `σ = 1.5 %` of the diameter.
 Physical parameters are the shared V0.5 set (`controls.V05_PHYSICS`) — still guesses, nothing fitted from video yet.
+
+## Performance
+
+The stencil operations run as parallel numba kernels (`kernels.py`, NumPy fallback when numba is
+missing; first call compiles and caches, ~1 min). Viscosity is explicit whenever `nu*dt/h^2 < 0.2`
+(the 2-D explicit limit is 0.25), which removes two PCG solves per sub-step at N ≤ 256; above that the
+implicit solve is used automatically. BLAS is pinned to one thread (`__init__.py`): multi-threaded
+BLAS thrashes on the small dot products and made N ≥ 128 runs 40× slower.
+
+Heart with the V0.5 controls, 1 s of model time at N=256, 4 CPU cores:
+
+| version | wall | note |
+|---|---|---|
+| NumPy, implicit viscosity (PCG 1e-10) | 45 s | 21 viscosity PCG iterations per step |
+| explicit viscosity, fewer temporaries | 15 s | states differ by O(dt), ~1 % in m |
+| + numba kernels, fused step B, numba PCG vector ops | 4.4 s | identical to the previous row to 1e-15 |
+
+Set `NUMBA_NUM_THREADS=1` when running several simulations in parallel on one machine.
