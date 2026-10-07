@@ -30,9 +30,14 @@ CN = dict(heart="大白心", push_heart="推推乐", layered_heart="千层心", 
 
 
 def run(pattern, N=256, out=None, params=None, snap_dt=1.0 / 24.0, video=True, quiet=False, T_max=None, script_kw=None,
-        control="guess"):
+        control="guess", best=None):
     if control == "v05":
         script = V05Script(pattern)
+        pdict = dict(script.params); pdict.update(params or {})
+    elif control == "zefeng":
+        from .controls import ZScript
+        with open(best or f"runs/opt/{pattern}/best.json") as f:
+            script = ZScript(pattern, params=json.load(f)["params"])
         pdict = dict(script.params); pdict.update(params or {})
     else:
         script = SCRIPTS[pattern](**(script_kw or {}))
@@ -96,10 +101,11 @@ if __name__ == "__main__":
     ap.add_argument("--no-video", action="store_true")
     ap.add_argument("--T", type=float, default=None)
     ap.add_argument("--param", action="append", default=[], help="key=value overrides")
-    ap.add_argument("--control", default="guess", choices=["guess", "v05"])
+    ap.add_argument("--control", default="guess", choices=["guess", "v05", "zefeng"])
+    ap.add_argument("--best", default=None, help="best.json from latte_imex.optimize (control=zefeng)")
     a = ap.parse_args()
     overrides = {}
     for kv in a.param:
         k, v = kv.split("=")
         overrides[k] = v if k == "return_law" else float(v)
-    run(a.pattern, N=a.N, out=a.out, params=overrides, video=not a.no_video, T_max=a.T, control=a.control)
+    run(a.pattern, N=a.N, out=a.out, params=overrides, video=not a.no_video, T_max=a.T, control=a.control, best=a.best)
