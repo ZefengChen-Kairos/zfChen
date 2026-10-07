@@ -10,6 +10,7 @@ Splitting per sub-step (inlet fields s, Lambda, v* frozen within a control frame
   D  implicit viscosity (per velocity component) and implicit mixing, l frozen at l^{n+1}
 """
 from __future__ import annotations
+from . import kernels as K
 
 import math
 from dataclasses import dataclass, field, asdict
@@ -48,6 +49,8 @@ class Numerics:
     kernel_quadrature: int = 3
     scan_safety: float = 0.5        # frame_dt <= scan_safety * min(h, r1, r2) / scan_speed
     explicit_mixing_limit: float = 0.05   # D*dt/h^2 below this: explicit mixing update instead of a PCG solve
+    explicit_visc_limit: float = 0.2      # nu*dt/h^2 below this: explicit viscosity update (2-D limit 0.25)
+    visc_tol: float = 1e-8                # PCG tolerance for the (non-stiff) viscosity solves
 
 
 @dataclass
@@ -80,23 +83,23 @@ class Grid:
         self.area = self.h * self.h
         self.n_cells = int(self.mask.sum())
         # number of active faces per cell (for averaging cell gradients)
+        self.zero = np.zeros((N, N)); self.one = np.ones((N, N))
+        self.fx_h = self.fx / self.h   # face-gradient factors (inactive faces -> 0)
+        self.fy_h = self.fy / self.h
         self.nfx = np.zeros((N, N)); self.nfx[:, :-1] += self.fx; self.nfx[:, 1:] += self.fx
         self.nfy = np.zeros((N, N)); self.nfy[:-1, :] += self.fy; self.nfy[1:, :] += self.fy
 
     def div(self, Fx, Fy):
         """Divergence of face fluxes (normal flux density per face). Fx (N,N-1), Fy (N-1,N)."""
-        out = np.zeros((self.N, self.N))
-        out[:, :-1] += Fx      # right face of cell ix
-        out[:, 1:] -= Fx       # left face of cell ix+1
-        out[:-1, :] += Fy
-        out[1:, :] -= Fy
-        return out / self.h
+        return K.div(np.ascontiguousarray(Fx), np.ascontiguousarray(Fy), 1.0 / self.h, np.empty((self.N, self.N)))
 
     def face_avg(self, a):
         return 0.5 * (a[:, :-1] + a[:, 1:]) * self.fx, 0.5 * (a[:-1, :] + a[1:, :]) * self.fy
 
     def face_grad(self, a):
-        return (a[:, 1:] - a[:, :-1]) / self.h * self.fx, (a[1:, :] - a[:-1, :]) / self.h * self.fy
+        gx = np.subtract(a[:, 1:], a[:, :-1]); gx *= self.fx_h
+        gy = np.subtract(a[1:, :], a[:-1, :]); gy *= self.fy_h
+        return gx, gy
 
     def cell_grad(self, a):
         """Cell gradient = average of the two face gradients (inactive faces count as zero)."""
@@ -107,29 +110,32 @@ class Grid:
 
     def diffusion(self, kx, ky, phi):
         """div( k grad phi ) with face coefficients kx (N,N-1), ky (N-1,N)."""
-        gx, gy = self.face_grad(phi)
-        return self.div(kx * gx, ky * gy)
+        return K.apply_diffusion(phi, np.ascontiguousarray(kx), np.ascontiguousarray(ky), self.fx, self.fy,
+                                 self.zero, -1.0, 1.0 / (self.h * self.h), np.empty((self.N, self.N)))
+
+    def mass_operator(self, kx, ky, dt, phi):
+        """phi - dt * div( k grad phi )  (the implicit layer operator), one fused pass."""
+        return K.apply_diffusion(phi, kx, ky, self.fx, self.fy, self.one, dt, 1.0 / (self.h * self.h),
+                                 np.empty((self.N, self.N)))
 
 
 # --------------------------------------------------------------------------- PCG
 def pcg(apply_A, b, diag, x0, tol=1e-10, maxiter=500):
     x = x0.copy()
     r = b - apply_A(x)
-    z = r / diag
-    p = z.copy()
-    rz = np.vdot(r, z).real
-    bnorm = math.sqrt(np.vdot(b, b).real) + 1e-300
+    p = r / diag
+    rz = K.dot(r, p)
+    bnorm = math.sqrt(K.dot(b, b)) + 1e-300
     it = 0
     for it in range(1, maxiter + 1):
         Ap = apply_A(p)
-        alpha = rz / (np.vdot(p, Ap).real + 1e-300)
-        x += alpha * p
-        r -= alpha * Ap
-        if math.sqrt(np.vdot(r, r).real) <= tol * bnorm:
+        alpha = rz / (K.dot(p, Ap) + 1e-300)
+        K.axpy(alpha, p, x)
+        K.axpy(-alpha, Ap, r)
+        if math.sqrt(K.dot(r, r)) <= tol * bnorm:
             break
-        z = r / diag
-        rz_new = np.vdot(r, z).real
-        p = z + (rz_new / rz) * p
+        rz_new = K.dot(r, r / diag)
+        K.zbp(r, diag, rz_new / rz, p)
         rz = rz_new
     return x, it
 
@@ -267,51 +273,36 @@ class Solver:
         c = np.where(mask, m / lsafe, 0.0)
 
         # ---- A: explicit Rusanov momentum advection (l frozen) --------------
-        uL, uR = ux[:, :-1], ux[:, 1:]
-        ax = 2.0 * np.maximum(np.abs(uL), np.abs(uR))
-        Fx_qx = (0.5 * (qx[:, :-1] * uL + qx[:, 1:] * uR) - 0.5 * ax * (qx[:, 1:] - qx[:, :-1])) * g.fx
-        Fx_qy = (0.5 * (qy[:, :-1] * uL + qy[:, 1:] * uR) - 0.5 * ax * (qy[:, 1:] - qy[:, :-1])) * g.fx
-        vL, vR = uy[:-1, :], uy[1:, :]
-        ay = 2.0 * np.maximum(np.abs(vL), np.abs(vR))
-        Fy_qx = (0.5 * (qx[:-1, :] * vL + qx[1:, :] * vR) - 0.5 * ay * (qx[1:, :] - qx[:-1, :])) * g.fy
-        Fy_qy = (0.5 * (qy[:-1, :] * vL + qy[1:, :] * vR) - 0.5 * ay * (qy[1:, :] - qy[:-1, :])) * g.fy
+        N = g.N
+        Fx_qx = np.empty((N, N - 1)); Fx_qy = np.empty((N, N - 1)); Fy_qx = np.empty((N - 1, N)); Fy_qy = np.empty((N - 1, N))
+        K.rusanov_fluxes(qx, qy, ux, uy, g.fx, g.fy, Fx_qx, Fx_qy, Fy_qx, Fy_qy)
         qx_s = qx - dt * g.div(Fx_qx, Fy_qx)
         qy_s = qy - dt * g.div(Fx_qy, Fy_qy)
 
         # ---- B: implicit mass + pressure + drag/traction --------------------
-        theta = 1.0 + dt * (P.beta + Lam / lsafe)
-        qhx = qx_s + dt * (s + Lam) * vsx
-        qhy = qy_s + dt * (s + Lam) * vsy
-        a_x = qhx / theta
-        a_y = qhy / theta
+        a_x = np.empty((N, N)); a_y = np.empty((N, N)); coef = np.empty((N, N))
+        K.stepB_prepare(qx_s, qy_s, s, Lam, vsx, vsy, lsafe, P.beta, P.cp ** 2, dt, a_x, a_y, coef)
         # explicit part of face flux
-        wx = np.maximum(np.abs(a_x[:, :-1] / lsafe[:, :-1]), np.abs(a_x[:, 1:] / lsafe[:, 1:]))
-        wy = np.maximum(np.abs(a_y[:-1, :] / lsafe[:-1, :]), np.abs(a_y[1:, :] / lsafe[1:, :]))
-        Gex = (0.5 * (a_x[:, :-1] + a_x[:, 1:]) - 0.5 * wx * (l[:, 1:] - l[:, :-1])) * g.fx
-        Gey = (0.5 * (a_y[:-1, :] + a_y[1:, :]) - 0.5 * wy * (l[1:, :] - l[:-1, :])) * g.fy
-        coef = P.cp ** 2 * lsafe / theta                        # c_p^2 l^n / theta
-        kx = dt * 0.5 * (coef[:, :-1] + coef[:, 1:]) * g.fx
-        ky = dt * 0.5 * (coef[:-1, :] + coef[1:, :]) * g.fy
+        Gex = np.empty((N, N - 1)); Gey = np.empty((N - 1, N))
+        K.mass_fluxes(a_x, a_y, l, lsafe, g.fx, g.fy, Gex, Gey, None, None)
+        kx = np.empty((N, N - 1)); ky = np.empty((N - 1, N)); diag = np.empty((N, N))
+        K.face_coef_and_diag(coef, g.fx, g.fy, dt, 1.0 / (h * h), kx, ky, diag)   # k_f = dt avg(c_p^2 l^n/theta)
         rhs = l + dt * s - dt * g.div(Gex, Gey)
-        diag = 1.0 + dt / (h * h) * (np.pad(kx, ((0, 0), (1, 0))) + np.pad(kx, ((0, 0), (0, 1)))
-                                     + np.pad(ky, ((1, 0), (0, 0))) + np.pad(ky, ((0, 1), (0, 0))))
 
         def A_mass(phi):
-            return phi - dt * g.diffusion(kx, ky, phi)
+            return g.mass_operator(kx, ky, dt, phi)
 
         l_new, it = pcg(A_mass, rhs, diag, l, self.num.cg_tol, self.num.cg_maxiter)
         self.stats["cg_mass"] += it
-        gx, gy = g.face_grad(l_new)
-        Gx = Gex - kx * gx                # k_f (l_R - l_L)/h, k_f = dt * avg(c_p^2 l^n/theta)
-        Gy = Gey - ky * gy
+        Gx = np.empty((N, N - 1)); Gy = np.empty((N - 1, N))
+        K.finish_B(Gex, Gey, kx, ky, l_new, g.fx, g.fy, 1.0 / h, Gx, Gy)   # k_f (l_R - l_L)/h added to Ge
         l_new = l + dt * s - dt * g.div(Gx, Gy)          # conservative update with the final flux
-        cgx, cgy = g.cell_grad(l_new)
-        qx_new = a_x - dt * coef * cgx
-        qy_new = a_y - dt * coef * cgy
+        qx_new = np.empty((N, N)); qy_new = np.empty((N, N))
+        K.q_from_gradient(a_x, a_y, coef, l_new, g.fx, g.fy, g.nfx, g.nfy, dt, 1.0 / h, qx_new, qy_new)
 
         # ---- C: milk with the same face flux ---------------------------------
-        cfx = limited_face_value(c, Gx, g, axis=1)
-        cfy = limited_face_value(c, Gy, g, axis=0)
+        cfx = K.limited_face_x(c, Gx, g.fx, np.empty((N, N - 1)))
+        cfy = K.limited_face_y(c, Gy, g.fy, np.empty((N - 1, N)))
         m_new = m + dt * s - dt * g.div(Gx * cfx, Gy * cfy)
         # boundedness guard (should be inactive under the material CFL)
         over = np.maximum(m_new - l_new, 0.0) + np.maximum(-m_new, 0.0)
@@ -326,7 +317,15 @@ class Solver:
         lsn = np.where(mask, l_new, 1.0)
 
         # ---- D: implicit viscosity and mixing (l frozen at l^{n+1}) ---------
-        if P.nu > 0:
+        if P.nu > 0 and P.nu * dt / (h * h) < self.num.explicit_visc_limit:
+            # explicit, stable for nu*dt/h^2 < 1/4 (2-D); l frozen at l^{n+1}
+            lfx, lfy = g.face_avg(lsn)
+            kvx, kvy = P.nu * lfx, P.nu * lfy
+            ux_new = qx_new / lsn
+            uy_new = qy_new / lsn
+            qx_new = np.where(mask, qx_new + dt * g.diffusion(kvx, kvy, ux_new), 0.0)
+            qy_new = np.where(mask, qy_new + dt * g.diffusion(kvx, kvy, uy_new), 0.0)
+        elif P.nu > 0:
             lfx, lfy = g.face_avg(lsn)
             kvx, kvy = P.nu * lfx, P.nu * lfy
             dvis = lsn + dt / (h * h) * (np.pad(kvx, ((0, 0), (1, 0))) + np.pad(kvx, ((0, 0), (0, 1)))
@@ -337,8 +336,8 @@ class Solver:
 
             ux_new = qx_new / lsn
             uy_new = qy_new / lsn
-            ux_new, it1 = pcg(A_visc, lsn * ux_new, dvis, ux_new, self.num.cg_tol, self.num.cg_maxiter)
-            uy_new, it2 = pcg(A_visc, lsn * uy_new, dvis, uy_new, self.num.cg_tol, self.num.cg_maxiter)
+            ux_new, it1 = pcg(A_visc, lsn * ux_new, dvis, ux_new, self.num.visc_tol, self.num.cg_maxiter)
+            uy_new, it2 = pcg(A_visc, lsn * uy_new, dvis, uy_new, self.num.visc_tol, self.num.cg_maxiter)
             self.stats["cg_visc"] += it1 + it2
             qx_new = np.where(mask, lsn * ux_new, 0.0)
             qy_new = np.where(mask, lsn * uy_new, 0.0)
