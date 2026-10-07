@@ -30,7 +30,7 @@ CN = dict(heart="大白心", push_heart="推推乐", layered_heart="千层心", 
 
 
 def run(pattern, N=256, out=None, params=None, snap_dt=1.0 / 24.0, video=True, quiet=False, T_max=None, script_kw=None,
-        control="guess", best=None):
+        control="guess", best=None, numerics=None):
     if control == "v05":
         script = V05Script(pattern)
         pdict = dict(script.params); pdict.update(params or {})
@@ -47,7 +47,7 @@ def run(pattern, N=256, out=None, params=None, snap_dt=1.0 / 24.0, video=True, q
         script = SCRIPTS[pattern](**(script_kw or {}))
         pdict = dict(DEFAULT_PARAMS); pdict.update(params or {})
     P = Params(**pdict)
-    num = Numerics(N=N)
+    num = Numerics(N=N, **(numerics or {}))
     sol = Solver(P, num)
     T = script.T if T_max is None else min(T_max, script.T)
     out = out or f"runs/{pattern}_{control}_N{N}"
@@ -107,9 +107,14 @@ if __name__ == "__main__":
     ap.add_argument("--param", action="append", default=[], help="key=value overrides")
     ap.add_argument("--control", default="guess", choices=["guess", "v05", "zefeng"])
     ap.add_argument("--best", default=None, help="best.json from latte_imex.optimize (control=zefeng)")
+    ap.add_argument("--cfl", type=float, default=None, help="material CFL (default 0.5)")
     a = ap.parse_args()
     overrides = {}
     for kv in a.param:
         k, v = kv.split("=")
         overrides[k] = v if k == "return_law" else float(v)
-    run(a.pattern, N=a.N, out=a.out, params=overrides, video=not a.no_video, T_max=a.T, control=a.control, best=a.best)
+    numerics = {}
+    if a.cfl is not None:
+        numerics["cfl"] = a.cfl
+    run(a.pattern, N=a.N, out=a.out, params=overrides, video=not a.no_video, T_max=a.T, control=a.control, best=a.best,
+        numerics=numerics)
