@@ -1,0 +1,410 @@
+"""V1 surface-layer latte-art model, IMEX + Rusanov discretisation.
+
+State per cell (cell averages): l (effective layer), qx, qy (layer momentum), m (new milk).
+Units: length = cup diameter D_L, time = seconds.
+
+Splitting per sub-step (inlet fields s, Lambda, v* frozen within a control frame):
+  A  explicit momentum advection, Rusanov flux, alpha = 2 max(|u_n,L|, |u_n,R|)
+  B  implicit mass + pressure + drag/traction -> SPD elliptic equation for l^{n+1}, PCG
+  C  milk transported with the SAME face flux G_f, upwind c_f with van Leer limiter
+  D  implicit viscosity (per velocity component) and implicit mixing, l frozen at l^{n+1}
+"""
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass, field, asdict
+
+import numpy as np
+
+
+# --------------------------------------------------------------------------- params
+@dataclass
+class Params:
+    cp: float = 0.30        # effective pressure response  [D_L/s]
+    beta: float = 3.0       # momentum damping             [1/s]
+    nu: float = 1e-3        # viscosity                    [D_L^2/s]
+    D: float = 1e-7         # milk mixing                  [D_L^2/s]
+    kappa_Q: float = 125.0  # received volume -> layer     [1/D_L]
+    kappa_c: float = 1.0    # traction of the non-deposited part
+    kappa_t: float = 0.7    # tangential (material velocity) share of v*
+    kappa_r: float = 0.3    # radial return-flow share of v*
+    B_dep: float = 240.0    # deposition switch scale      [D_L/s^2]
+    p_dep: float = 2.0      # deposition switch exponent
+    return_law: str = "v1"  # "v1": chi*kappa_r*U_perp ; "v05": kappa_r*U_perp*chi^(1/(2p)) capped
+
+    def as_dict(self):
+        return asdict(self)
+
+
+@dataclass
+class Numerics:
+    N: int = 256
+    cup_radius: float = 0.49
+    cfl: float = 0.5
+    frame_dt: float = 1.0 / 120.0   # control frame; inlet frozen inside a frame
+    max_substeps: int = 64
+    cg_tol: float = 1e-10
+    cg_maxiter: int = 500
+    kernel_quadrature: int = 3
+
+
+@dataclass
+class Inlet:
+    """Arrival record at one instant, already in the cup frame R."""
+    active: bool = False
+    x_hit: tuple = (0.0, 0.0)      # hit point (x, y)
+    S_eff: float = 0.0             # kappa_Q * Q_received   [1/s * D_L^2]  (effective inlet rate)
+    u_in: tuple = (0.0, 0.0)       # horizontal material arrival velocity [D_L/s]
+    U_perp: float = 0.0            # normal arrival speed [D_L/s]
+    d_jet: float = 0.05            # jet diameter (cross-section equivalent) [D_L]
+    r1: float = 0.04               # footprint ellipse semi-axes [D_L]
+    r2: float = 0.04
+    phi: float = 0.0               # footprint orientation [rad]
+
+
+# --------------------------------------------------------------------------- grid
+class Grid:
+    def __init__(self, N: int, R: float):
+        self.N = N
+        self.h = 1.0 / N
+        c = (np.arange(N) + 0.5) * self.h - 0.5
+        self.x = c[None, :].repeat(N, 0)   # [iy, ix]
+        self.y = c[:, None].repeat(N, 1)
+        self.r = np.hypot(self.x, self.y)
+        self.mask = self.r <= R
+        self.fx = self.mask[:, :-1] & self.mask[:, 1:]     # x-faces (N, N-1)
+        self.fy = self.mask[:-1, :] & self.mask[1:, :]     # y-faces (N-1, N)
+        self.area = self.h * self.h
+        self.n_cells = int(self.mask.sum())
+        # number of active faces per cell (for averaging cell gradients)
+        self.nfx = np.zeros((N, N)); self.nfx[:, :-1] += self.fx; self.nfx[:, 1:] += self.fx
+        self.nfy = np.zeros((N, N)); self.nfy[:-1, :] += self.fy; self.nfy[1:, :] += self.fy
+
+    def div(self, Fx, Fy):
+        """Divergence of face fluxes (normal flux density per face). Fx (N,N-1), Fy (N-1,N)."""
+        out = np.zeros((self.N, self.N))
+        out[:, :-1] += Fx      # right face of cell ix
+        out[:, 1:] -= Fx       # left face of cell ix+1
+        out[:-1, :] += Fy
+        out[1:, :] -= Fy
+        return out / self.h
+
+    def face_avg(self, a):
+        return 0.5 * (a[:, :-1] + a[:, 1:]) * self.fx, 0.5 * (a[:-1, :] + a[1:, :]) * self.fy
+
+    def face_grad(self, a):
+        return (a[:, 1:] - a[:, :-1]) / self.h * self.fx, (a[1:, :] - a[:-1, :]) / self.h * self.fy
+
+    def cell_grad(self, a):
+        """Cell gradient = average of the two face gradients (inactive faces count as zero)."""
+        gx, gy = self.face_grad(a)
+        cx = np.zeros((self.N, self.N)); cx[:, :-1] += gx; cx[:, 1:] += gx
+        cy = np.zeros((self.N, self.N)); cy[:-1, :] += gy; cy[1:, :] += gy
+        return cx / np.maximum(self.nfx, 1), cy / np.maximum(self.nfy, 1)
+
+    def diffusion(self, kx, ky, phi):
+        """div( k grad phi ) with face coefficients kx (N,N-1), ky (N-1,N)."""
+        gx, gy = self.face_grad(phi)
+        return self.div(kx * gx, ky * gy)
+
+
+# --------------------------------------------------------------------------- PCG
+def pcg(apply_A, b, diag, x0, tol=1e-10, maxiter=500):
+    x = x0.copy()
+    r = b - apply_A(x)
+    z = r / diag
+    p = z.copy()
+    rz = np.vdot(r, z).real
+    bnorm = math.sqrt(np.vdot(b, b).real) + 1e-300
+    it = 0
+    for it in range(1, maxiter + 1):
+        Ap = apply_A(p)
+        alpha = rz / (np.vdot(p, Ap).real + 1e-300)
+        x += alpha * p
+        r -= alpha * Ap
+        if math.sqrt(np.vdot(r, r).real) <= tol * bnorm:
+            break
+        z = r / diag
+        rz_new = np.vdot(r, z).real
+        p = z + (rz_new / rz) * p
+        rz = rz_new
+    return x, it
+
+
+# --------------------------------------------------------------------------- limiter
+def van_leer(r):
+    return (r + np.abs(r)) / (1.0 + np.abs(r))
+
+
+def limited_face_value(c, G, grid, axis):
+    """Upwind face value of c with van Leer limited linear reconstruction.
+    axis=1: x-faces (N, N-1), G>0 means flow from left (ix) to right (ix+1).
+    axis=0: y-faces (N-1, N)."""
+    if axis == 1:
+        cm = c
+        dcf = (cm[:, 1:] - cm[:, :-1]) * grid.fx          # difference across each x-face
+        # difference across the face to the left of cell ix: pad with zero at the boundary
+        dleft = np.zeros_like(c); dleft[:, 1:] = dcf          # d_{ix-1/2}
+        dright = np.zeros_like(c); dright[:, :-1] = dcf       # d_{ix+1/2}
+        cL = cm[:, :-1]; cR = cm[:, 1:]
+        # flow L->R: c_f = c_L + 0.5 phi(r_L) * d_f, r_L = d_{L-1/2}/d_f
+        dface = dcf
+        eps = 1e-14
+        rL = dleft[:, :-1] / np.where(np.abs(dface) > eps, dface, eps)
+        rR = dright[:, 1:] / np.where(np.abs(dface) > eps, dface, eps)
+        rL = np.where(np.abs(dface) > eps, rL, 0.0)
+        rR = np.where(np.abs(dface) > eps, rR, 0.0)
+        cfL = cL + 0.5 * van_leer(rL) * dface
+        cfR = cR - 0.5 * van_leer(rR) * dface
+    else:
+        cm = c
+        dcf = (cm[1:, :] - cm[:-1, :]) * grid.fy
+        dleft = np.zeros_like(c); dleft[1:, :] = dcf
+        dright = np.zeros_like(c); dright[:-1, :] = dcf
+        cL = cm[:-1, :]; cR = cm[1:, :]
+        dface = dcf
+        eps = 1e-14
+        rL = dleft[:-1, :] / np.where(np.abs(dface) > eps, dface, eps)
+        rR = dright[1:, :] / np.where(np.abs(dface) > eps, dface, eps)
+        rL = np.where(np.abs(dface) > eps, rL, 0.0)
+        rR = np.where(np.abs(dface) > eps, rR, 0.0)
+        cfL = cL + 0.5 * van_leer(rL) * dface
+        cfR = cR - 0.5 * van_leer(rR) * dface
+    cf = np.where(G > 0, cfL, cfR)
+    lo = np.minimum(cL, cR); hi = np.maximum(cL, cR)
+    return np.clip(cf, lo, hi)
+
+
+# --------------------------------------------------------------------------- solver
+class Solver:
+    def __init__(self, params: Params, num: Numerics):
+        self.P = params
+        self.num = num
+        self.g = Grid(num.N, num.cup_radius)
+        g = self.g
+        self.l = np.ones((g.N, g.N))
+        self.qx = np.zeros((g.N, g.N))
+        self.qy = np.zeros((g.N, g.N))
+        self.m = np.zeros((g.N, g.N))
+        self.t = 0.0
+        self.deposited = 0.0           # cumulative integral of s over domain and time
+        self.stats = dict(steps=0, frames=0, cg_mass=0, cg_visc=0, cg_mix=0,
+                          clip_mass=0.0, max_substeps=0, max_u=0.0, retries=0)
+        self.l_floor = 1e-3
+        self._kernel_cache = {}
+
+    # ----- inlet fields -----------------------------------------------------
+    def kernel(self, inlet: Inlet):
+        """Normalised compact ellipse kernel K on cells, sum(K)*area = 1 inside the cup."""
+        g = self.g
+        r1, r2, phi = max(inlet.r1, 1.5 * g.h), max(inlet.r2, 1.5 * g.h), inlet.phi
+        x0, y0 = inlet.x_hit
+        q = self.num.kernel_quadrature
+        K = np.zeros((g.N, g.N))
+        offs = (np.arange(q) + 0.5) / q - 0.5
+        cphi, sphi = math.cos(phi), math.sin(phi)
+        for ox in offs:
+            for oy in offs:
+                dx = g.x + ox * g.h - x0
+                dy = g.y + oy * g.h - y0
+                a = (cphi * dx + sphi * dy) / r1
+                b = (-sphi * dx + cphi * dy) / r2
+                K += np.maximum(0.0, 1.0 - a * a - b * b) ** 2
+        K *= 3.0 / (math.pi * r1 * r2) / (q * q)
+        K *= g.mask
+        Z = K.sum() * g.area
+        if Z < 1e-6:
+            raise ValueError("inlet footprint does not intersect the cup")
+        return K / Z, Z
+
+    def inlet_fields(self, inlet: Inlet):
+        P = self.P
+        g = self.g
+        if not inlet.active or inlet.S_eff <= 0:
+            z = np.zeros((g.N, g.N))
+            return z, z, z, z, 0.0
+        K, _ = self.kernel(inlet)
+        d = max(inlet.d_jet, 1e-6)
+        zc = inlet.U_perp ** 2 / (P.B_dep * d)
+        chi = 1.0 / (1.0 + zc ** P.p_dep)
+        s = chi * inlet.S_eff * K
+        Lam = P.kappa_c * (1.0 - chi) * inlet.S_eff * K
+        # target velocity
+        dx = g.x - inlet.x_hit[0]
+        dy = g.y - inlet.x_hit[1]
+        Rdep = math.sqrt(max(inlet.r1 * inlet.r2, 1e-12))
+        den = np.sqrt(Rdep * Rdep + dx * dx + dy * dy)
+        if P.return_law == "v05":
+            VR = inlet.U_perp * chi ** (1.0 / (2.0 * P.p_dep))
+            VR = min(VR, inlet.U_perp, math.sqrt(P.B_dep * d))
+            rad = P.kappa_r * VR
+        else:
+            rad = chi * P.kappa_r * inlet.U_perp
+        vsx = P.kappa_t * inlet.u_in[0] + rad * dx / den
+        vsy = P.kappa_t * inlet.u_in[1] + rad * dy / den
+        return s, Lam, vsx, vsy, chi
+
+    # ----- one sub-step --------------------------------------------------------
+    def substep(self, dt, s, Lam, vsx, vsy):
+        P, g, h = self.P, self.g, self.g.h
+        l, qx, qy, m = self.l, self.qx, self.qy, self.m
+        mask = g.mask
+        lsafe = np.where(mask, l, 1.0)
+        ux = np.where(mask, qx / lsafe, 0.0)
+        uy = np.where(mask, qy / lsafe, 0.0)
+        c = np.where(mask, m / lsafe, 0.0)
+
+        # ---- A: explicit Rusanov momentum advection (l frozen) --------------
+        uL, uR = ux[:, :-1], ux[:, 1:]
+        ax = 2.0 * np.maximum(np.abs(uL), np.abs(uR))
+        Fx_qx = (0.5 * (qx[:, :-1] * uL + qx[:, 1:] * uR) - 0.5 * ax * (qx[:, 1:] - qx[:, :-1])) * g.fx
+        Fx_qy = (0.5 * (qy[:, :-1] * uL + qy[:, 1:] * uR) - 0.5 * ax * (qy[:, 1:] - qy[:, :-1])) * g.fx
+        vL, vR = uy[:-1, :], uy[1:, :]
+        ay = 2.0 * np.maximum(np.abs(vL), np.abs(vR))
+        Fy_qx = (0.5 * (qx[:-1, :] * vL + qx[1:, :] * vR) - 0.5 * ay * (qx[1:, :] - qx[:-1, :])) * g.fy
+        Fy_qy = (0.5 * (qy[:-1, :] * vL + qy[1:, :] * vR) - 0.5 * ay * (qy[1:, :] - qy[:-1, :])) * g.fy
+        qx_s = qx - dt * g.div(Fx_qx, Fy_qx)
+        qy_s = qy - dt * g.div(Fx_qy, Fy_qy)
+
+        # ---- B: implicit mass + pressure + drag/traction --------------------
+        theta = 1.0 + dt * (P.beta + Lam / lsafe)
+        qhx = qx_s + dt * (s + Lam) * vsx
+        qhy = qy_s + dt * (s + Lam) * vsy
+        a_x = qhx / theta
+        a_y = qhy / theta
+        # explicit part of face flux
+        wx = np.maximum(np.abs(a_x[:, :-1] / lsafe[:, :-1]), np.abs(a_x[:, 1:] / lsafe[:, 1:]))
+        wy = np.maximum(np.abs(a_y[:-1, :] / lsafe[:-1, :]), np.abs(a_y[1:, :] / lsafe[1:, :]))
+        Gex = (0.5 * (a_x[:, :-1] + a_x[:, 1:]) - 0.5 * wx * (l[:, 1:] - l[:, :-1])) * g.fx
+        Gey = (0.5 * (a_y[:-1, :] + a_y[1:, :]) - 0.5 * wy * (l[1:, :] - l[:-1, :])) * g.fy
+        coef = P.cp ** 2 * lsafe / theta                        # c_p^2 l^n / theta
+        kx = dt * 0.5 * (coef[:, :-1] + coef[:, 1:]) * g.fx
+        ky = dt * 0.5 * (coef[:-1, :] + coef[1:, :]) * g.fy
+        rhs = l + dt * s - dt * g.div(Gex, Gey)
+        diag = 1.0 + dt / (h * h) * (np.pad(kx, ((0, 0), (1, 0))) + np.pad(kx, ((0, 0), (0, 1)))
+                                     + np.pad(ky, ((1, 0), (0, 0))) + np.pad(ky, ((0, 1), (0, 0))))
+
+        def A_mass(phi):
+            return phi - dt * g.diffusion(kx, ky, phi)
+
+        l_new, it = pcg(A_mass, rhs, diag, l, self.num.cg_tol, self.num.cg_maxiter)
+        self.stats["cg_mass"] += it
+        gx, gy = g.face_grad(l_new)
+        Gx = Gex - kx * gx                # k_f (l_R - l_L)/h, k_f = dt * avg(c_p^2 l^n/theta)
+        Gy = Gey - ky * gy
+        l_new = l + dt * s - dt * g.div(Gx, Gy)          # conservative update with the final flux
+        cgx, cgy = g.cell_grad(l_new)
+        qx_new = a_x - dt * coef * cgx
+        qy_new = a_y - dt * coef * cgy
+
+        # ---- C: milk with the same face flux ---------------------------------
+        cfx = limited_face_value(c, Gx, g, axis=1)
+        cfy = limited_face_value(c, Gy, g, axis=0)
+        m_new = m + dt * s - dt * g.div(Gx * cfx, Gy * cfy)
+        # boundedness guard (should be inactive under the material CFL)
+        over = np.maximum(m_new - l_new, 0.0) + np.maximum(-m_new, 0.0)
+        self.stats["clip_mass"] += float(over[mask].sum() * g.area)
+        m_new = np.clip(m_new, 0.0, l_new)
+
+        # outside the cup keep the reference state
+        l_new = np.where(mask, l_new, 1.0)
+        qx_new = np.where(mask, qx_new, 0.0)
+        qy_new = np.where(mask, qy_new, 0.0)
+        m_new = np.where(mask, m_new, 0.0)
+        lsn = np.where(mask, l_new, 1.0)
+
+        # ---- D: implicit viscosity and mixing (l frozen at l^{n+1}) ---------
+        if P.nu > 0:
+            lfx, lfy = g.face_avg(lsn)
+            kvx, kvy = P.nu * lfx, P.nu * lfy
+            dvis = lsn + dt / (h * h) * (np.pad(kvx, ((0, 0), (1, 0))) + np.pad(kvx, ((0, 0), (0, 1)))
+                                         + np.pad(kvy, ((1, 0), (0, 0))) + np.pad(kvy, ((0, 1), (0, 0))))
+
+            def A_visc(phi):
+                return lsn * phi - dt * g.diffusion(kvx, kvy, phi)
+
+            ux_new = qx_new / lsn
+            uy_new = qy_new / lsn
+            ux_new, it1 = pcg(A_visc, lsn * ux_new, dvis, ux_new, self.num.cg_tol, self.num.cg_maxiter)
+            uy_new, it2 = pcg(A_visc, lsn * uy_new, dvis, uy_new, self.num.cg_tol, self.num.cg_maxiter)
+            self.stats["cg_visc"] += it1 + it2
+            qx_new = np.where(mask, lsn * ux_new, 0.0)
+            qy_new = np.where(mask, lsn * uy_new, 0.0)
+        if P.D > 0:
+            lfx, lfy = g.face_avg(lsn)
+            kmx, kmy = P.D * lfx, P.D * lfy
+            dmix = lsn + dt / (h * h) * (np.pad(kmx, ((0, 0), (1, 0))) + np.pad(kmx, ((0, 0), (0, 1)))
+                                         + np.pad(kmy, ((1, 0), (0, 0))) + np.pad(kmy, ((0, 1), (0, 0))))
+
+            def A_mix(phi):
+                return lsn * phi - dt * g.diffusion(kmx, kmy, phi)
+
+            c_new = m_new / lsn
+            c_new, it3 = pcg(A_mix, lsn * c_new, dmix, c_new, self.num.cg_tol, self.num.cg_maxiter)
+            self.stats["cg_mix"] += it3
+            m_new = np.where(mask, lsn * np.clip(c_new, 0.0, 1.0), 0.0)
+
+        # accept only finite, positive-layer states; otherwise the frame is retried with a smaller step
+        if not (np.isfinite(l_new).all() and np.isfinite(qx_new).all() and np.isfinite(qy_new).all()
+                and np.isfinite(m_new).all() and l_new[mask].min() > self.l_floor):
+            return False
+        self.l, self.qx, self.qy, self.m = l_new, qx_new, qy_new, m_new
+        self.deposited += float(s[mask].sum()) * g.area * dt
+        self.stats["steps"] += 1
+        return True
+
+    # ----- one control frame ---------------------------------------------------
+    def advance_frame(self, inlet: Inlet, frame_dt=None):
+        frame_dt = frame_dt or self.num.frame_dt
+        s, Lam, vsx, vsy, chi = self.inlet_fields(inlet)
+        g = self.g
+        lsafe = np.where(g.mask, self.l, 1.0)
+        umax = float(np.max(np.hypot(self.qx, self.qy) / lsafe))
+        # include the inlet target speed in the material-speed bound (it is reached quickly)
+        if inlet.active and inlet.S_eff > 0:
+            umax = max(umax, float(np.max(np.hypot(vsx, vsy) * (s + Lam > 0))))
+        self.stats["max_u"] = max(self.stats["max_u"], umax)
+        dt_cfl = self.num.cfl * g.h / (2.0 * max(umax, 1e-9))
+        nsub = int(math.ceil(frame_dt / dt_cfl))
+        nsub = max(1, min(nsub, self.num.max_substeps))
+        saved = (self.l.copy(), self.qx.copy(), self.qy.copy(), self.m.copy(), self.deposited)
+        for attempt in range(8):
+            dt = frame_dt / nsub
+            ok = True
+            for _ in range(nsub):
+                if not self.substep(dt, s, Lam, vsx, vsy):
+                    ok = False
+                    break
+            if ok:
+                break
+            # restore the committed state and retry the whole frame with a smaller sub-step
+            self.l, self.qx, self.qy, self.m = (a.copy() for a in saved[:4])
+            self.deposited = saved[4]
+            self.stats["retries"] += 1
+            nsub *= 2
+        else:
+            raise RuntimeError(f"frame at t={self.t:.4f} failed after retries (nsub={nsub})")
+        self.stats["max_substeps"] = max(self.stats["max_substeps"], nsub)
+        self.t += frame_dt
+        self.stats["frames"] += 1
+        return chi, nsub
+
+    # ----- diagnostics ----------------------------------------------------------
+    def ledger(self):
+        g = self.g
+        L = float(self.l[g.mask].sum() * g.area)
+        M = float(self.m[g.mask].sum() * g.area)
+        return dict(t=self.t, layer=L, milk=M, brown=L - M, deposited=self.deposited,
+                    layer_error=L - (g.n_cells * g.area + self.deposited),
+                    milk_error=M - self.deposited)
+
+    def concentration(self):
+        g = self.g
+        return np.where(g.mask, self.m / np.where(g.mask, self.l, 1.0), np.nan)
+
+    def energy(self):
+        g = self.g
+        lsafe = np.where(g.mask, self.l, 1.0)
+        ke = 0.5 * (self.qx ** 2 + self.qy ** 2) / lsafe
+        pe = 0.5 * self.P.cp ** 2 * self.l ** 2
+        return float(ke[g.mask].sum() * g.area), float(pe[g.mask].sum() * g.area)
