@@ -1,0 +1,90 @@
+{
+ "pattern": "push_heart",
+ "control": "v05",
+ "N": 128,
+ "T": 5.09,
+ "elapsed_s": 115.99807953834534,
+ "params": {
+  "cp": 2.0,
+  "beta": 3.0,
+  "nu": 0.001,
+  "D": 1e-07,
+  "kappa_Q": 125.0,
+  "kappa_c": 1.0,
+  "kappa_t": 0.7,
+  "kappa_r": 0.3,
+  "B_dep": 240.0,
+  "p_dep": 2.0,
+  "return_law": "v05"
+ },
+ "numerics": {
+  "N": 128,
+  "cup_radius": 0.49,
+  "cfl": 0.5,
+  "frame_dt": 0.008333333333333333,
+  "max_substeps": 64,
+  "cg_tol": 1e-10,
+  "cg_maxiter": 500,
+  "kernel_quadrature": 3,
+  "scan_safety": 0.5,
+  "explicit_mixing_limit": 0.05
+ },
+ "stats": {
+  "steps": 3467,
+  "frames": 964,
+  "cg_mass": 32236,
+  "cg_visc": 41732,
+  "cg_mix": 0,
+  "clip_mass": 5.421010862427522e-20,
+  "max_substeps": 7,
+  "max_u": 1.6220684049837066,
+  "retries": 0
+ },
+ "ledger": {
+  "t": 5.091005270213615,
+  "layer": 0.9854786186170574,
+  "milk": 0.23059580611705757,
+  "brown": 0.7548828124999999,
+  "deposited": 0.23059580611705732,
+  "layer_error": 1.1102230246251565e-16,
+  "milk_error": 2.498001805406602e-16
+ },
+ "kinetic_energy": 2.372088229207967e-06,
+ "pressure_energy": 2.573030531318321,
+ "white_area_c_gt_0p4": 0.2017822265625,
+ "events": [
+  {
+   "t": 0.0,
+   "phase": "phase 1: pour"
+  },
+  {
+   "t": 1.25,
+   "phase": "phase 2: reposition (no flow)"
+  },
+  {
+   "t": 1.4333,
+   "phase": "phase 3: pour"
+  },
+  {
+   "t": 2.5333,
+   "phase": "phase 4: reposition (no flow)"
+  },
+  {
+   "t": 2.7083,
+   "phase": "phase 5: pour"
+  },
+  {
+   "t": 3.4583,
+   "phase": "phase 6: reposition (no flow)"
+  },
+  {
+   "t": 3.6417,
+   "phase": "phase 7: fine cut"
+  },
+  {
+   "t": 4.7397,
+   "phase": "phase 8: stop"
+  }
+ ],
+ "script_kw": {}
+}

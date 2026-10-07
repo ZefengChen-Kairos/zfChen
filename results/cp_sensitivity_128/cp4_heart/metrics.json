@@ -1,0 +1,74 @@
+{
+ "pattern": "heart",
+ "control": "v05",
+ "N": 128,
+ "T": 6.925,
+ "elapsed_s": 122.84690022468567,
+ "params": {
+  "cp": 4.0,
+  "beta": 3.0,
+  "nu": 0.001,
+  "D": 1e-07,
+  "kappa_Q": 125.0,
+  "kappa_c": 1.0,
+  "kappa_t": 0.7,
+  "kappa_r": 0.3,
+  "B_dep": 240.0,
+  "p_dep": 2.0,
+  "return_law": "v05"
+ },
+ "numerics": {
+  "N": 128,
+  "cup_radius": 0.49,
+  "cfl": 0.5,
+  "frame_dt": 0.008333333333333333,
+  "max_substeps": 64,
+  "cg_tol": 1e-10,
+  "cg_maxiter": 500,
+  "kernel_quadrature": 3,
+  "scan_safety": 0.5,
+  "explicit_mixing_limit": 0.05
+ },
+ "stats": {
+  "steps": 2655,
+  "frames": 970,
+  "cg_mass": 74724,
+  "cg_visc": 37381,
+  "cg_mix": 0,
+  "clip_mass": 1.3552527156068805e-20,
+  "max_substeps": 5,
+  "max_u": 1.615056046020177,
+  "retries": 0
+ },
+ "ledger": {
+  "t": 6.925437862813858,
+  "layer": 1.003046811272362,
+  "milk": 0.2481639987723624,
+  "brown": 0.7548828124999997,
+  "deposited": 0.24816399877235049,
+  "layer_error": 1.1546319456101628e-14,
+  "milk_error": 1.1907141939104804e-14
+ },
+ "kinetic_energy": 9.347211521631506e-07,
+ "pressure_energy": 10.6623479990295,
+ "white_area_c_gt_0p4": 0.1907958984375,
+ "events": [
+  {
+   "t": 0.0,
+   "phase": "phase 1: pour"
+  },
+  {
+   "t": 4.0,
+   "phase": "phase 2: pour"
+  },
+  {
+   "t": 5.6,
+   "phase": "phase 3: fine cut"
+  },
+  {
+   "t": 6.4254,
+   "phase": "phase 4: stop"
+  }
+ ],
+ "script_kw": {}
+}
