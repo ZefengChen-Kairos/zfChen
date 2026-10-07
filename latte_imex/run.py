@@ -30,7 +30,7 @@ CN = dict(heart="大白心", push_heart="推推乐", layered_heart="千层心", 
 
 
 def run(pattern, N=256, out=None, params=None, snap_dt=1.0 / 24.0, video=True, quiet=False, T_max=None, script_kw=None,
-        control="guess", best=None, numerics=None):
+        control="guess", best=None, numerics=None, backend="cpu"):
     if control == "v05":
         script = V05Script(pattern)
         pdict = dict(script.params); pdict.update(params or {})
@@ -48,7 +48,11 @@ def run(pattern, N=256, out=None, params=None, snap_dt=1.0 / 24.0, video=True, q
         pdict = dict(DEFAULT_PARAMS); pdict.update(params or {})
     P = Params(**pdict)
     num = Numerics(N=N, **(numerics or {}))
-    sol = Solver(P, num)
+    if backend == "cuda":
+        from .cuda_solver import CudaSolver
+        sol = CudaSolver(P, num)
+    else:
+        sol = Solver(P, num)
     T = script.T if T_max is None else min(T_max, script.T)
     out = out or f"runs/{pattern}_{control}_N{N}"
     os.makedirs(out, exist_ok=True)
@@ -73,18 +77,19 @@ def run(pattern, N=256, out=None, params=None, snap_dt=1.0 / 24.0, video=True, q
             snaps.append((sol.t, sol.concentration().astype(np.float32)))
             next_snap += snap_dt
             if not quiet and len(snaps) % 12 == 1:
-                L = sol.ledger()
+                L = sol.ledger(); hl = sol.host_state()["l"]
                 print(f"[{pattern}] t={sol.t:6.2f}/{T:.2f} phase={phase:<34s} chi={chi:.2f} nsub={nsub:2d} "
-                      f"lmax={sol.l[sol.g.mask].max():.2f} lmin={sol.l[sol.g.mask].min():.2f} "
+                      f"lmax={hl[sol.g.mask].max():.2f} lmin={hl[sol.g.mask].min():.2f} "
                       f"dep={L['deposited']:.3f} lerr={L['layer_error']:.1e} el={time.time()-t0:.0f}s", flush=True)
     elapsed = time.time() - t0
     c = sol.concentration()
-    np.savez_compressed(os.path.join(out, "final_state.npz"), l=sol.l, qx=sol.qx, qy=sol.qy, m=sol.m, mask=sol.g.mask)
+    hs = sol.host_state()
+    np.savez_compressed(os.path.join(out, "final_state.npz"), l=hs["l"], qx=hs["qx"], qy=hs["qy"], m=hs["m"], mask=sol.g.mask)
     np.savez_compressed(os.path.join(out, "snapshots_c.npz"), t=np.array([s[0] for s in snaps]),
                         c=np.stack([s[1] for s in snaps]).astype(np.float16))
     render.save_final(os.path.join(out, "final.png"), c, sol.g.mask, title=f"{pattern}  t={sol.t:.2f}s")
     L = sol.ledger(); ke, pe = sol.energy()
-    metrics = dict(pattern=pattern, control=control, N=N, T=T, elapsed_s=elapsed, params=pdict, numerics=vars(num),
+    metrics = dict(pattern=pattern, control=control, N=N, T=T, elapsed_s=elapsed, params=pdict, numerics=vars(num), backend=backend,
                    stats=sol.stats, ledger=L, kinetic_energy=ke, pressure_energy=pe,
                    white_area_c_gt_0p4=float(np.nansum(c > 0.4) * sol.g.area), events=events, script_kw=script_kw or {})
     with open(os.path.join(out, "metrics.json"), "w") as f:
@@ -108,6 +113,7 @@ if __name__ == "__main__":
     ap.add_argument("--control", default="guess", choices=["guess", "v05", "zefeng"])
     ap.add_argument("--best", default=None, help="best.json from latte_imex.optimize (control=zefeng)")
     ap.add_argument("--cfl", type=float, default=None, help="material CFL (default 0.5)")
+    ap.add_argument("--backend", default="cpu", choices=["cpu", "cuda"])
     a = ap.parse_args()
     overrides = {}
     for kv in a.param:
@@ -117,4 +123,4 @@ if __name__ == "__main__":
     if a.cfl is not None:
         numerics["cfl"] = a.cfl
     run(a.pattern, N=a.N, out=a.out, params=overrides, video=not a.no_video, T_max=a.T, control=a.control, best=a.best,
-        numerics=numerics)
+        numerics=numerics, backend=a.backend)

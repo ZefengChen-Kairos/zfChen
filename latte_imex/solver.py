@@ -409,6 +409,9 @@ class Solver:
         return chi, nsub
 
     # ----- diagnostics ----------------------------------------------------------
+    def host_state(self):
+        return dict(l=self.l, qx=self.qx, qy=self.qy, m=self.m)
+
     def ledger(self):
         g = self.g
         L = float(self.l[g.mask].sum() * g.area)

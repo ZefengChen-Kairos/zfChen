@@ -64,3 +64,22 @@ Heart with the V0.5 controls, 1 s of model time at N=256, 4 CPU cores:
 | + numba kernels, fused step B, numba PCG vector ops | 4.4 s | identical to the previous row to 1e-15 |
 
 Set `NUMBA_NUM_THREADS=1` when running several simulations in parallel on one machine.
+
+## CUDA back-end
+
+`cuda_solver.py` is a numba.cuda port of the same scheme (same discrete formulas; results agree with the CPU
+solver to ~1e-12). The whole state lives on the GPU; one thread per cell; the explicit momentum step, the
+layer right-hand side, the final flux + conservative update + milk transport are each one fused kernel, the
+PCG runs matrix-free on the device with block-reduced dot products.
+
+```
+bash scripts/autodl_setup.sh                                   # installs numba-cuda[cu12], runs the CPU-vs-CUDA smoke test
+python -m latte_imex.run --pattern heart --N 768 --control v05 --backend cuda
+python -m latte_imex.bench_cuda --N 768 --video                # six patterns, wall times, finalize overview
+NUMBA_ENABLE_CUDASIM=1 python -m latte_imex.test_cuda --N 24 --T 0.05   # no GPU: simulator (slow)
+```
+
+Differences from the CPU solver: viscosity and mixing are always explicit (sub-cycled when `nu*dt/h^2` or
+`D*dt/h^2` exceeds 0.2), the deposited-milk ledger uses the exact kernel normalisation (`chi*S*dt`).
+Per sub-step there are ~10 kernel launches plus 2 host reads per PCG iteration; at N=768 this is launch-bound
+(~0.5 ms per sub-step), so a 10 000-step pattern is expected to take 5–10 s on an RTX 4090 in FP64.
