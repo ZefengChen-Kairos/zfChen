@@ -37,8 +37,12 @@ def run(pattern, N=256, out=None, params=None, snap_dt=1.0 / 24.0, video=True, q
     elif control == "zefeng":
         from .controls import ZScript
         with open(best or f"runs/opt/{pattern}/best.json") as f:
-            script = ZScript(pattern, params=json.load(f)["params"])
-        pdict = dict(script.params); pdict.update(params or {})
+            b = json.load(f)
+        script = ZScript(pattern, params=b["params"], physics={k: v for k, v in b.get("physics", {}).items() if k != "return_law"})
+        pdict = dict(script.params)
+        if "physics" in b:
+            pdict["return_law"] = b["physics"].get("return_law", "v05")
+        pdict.update(params or {})
     else:
         script = SCRIPTS[pattern](**(script_kw or {}))
         pdict = dict(DEFAULT_PARAMS); pdict.update(params or {})
