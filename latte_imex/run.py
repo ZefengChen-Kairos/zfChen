@@ -9,7 +9,10 @@ DEFAULT_PARAMS = dict(cp=0.5, beta=3.0, nu=1e-3, D=1e-7, kappa_Q=125.0, kappa_c=
                       B_dep=600.0, p_dep=2.0, return_law="v1")
 
 
-def run(pattern, N=256, out=None, params=None, snap_dt=0.1, video=True, quiet=False, T_max=None, script_kw=None):
+CN = dict(heart="大白心", push_heart="推推乐", layered_heart="千层心", tulip="压纹郁金香", leaf="树叶", swan="天鹅")
+
+
+def run(pattern, N=256, out=None, params=None, snap_dt=1.0 / 24.0, video=True, quiet=False, T_max=None, script_kw=None):
     pdict = dict(DEFAULT_PARAMS); pdict.update(params or {})
     P = Params(**pdict)
     num = Numerics(N=N)
@@ -28,11 +31,12 @@ def run(pattern, N=256, out=None, params=None, snap_dt=0.1, video=True, quiet=Fa
             events.append(dict(t=round(sol.t, 4), phase=phase))
             last_phase = phase
         chi, nsub = sol.advance_frame(inl)
-        traj.append((sol.t, inl.x_hit[0], inl.x_hit[1], bool(inl.active and inl.S_eff > 0), phase))
+        traj.append(dict(t=sol.t, x=inl.x_hit[0], y=inl.x_hit[1], active=bool(inl.active and inl.S_eff > 0),
+                         phase=phase, S=float(inl.S_eff if inl.active else 0.0), chi=float(chi)))
         if sol.t + 1e-9 >= next_snap:
             snaps.append((sol.t, sol.concentration().astype(np.float32)))
             next_snap += snap_dt
-            if not quiet:
+            if not quiet and len(snaps) % 12 == 1:
                 L = sol.ledger()
                 print(f"[{pattern}] t={sol.t:6.2f}/{T:.2f} phase={phase:<34s} chi={chi:.2f} nsub={nsub:2d} "
                       f"lmax={sol.l[sol.g.mask].max():.2f} lmin={sol.l[sol.g.mask].min():.2f} "
@@ -50,7 +54,10 @@ def run(pattern, N=256, out=None, params=None, snap_dt=0.1, video=True, quiet=Fa
     with open(os.path.join(out, "metrics.json"), "w") as f:
         json.dump(metrics, f, indent=1, ensure_ascii=False)
     if video:
-        render.make_video(os.path.join(out, "movie.mp4"), snaps, traj, sol.g.mask, pattern, fps=int(round(1 / snap_dt)))
+        render.make_video(os.path.join(out, "movie.mp4"), snaps, traj, sol.g.mask, pattern,
+                          fps=int(round(1 / snap_dt)), hold_frames=int(round(1 / snap_dt)), cn=CN.get(pattern, ""))
+    with open(os.path.join(out, "trajectory.json"), "w") as f:
+        json.dump(traj, f)
     return sol, metrics
 
 

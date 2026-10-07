@@ -3,11 +3,12 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+plt.rcParams["font.sans-serif"] = ["WenQuanYi Zen Hei", "DejaVu Sans"]
+plt.rcParams["axes.unicode_minus"] = False
 
 BROWN = np.array([0.42, 0.25, 0.12])
 WHITE = np.array([0.97, 0.95, 0.91])
 BG = np.array([0.16, 0.16, 0.17])
-RIM = np.array([0.85, 0.85, 0.86])
 
 
 def c_to_rgb(c, mask, c_sat=0.8):
@@ -31,35 +32,73 @@ def save_final(path, c, mask, title=None):
     plt.close(fig)
 
 
-def make_video(path, snaps, traj, mask, title, fps=12, hold_frames=12):
-    """snaps: list of (t, c); traj: list of (t, x, y, active, phase)."""
+def make_video(path, snaps, traj, mask, title, fps=24, hold_frames=24, cn=""):
+    """1536x768 movie: left = native milk-fraction field, right = inlet path, phase, clock and flow curves.
+    snaps: list of (t, c) at the movie frame rate;  traj: list of dicts per control frame with keys
+    t, x, y, active, phase, S, chi.  The last `hold_frames` frames repeat the final state (FINAL HOLD)."""
     import imageio.v2 as imageio
-    writer = imageio.get_writer(path, fps=fps, codec="libx264", quality=7, macro_block_size=16,
+    writer = imageio.get_writer(path, fps=fps, codec="libx264", quality=8, macro_block_size=16,
                                 ffmpeg_params=["-pix_fmt", "yuv420p"])
-    fig = plt.figure(figsize=(12, 6), dpi=80)
+    fig = plt.figure(figsize=(16, 8), dpi=96)
+    fig.patch.set_facecolor("#1b1b1c")
     axL = fig.add_axes([0.0, 0.0, 0.5, 1.0])
-    axR = fig.add_axes([0.55, 0.08, 0.42, 0.84])
-    tt = np.array([p[0] for p in traj]); xx = np.array([p[1] for p in traj]); yy = np.array([p[2] for p in traj])
-    act = np.array([p[3] for p in traj]); phases = [p[4] for p in traj]
+    axT = fig.add_axes([0.57, 0.40, 0.40, 0.55])
+    axF = fig.add_axes([0.57, 0.08, 0.40, 0.24])
+    tt = np.array([p["t"] for p in traj]); xx = np.array([p["x"] for p in traj]); yy = np.array([p["y"] for p in traj])
+    act = np.array([p["active"] for p in traj]); phases = [p["phase"] for p in traj]
+    SS = np.array([p["S"] for p in traj]); chi = np.array([p["chi"] for p in traj])
+    dep = SS * chi
+    T_end = snaps[-1][0]
     frames = list(snaps) + [snaps[-1]] * hold_frames
     for fi, (t, c) in enumerate(frames):
-        axL.clear(); axR.clear()
+        hold = fi >= len(snaps)
+        axL.clear(); axT.clear(); axF.clear()
+        for ax in (axT, axF):
+            ax.set_facecolor("#242426")
+            for sp in ax.spines.values():
+                sp.set_color("0.5")
+            ax.tick_params(colors="0.8", labelsize=9)
         axL.imshow(c_to_rgb(c, mask), interpolation="bilinear"); axL.axis("off")
-        label = f"{title}   t = {t:5.2f} s" + ("   FINAL HOLD" if fi >= len(snaps) else "")
-        axL.text(0.02, 0.98, label, transform=axL.transAxes, va="top", color="w", fontsize=12)
-        axR.add_patch(plt.Circle((0, 0), 0.49, fill=False, color="0.4", lw=1.5))
-        sel = tt <= t + 1e-9
-        if sel.any():
-            on = act & sel; off = (~act) & sel
-            axR.plot(xx[off], yy[off], ".", color="0.6", ms=2)
-            axR.plot(xx[on], yy[on], "-", color="tab:blue", lw=1.5)
-            k = int(np.searchsorted(tt, t, side="right")) - 1
-            k = max(0, min(k, len(tt) - 1))
+        k = int(np.searchsorted(tt, t + 1e-9, side="right")) - 1
+        k = max(0, min(k, len(tt) - 1))
+        ph = "settle" if hold else phases[k]
+        axL.text(0.02, 0.98, f"{title}  {cn}", transform=axL.transAxes, va="top", color="w", fontsize=15)
+        axL.text(0.02, 0.93, f"t = {t:5.2f} s   phase: {ph}", transform=axL.transAxes, va="top", color="0.85", fontsize=12)
+        axL.text(0.02, 0.03, "native milk fraction c = m/l,  display saturates at c = 0.8", transform=axL.transAxes,
+                 color="0.6", fontsize=9)
+        if hold:
+            axL.text(0.98, 0.98, "FINAL HOLD", transform=axL.transAxes, va="top", ha="right", color="#ffd166", fontsize=15)
+        # --- trajectory panel
+        axT.add_patch(plt.Circle((0, 0), 0.49, fill=False, color="0.55", lw=1.5))
+        n = int((tt <= t + 1e-9).sum())
+        i0 = 0
+        while i0 < n:
+            i1 = i0
+            while i1 + 1 < n and act[i1 + 1] == act[i0]:
+                i1 += 1
+            stop = i1 + 2 if i1 + 1 < n else i1 + 1
+            if act[i0]:
+                axT.plot(xx[i0:stop], yy[i0:stop], "-", color="#4c9be8", lw=1.8)
+            else:
+                axT.plot(xx[i0:stop], yy[i0:stop], "--", color="0.55", lw=1.0)
+            i0 = i1 + 1
+        if not hold and n > 0:
             if act[k]:
-                axR.plot(xx[k], yy[k], "o", color="tab:red", ms=9)
-            axR.set_title(f"inlet path  |  phase: {phases[k]}", fontsize=11)
-        axR.set_xlim(-0.55, 0.55); axR.set_ylim(-0.55, 0.55); axR.set_aspect("equal")
-        axR.set_xlabel("x [cup diameters]"); axR.set_ylabel("y")
+                axT.plot(xx[k], yy[k], "o", color="#e8504c", ms=10, mec="w")
+            else:
+                axT.plot(xx[k], yy[k], "o", color="0.7", ms=7, mec="w")
+        axT.set_xlim(-0.55, 0.55); axT.set_ylim(-0.55, 0.55); axT.set_aspect("equal")
+        axT.set_title("inlet hit point in the cup frame  (blue: pouring, grey dashed: no flow)", color="0.9", fontsize=10)
+        axT.set_xlabel("x [cup diameters]", color="0.8"); axT.set_ylabel("y  (barista at y<0)", color="0.8")
+        # --- flow panel
+        smax = max(float(SS.max()), 1e-6)
+        axF.plot(tt, SS, color="#4c9be8", lw=1.2, label="effective inlet rate S = κ_Q Q")
+        axF.plot(tt, dep, color="#f2f2f2", lw=1.2, label="deposition rate χS")
+        axF.plot(tt, chi * smax, color="#ffd166", lw=0.9, ls=":", label="χ (scaled)")
+        axF.axvline(min(t, T_end), color="#e8504c", lw=1.2)
+        axF.set_xlim(0, T_end); axF.set_ylim(0, 1.1 * smax)
+        axF.set_xlabel("model time [s]", color="0.8")
+        axF.legend(loc="upper right", fontsize=8, facecolor="#242426", labelcolor="0.9", edgecolor="0.4")
         fig.canvas.draw()
         img = np.asarray(fig.canvas.buffer_rgba())[..., :3]
         writer.append_data(img)
