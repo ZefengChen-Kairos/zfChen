@@ -1,0 +1,87 @@
+{
+ "pattern": "push_heart",
+ "N": 256,
+ "T": 6.55,
+ "elapsed_s": 345.8018419742584,
+ "params": {
+  "cp": 0.5,
+  "beta": 3.0,
+  "nu": 0.001,
+  "D": 1e-07,
+  "kappa_Q": 125.0,
+  "kappa_c": 1.0,
+  "kappa_t": 0.7,
+  "kappa_r": 0.3,
+  "B_dep": 600.0,
+  "p_dep": 2.0,
+  "return_law": "v1"
+ },
+ "numerics": {
+  "N": 256,
+  "cup_radius": 0.49,
+  "cfl": 0.5,
+  "frame_dt": 0.008333333333333333,
+  "max_substeps": 64,
+  "cg_tol": 1e-10,
+  "cg_maxiter": 500,
+  "kernel_quadrature": 3
+ },
+ "stats": {
+  "steps": 5273,
+  "frames": 786,
+  "cg_mass": 30448,
+  "cg_visc": 83718,
+  "cg_mix": 5420,
+  "clip_mass": 1.5246593050577406e-20,
+  "max_substeps": 11,
+  "max_u": 1.2878688133159841,
+  "retries": 0
+ },
+ "ledger": {
+  "t": 6.550000000000115,
+  "layer": 1.1760448478837269,
+  "milk": 0.4223217033524871,
+  "brown": 0.7537231445312398,
+  "deposited": 0.4223217033524534,
+  "layer_error": 2.353672812205332e-14,
+  "milk_error": 3.36952687973735e-14
+ },
+ "kinetic_energy": 1.9696270879151547e-05,
+ "pressure_energy": 0.22939090323744993,
+ "white_area_c_gt_0p4": 0.28277587890625,
+ "events": [
+  {
+   "t": 0.0,
+   "phase": "blob 1: pour low, lean forward"
+  },
+  {
+   "t": 1.2,
+   "phase": "stop, lift, move back"
+  },
+  {
+   "t": 1.55,
+   "phase": "blob 2: pour low, lean forward"
+  },
+  {
+   "t": 2.55,
+   "phase": "stop, lift, move back"
+  },
+  {
+   "t": 2.9,
+   "phase": "blob 3: pour low, lean forward"
+  },
+  {
+   "t": 3.7,
+   "phase": "stop, lift, move back"
+  },
+  {
+   "t": 4.05,
+   "phase": "cut through"
+  },
+  {
+   "t": 5.35,
+   "phase": "settle"
+  }
+ ],
+ "script_kw": {}
+}

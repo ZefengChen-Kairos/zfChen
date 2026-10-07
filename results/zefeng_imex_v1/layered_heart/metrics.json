@@ -1,0 +1,79 @@
+{
+ "pattern": "layered_heart",
+ "N": 256,
+ "T": 6.4,
+ "elapsed_s": 378.47529911994934,
+ "params": {
+  "cp": 0.5,
+  "beta": 3.0,
+  "nu": 0.001,
+  "D": 1e-07,
+  "kappa_Q": 125.0,
+  "kappa_c": 1.0,
+  "kappa_t": 0.7,
+  "kappa_r": 0.3,
+  "B_dep": 600.0,
+  "p_dep": 2.0,
+  "return_law": "v1"
+ },
+ "numerics": {
+  "N": 256,
+  "cup_radius": 0.49,
+  "cfl": 0.5,
+  "frame_dt": 0.008333333333333333,
+  "max_substeps": 64,
+  "cg_tol": 1e-10,
+  "cg_maxiter": 500,
+  "kernel_quadrature": 3
+ },
+ "stats": {
+  "steps": 6417,
+  "frames": 768,
+  "cg_mass": 31979,
+  "cg_visc": 92864,
+  "cg_mix": 6531,
+  "clip_mass": 0.0,
+  "max_substeps": 16,
+  "max_u": 1.8609548584512603,
+  "retries": 0
+ },
+ "ledger": {
+  "t": 6.400000000000108,
+  "layer": 0.999120038530485,
+  "milk": 0.2453968939992746,
+  "brown": 0.7537231445312105,
+  "deposited": 0.2453968939992266,
+  "layer_error": 8.43769498715119e-15,
+  "milk_error": 4.801714581503802e-14
+ },
+ "kinetic_energy": 2.6267276357117855e-05,
+ "pressure_energy": 0.16556183414540504,
+ "white_area_c_gt_0p4": 0.21612548828125,
+ "events": [
+  {
+   "t": 0.0,
+   "phase": "start"
+  },
+  {
+   "t": 0.3,
+   "phase": "wiggle & back up (arcs)"
+  },
+  {
+   "t": 2.8,
+   "phase": "wiggle + push forward"
+  },
+  {
+   "t": 3.5,
+   "phase": "lift & move back"
+  },
+  {
+   "t": 3.8,
+   "phase": "cut through"
+  },
+  {
+   "t": 5.2,
+   "phase": "settle"
+  }
+ ],
+ "script_kw": {}
+}
