@@ -23,3 +23,26 @@ python -m latte_imex.cp_sweep                     # sub-step count vs c_p
 
 Files: `solver.py` (grid, PCG, sub-step), `actions.py` (guessed pouring scripts for six patterns),
 `run.py` / `peek.py` (drivers), `render.py` (diagnostic brown/white images and movies), `cp_sweep.py`.
+
+## Controls
+
+Three control sources are selectable with `--control`:
+
+| control | what it is |
+|---|---|
+| `guess` | `actions.py`: first-round hand-guessed scripts (kept for the record; inlet scale was 5–10× off) |
+| `v05` | `v05_program.py`: the V0.5 (Codex) phase lists ported verbatim — only used to check that IMEX reproduces HLLC |
+| `zefeng` | `controls.py` + `optimize.py`: own phase structures whose parameter vectors are **optimised by CMA-ES** against targets extracted from the reference clips (`targets.py`) |
+
+```
+python -m latte_imex.targets                      # reference frames -> latte_imex/targets/<name>.npz (+ preview.png)
+python -m latte_imex.optimize heart --N 96 --gens 60 --workers 2   # -> runs/opt/heart/{best.json,best.png,history.json}
+python -m latte_imex.run --pattern heart --N 256 --control zefeng  # render the optimised programme with video
+python -m latte_imex.compare runs/zefeng_256 results/zefeng_opt/compare.png
+```
+
+`targets.py` fits an ellipse to the convex hull of the brown crema region of one hand-picked end frame,
+maps it affinely to the unit cup (weak-perspective view of a circle), rotates so the cut exit is at +y,
+and converts saturation to a whiteness field `w ∈ [0,1]` by Otsu split.  The loss in `optimize.py` is
+`mean|G_σ(s) − G_σ(w)| + 0.5(1 − IoU) + 0.5|ΔA|` with `s = clip(c/0.6, 0, 1)`, `σ = 1.5 %` of the diameter.
+Physical parameters are the shared V0.5 set (`controls.V05_PHYSICS`) — still guesses, nothing fitted from video yet.
