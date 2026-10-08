@@ -426,7 +426,7 @@ function intent(t){ let acc=0; for(const m of MOVES){ if(t<acc+m.dur){ const f=(
   const wob=m.wf?amp*Math.sin(2*PI*m.wf*(t-acc)):0;
   return {x:m.p0[0]+(m.p1[0]-m.p0[0])*e+wob, y:m.p0[1]+(m.p1[1]-m.p0[1])*e, z:m.z0+(m.z1-m.z0)*e, Q:m.Q0+(m.Q1-m.Q0)*f, name:m.name}; } acc+=m.dur; }
   const last=MOVES[MOVES.length-1]; return {x:last.p1[0],y:last.p1[1],z:last.z1,Q:0,name:'结束'}; }
-function startScript(moves){ MOVES=moves; st.V=200e-6; st.Q=0; st.flowing=false; solver.reset(); hits.length=0; pose.yaw=rad(-90); ui.yaw.value=-90; pose.tilt=0; manualTilt=null; pouring=false;
+function startScript(moves){ MOVES=moves; st.V=200e-6; st.Q=0; st.flowing=false; solver.reset(); hits.length=0; pose.yaw=rad(-90); ui.yaw.value=-90; pose.tilt=rad(40); manualTilt=null; pouring=false;
   resetKin(); auto={t:0, ierr:0, off:[0,0], Qseen:0}; }
 function resetKin(){ kin.tipPrev=null; kin.vel=[0,0,0]; kin.acc=[0,0,0]; kin.slope=[0,0]; kin.slopeRate=[0,0]; NRM=[0,0,1]; GEFF=G; }
 document.getElementById('auto').addEventListener('click',()=>startScript(MOVES_HEART));

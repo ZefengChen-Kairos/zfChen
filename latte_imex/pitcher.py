@@ -537,13 +537,14 @@ class Barista:
 
     def __init__(self, pitcher, moves, coupling, yaw=-math.pi / 2, gain=math.radians(0.8) / 1e-6,
                  gain_i=math.radians(1.5) / 1e-6, max_rate=math.radians(60.0), swing_rate=math.radians(60.0),
-                 tail=1.0, cup=None):
+                 tail=1.0, cup=None, tilt0=math.radians(40.0)):
         self.pitcher, self.moves, self.cp = pitcher, moves, coupling
         self.cup = Cup() if cup is None else cup           # None-safe: pass cup=False to disable the collision lift
         self.lift = 0.0
+        self.tilt0 = tilt0                                 # the barista arrives already tilted, just below the flow onset
         self.yaw, self.gain, self.gain_i, self.max_rate, self.swing_rate = yaw, gain, gain_i, max_rate, swing_rate
         self.T = sum(m.dur for m in moves) + tail
-        self.tilt = 0.0
+        self.tilt = tilt0
         self.ierr = 0.0                 # integrated flow error [m^3]
         self.offset = np.zeros(2)       # world xy: hit point - tip, low-passed (the barista corrects the drift, not the wiggle)
         self.Q_seen = 0.0               # low-passed flow the barista reacts to
