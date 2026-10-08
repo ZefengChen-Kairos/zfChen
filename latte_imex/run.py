@@ -34,6 +34,10 @@ def run(pattern, N=256, out=None, params=None, snap_dt=1.0 / 24.0, video=True, q
     if control == "v05":
         script = V05Script(pattern)
         pdict = dict(script.params); pdict.update(params or {})
+    elif control == "pitcher":
+        from .pitcher import BaristaScript
+        script = BaristaScript(**(script_kw or {}))
+        pdict = dict(script.params); pdict.update(params or {})
     elif control == "zefeng":
         from .controls import ZScript
         with open(best or f"runs/opt/{pattern}/best.json") as f:
@@ -99,6 +103,11 @@ def run(pattern, N=256, out=None, params=None, snap_dt=1.0 / 24.0, video=True, q
                           fps=int(round(1 / snap_dt)), hold_frames=int(round(1 / snap_dt)), cn=CN.get(pattern, ""))
     with open(os.path.join(out, "trajectory.json"), "w") as f:
         json.dump(traj, f)
+    if control == "pitcher":
+        from .pitcher import records_table
+        T = records_table(script.records)
+        np.savez_compressed(os.path.join(out, "pitcher_records.npz"), **{k: v for k, v in T.items() if k != "label"},
+                            label=np.array(T["label"]))
     return sol, metrics
 
 
@@ -110,7 +119,7 @@ if __name__ == "__main__":
     ap.add_argument("--no-video", action="store_true")
     ap.add_argument("--T", type=float, default=None)
     ap.add_argument("--param", action="append", default=[], help="key=value overrides")
-    ap.add_argument("--control", default="guess", choices=["guess", "v05", "zefeng"])
+    ap.add_argument("--control", default="guess", choices=["guess", "v05", "zefeng", "pitcher"])
     ap.add_argument("--best", default=None, help="best.json from latte_imex.optimize (control=zefeng)")
     ap.add_argument("--cfl", type=float, default=None, help="material CFL (default 0.5)")
     ap.add_argument("--backend", default="cpu", choices=["cpu", "cuda"])

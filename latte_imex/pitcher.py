@@ -1,0 +1,455 @@
+"""Level-0 pitcher model: quasi-static free surface + sharp-crested weir outflow + ballistic jet.
+
+Chain:  pitcher pose (tip position, yaw, tilt, roll) + remaining volume V
+        -> horizontal free surface z = c  (volume below the plane inside the pitcher == V)
+        -> outflow Q over the rim (sharp-crested weir integral, Kindsvater head correction,
+           surface-tension start/stop hysteresis, first-order spout lag)
+        -> jet: exit speed from the discharge-weighted head, exit direction along the spout,
+           free fall to the coffee surface, continuity thinning
+        -> impact record (x_hit, Q, U_perp, u_h, d_jet) in SI
+        -> Coupling: SI record -> solver.Inlet in cup units (D_L, s) with three scale constants.
+
+Everything in SI internally: metres, seconds, m^3.  World frame: z up, coffee surface z = 0,
+cup centre at the origin.  Body frame: Z along the pitcher axis, X towards the spout.
+Derivation and the numbers behind the defaults: latte_imex/PITCHER_MODEL.md
+"""
+import math
+from dataclasses import dataclass, field
+import numpy as np
+from .solver import Inlet
+
+G = 9.81
+
+
+# --------------------------------------------------------------------------- geometry
+@dataclass
+class PitcherGeometry:
+    """Body of revolution (piecewise-linear profile r(z)) with a V notch cut into the rim at azimuth 0."""
+    height: float = 0.095           # H [m]
+    r_bottom: float = 0.034
+    r_belly: float = 0.040
+    z_belly: float = 0.030
+    r_top: float = 0.030
+    notch_depth: float = 0.015      # V notch depth below the rim [m]
+    notch_half_angle: float = math.radians(25.0)   # half-width of the notch in azimuth [rad]
+    beak: float = 0.12              # radial protrusion of the rim at the spout (fraction of r_top)
+    lip_slope: float = math.radians(10.0)          # exit direction below the body-frame horizontal
+    nz: int = 48
+    nr: int = 20
+    nphi: int = 36
+    n_rim: int = 720
+
+    def r_body(self, z):
+        z = np.asarray(z, float)
+        return np.interp(z, [0.0, self.z_belly, self.height], [self.r_bottom, self.r_belly, self.r_top])
+
+    def z_rim(self, phi):
+        phi = np.abs(np.asarray(phi, float))
+        return self.height - self.notch_depth * np.maximum(0.0, 1.0 - phi / self.notch_half_angle)
+
+    def r_rim(self, phi):
+        phi = np.abs(np.asarray(phi, float))
+        return self.r_top * (1.0 + self.beak * np.maximum(0.0, 1.0 - phi / self.notch_half_angle) ** 2)
+
+    def __post_init__(self):
+        # interior sample points with volume weights (uniform in z, phi and in r^2)
+        zc = (np.arange(self.nz) + 0.5) / self.nz * self.height
+        dz = self.height / self.nz
+        u = (np.arange(self.nr) + 0.5) / self.nr            # r^2 fraction
+        ph = (np.arange(self.nphi) + 0.5) / self.nphi * 2 * math.pi - math.pi
+        Z, U, PH = np.meshgrid(zc, u, ph, indexing="ij")
+        Rb = self.r_body(Z)
+        R = Rb * np.sqrt(U)
+        keep = Z < self.z_rim(PH)                           # no liquid in the notch opening
+        pts = np.stack([R * np.cos(PH), R * np.sin(PH), Z], -1)[keep]
+        dv = (math.pi * Rb ** 2 / self.nr) * dz / self.nphi
+        self.points = pts.astype(np.float64)                # (n, 3) body frame
+        self.dv = dv[keep].astype(np.float64)
+        self.capacity = float(self.dv.sum())
+        # rim polyline (closed), body frame
+        phi = (np.arange(self.n_rim) + 0.5) / self.n_rim * 2 * math.pi - math.pi
+        self.rim = np.stack([self.r_rim(phi) * np.cos(phi), self.r_rim(phi) * np.sin(phi), self.z_rim(phi)], -1)
+        self.tip = np.array([self.r_rim(0.0), 0.0, self.z_rim(0.0)])  # notch apex: the pose reference point
+        # volume below the crest when upright (fill above this spills even at zero tilt)
+        self.capacity_to_crest = float(self.dv[self.points[:, 2] < self.tip[2]].sum())
+
+
+def rotation(yaw, tilt, roll):
+    """R = Rz(yaw) Ry(tilt) Rx(roll); tilt > 0 brings the spout (body +X) down."""
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    ct, st = math.cos(tilt), math.sin(tilt)
+    cr, sr = math.cos(roll), math.sin(roll)
+    Rz = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1.0]])
+    Ry = np.array([[ct, 0, st], [0, 1.0, 0], [-st, 0, ct]])
+    Rx = np.array([[1.0, 0, 0], [0, cr, -sr], [0, sr, cr]])
+    return Rz @ Ry @ Rx
+
+
+@dataclass
+class Pose:
+    tip: tuple = (0.0, 0.0, 0.03)   # world position of the notch apex [m]
+    yaw: float = 0.0                # azimuth of the spout direction [rad]; 0 = +x
+    tilt: float = 0.0               # [rad]
+    roll: float = 0.0               # [rad]
+
+
+@dataclass
+class Milk:
+    rho: float = 1030.0
+    sigma: float = 0.045
+
+
+@dataclass
+class OutflowLaw:
+    C_d: float = 0.60       # sharp-crested weir discharge coefficient (V notch 0.58-0.60)
+    h_k: float = 0.0008     # Kindsvater-Shen head correction [m]
+    h_on: float = 0.0025    # surface tension: head needed to start the flow [m]
+    h_off: float = 0.0005   # flow stops below this head [m]
+    tau: float = 0.08       # spout filling / emptying lag [s]
+    tau_stop: float = 0.15  # trailing-off lag after the head drops below h_off [s]
+
+
+@dataclass
+class PitcherState:
+    V: float = 2.0e-4       # remaining milk [m^3]
+    Q: float = 0.0          # current outflow [m^3/s]
+    flowing: bool = False
+    t: float = 0.0
+
+
+# --------------------------------------------------------------------------- the model
+class Pitcher:
+    def __init__(self, geom=None, milk=None, law=None, V0=2.0e-4):
+        self.geom = geom or PitcherGeometry()
+        self.milk = milk or Milk()
+        self.law = law or OutflowLaw()
+        self.state = PitcherState(V=V0)
+
+    # ---- kinematics
+    def world(self, pose, P):
+        """Body-frame points (n,3) -> world, with the notch apex at pose.tip."""
+        R = rotation(pose.yaw, pose.tilt, pose.roll)
+        return (P - self.geom.tip) @ R.T + np.asarray(pose.tip, float)
+
+    def free_surface(self, pose, V):
+        """Height c of the horizontal plane with volume V below it inside the pitcher.
+        Returns (c, overflow) where overflow > 0 is the volume that cannot be held at this pose."""
+        zw = self.world(pose, self.geom.points)[:, 2]
+        order = np.argsort(zw)
+        zs = zw[order]
+        cum = np.cumsum(self.geom.dv[order])
+        if V <= 0:
+            return zs[0], 0.0
+        if V >= cum[-1]:
+            return zs[-1], V - cum[-1]
+        k = int(np.searchsorted(cum, V))
+        c0 = zs[k - 1] if k > 0 else zs[0]
+        v0 = cum[k - 1] if k > 0 else 0.0
+        f = (V - v0) / max(cum[k] - v0, 1e-18)
+        return c0 + f * (zs[k] - c0), 0.0
+
+    # ---- outflow
+    def weir(self, pose, c):
+        """Sharp-crested weir integral over the rim below the free surface.
+        Q = C_d (2/3) sqrt(2g) sum h_eff^{3/2} dl   (dl = horizontal rim element)
+        Returns dict(Q_ss, h_max, h_bar, origin, A_wet)."""
+        rim = self.world(pose, self.geom.rim)
+        nxt = np.roll(rim, -1, axis=0)
+        mid = 0.5 * (rim + nxt)
+        dl = np.hypot(nxt[:, 0] - rim[:, 0], nxt[:, 1] - rim[:, 1])
+        h = c - mid[:, 2]
+        h_max = float(h.max())
+        he = np.maximum(h - self.law.h_k, 0.0)
+        w32 = he ** 1.5 * dl
+        S32 = float(w32.sum())
+        Q_ss = self.law.C_d * (2.0 / 3.0) * math.sqrt(2 * G) * S32
+        if S32 > 0:
+            h_bar = float((he ** 2.5 * dl).sum() / S32)          # discharge-weighted head
+            origin = (w32[:, None] * mid).sum(0) / S32            # discharge-weighted crest point
+        else:
+            h_bar = 0.0
+            origin = rim[np.argmin(rim[:, 2])]
+        A_wet = float((np.maximum(h, 0.0) * dl).sum())
+        return dict(Q_ss=Q_ss, h_max=h_max, h_bar=h_bar, origin=origin, A_wet=A_wet)
+
+    def exit_direction(self, pose):
+        R = rotation(pose.yaw, pose.tilt, pose.roll)
+        e = np.array([math.cos(self.geom.lip_slope), 0.0, -math.sin(self.geom.lip_slope)])
+        return R @ e
+
+    # ---- jet
+    def jet(self, pose, Q, h_bar, origin, z_surface=0.0):
+        """Free jet from the crest to the coffee surface.  Exit speed sqrt(2 g h_bar) (Torricelli at the
+        discharge-weighted head), direction along the spout, continuity thinning d ~ |v|^{-1/2}."""
+        if Q <= 0 or h_bar <= 0:
+            return None
+        u0 = math.sqrt(2 * G * max(h_bar, self.law.h_k))   # floor: the trailing dribble leaves at the h_k head
+        A0 = Q / u0
+        d0 = 2 * math.sqrt(A0 / math.pi)
+        v0 = u0 * self.exit_direction(pose)
+        z0 = origin[2] - z_surface
+        if z0 <= 0:
+            t_hit = 0.0
+        else:
+            t_hit = (v0[2] + math.sqrt(v0[2] ** 2 + 2 * G * z0)) / G
+        x_hit = origin[:2] + v0[:2] * t_hit
+        vz = v0[2] - G * t_hit
+        speed = math.sqrt(v0[0] ** 2 + v0[1] ** 2 + vz ** 2)
+        d_hit = d0 * math.sqrt(u0 / speed)
+        We = self.milk.rho * u0 ** 2 * d0 / self.milk.sigma
+        L_break = 19.5 * d0 * We ** 0.325 if We > 0 else 0.0       # Grant & Middleman, laminar jet
+        path = abs(v0[2]) * t_hit + 0.5 * G * t_hit ** 2 + np.hypot(*(v0[:2] * t_hit))
+        return dict(u0=u0, d0=d0, v0=v0, origin=np.asarray(origin, float), t_hit=t_hit, x_hit=np.asarray(x_hit, float),
+                    U_perp=max(-vz, 0.0), u_h=v0[:2].copy(), speed=speed, d_hit=d_hit, We=We,
+                    L_break=L_break, coherent=bool(path < L_break), drop=z0)
+
+    def jet_polyline(self, J, n=24):
+        """World-frame points along the jet for drawing."""
+        if J is None:
+            return np.zeros((0, 3))
+        ts = np.linspace(0.0, J["t_hit"], n)
+        return J["origin"][None, :] + J["v0"][None, :] * ts[:, None] - 0.5 * G * (ts ** 2)[:, None] * np.array([0, 0, 1.0])
+
+    def clearance(self, pose, cup_radius=0.04, z_surface=0.0):
+        """Lowest point of the pitcher wall above the cup footprint (z - z_surface, [m]); negative means the
+        pitcher body dips into the coffee.  Level 0 does not resolve this: the barista avoids it by tilting the
+        cup towards the pitcher and pouring over its near rim."""
+        zz = np.linspace(0, self.geom.height, 40)
+        ph = np.linspace(-math.pi, math.pi, 72, endpoint=False)
+        Z, PH = np.meshgrid(zz, ph, indexing="ij")
+        Rb = self.geom.r_body(Z)
+        wall = np.stack([Rb * np.cos(PH), Rb * np.sin(PH), Z], -1).reshape(-1, 3)
+        W = self.world(pose, wall)
+        inside = np.hypot(W[:, 0], W[:, 1]) < cup_radius
+        if not inside.any():
+            return float("inf")
+        return float(W[inside, 2].min() - z_surface)
+
+    # ---- time step
+    def step(self, pose, dt, z_surface=0.0):
+        """Advance the pitcher by dt at the given pose.  Returns the impact record (SI) for this frame."""
+        st, law = self.state, self.law
+        c, overflow = self.free_surface(pose, st.V)
+        W = self.weir(pose, c)
+        # surface-tension hysteresis on the start / stop of the flow
+        if not st.flowing and W["h_max"] > law.h_on:
+            st.flowing = True
+        if st.flowing and W["h_max"] < law.h_off:
+            st.flowing = False
+        Q_target = W["Q_ss"] if st.flowing else 0.0
+        if overflow > 0:
+            Q_target += overflow / dt                   # spill of whatever cannot be held
+        tau = law.tau if Q_target >= st.Q else law.tau_stop
+        st.Q += (Q_target - st.Q) * (1.0 - math.exp(-dt / tau))
+        dV = min(st.Q * dt, st.V)
+        st.V -= dV
+        st.t += dt
+        Q_eff = dV / dt
+        J = self.jet(pose, Q_eff, W["h_bar"], W["origin"], z_surface) if Q_eff > 0 else None
+        return dict(t=st.t, V=st.V, Q=Q_eff, Q_ss=W["Q_ss"], h_max=W["h_max"], h_bar=W["h_bar"], c=c,
+                    flowing=st.flowing, overflow=overflow, tilt=pose.tilt, tip=np.asarray(pose.tip, float),
+                    jet=J)
+
+    def tilt_for_flow(self, pose, Q_want, V=None, lo=0.0, hi=math.radians(150), iters=30):
+        """Steady tilt that gives Q_want at the pose's yaw/roll/tip and volume V (bisection on the weir law)."""
+        V = self.state.V if V is None else V
+        p = Pose(pose.tip, pose.yaw, lo, pose.roll)
+
+        def q_of(t):
+            p.tilt = t
+            c, _ = self.free_surface(p, V)
+            return self.weir(p, c)["Q_ss"]
+        if q_of(hi) < Q_want:
+            return hi
+        for _ in range(iters):
+            m = 0.5 * (lo + hi)
+            if q_of(m) < Q_want:
+                lo = m
+            else:
+                hi = m
+        return 0.5 * (lo + hi)
+
+
+# --------------------------------------------------------------------------- coupling to the 2-D model
+@dataclass
+class Coupling:
+    """SI impact record -> solver.Inlet (cup units).  Positions are exact (D_L); the three rates carry
+    one scale constant each (the V0.5 controls are in effective units, not SI):
+        S_eff  = c_S * Q           (0.05 at 15 mL/s, the V0.5 heart disc)
+        U_perp = c_U * U_perp_SI   (0.263 D_L/s at 0.70 m/s, the low pour)
+        u_in   = c_u * u_h_SI      (0.5  D_L/s at 0.15 m/s)
+    Footprint: V0.5 continuity ellipse from (S_eff/kappa_Q, U_perp, u_in)."""
+    D_L: float = 0.08
+    c_S: float = 0.05 / 15e-6
+    c_U: float = 0.263 / 0.70
+    c_u: float = 0.5 / 0.15
+    kappa_Q: float = 125.0
+    max_jet_angle: float = math.radians(60.0)
+    axes: tuple = (0, 1)            # world (x, y) -> cup (x, y)
+
+    def inlet(self, rec, scan_speed=0.0):
+        J = rec["jet"]
+        if J is None or rec["Q"] <= 0:
+            return Inlet(active=False)
+        x = J["x_hit"][self.axes[0]] / self.D_L
+        y = J["x_hit"][self.axes[1]] / self.D_L
+        S = self.c_S * rec["Q"]
+        U = self.c_U * J["U_perp"]
+        ux, uy = self.c_u * J["u_h"][self.axes[0]], self.c_u * J["u_h"][self.axes[1]]
+        vt = math.hypot(ux, uy)
+        if vt > 0:
+            sc = min(1.0, U * math.tan(self.max_jet_angle) / vt)
+            ux, uy, vt = ux * sc, uy * sc, vt * sc
+        Q_rec = S / self.kappa_Q
+        speed = math.hypot(U, vt)
+        aspect = speed / U
+        r = math.sqrt(Q_rec / (math.pi * U))
+        r1, r2 = r * math.sqrt(aspect), r / math.sqrt(aspect)
+        d = 2 * math.sqrt(Q_rec / speed / math.pi)
+        return Inlet(active=True, x_hit=(float(x), float(y)), S_eff=float(S), u_in=(float(ux), float(uy)),
+                     U_perp=float(U), d_jet=float(d), r1=float(r1), r2=float(r2),
+                     phi=float(math.atan2(uy, ux)), scan_speed=float(scan_speed))
+
+
+# physics for the physical-velocity inlet: same model, B_dep rescaled so that chi ~ 0.85 at the low pour
+# (U_perp 0.26, d 0.04 -> z_c 0.42) and ~ 0.1 at the high cut (U_perp 0.5, d 0.018 -> z_c 3.3).
+PHYSICAL_PARAMS = dict(cp=0.3, beta=3.0, nu=1e-3, D=1e-7, kappa_Q=125.0, kappa_c=1.0, kappa_t=0.7, kappa_r=0.3,
+                       B_dep=4.0, p_dep=2.0, return_law="v05")
+
+
+# --------------------------------------------------------------------------- virtual barista
+@dataclass
+class Move:
+    """One segment of the barista's intent: tip path in cup units, tip height [m], wanted flow [m^3/s]."""
+    dur: float
+    p0: tuple
+    p1: tuple
+    z0: float
+    z1: float = None
+    Q0: float = 0.0
+    Q1: float = None
+    wobble: float = 0.0     # lateral (x) wobble amplitude in cup units
+    wfreq: float = 0.0
+    name: str = ""
+
+    def __post_init__(self):
+        self.z1 = self.z0 if self.z1 is None else self.z1
+        self.Q1 = self.Q0 if self.Q1 is None else self.Q1
+
+
+class Barista:
+    """Turns a list of Moves into poses.  The stream (not the tip) follows the path: the tip is placed so that
+    the previous frame's jet offset lands the stream on the intended point.  The wrist tracks the wanted
+    flow with a rate-limited proportional controller on the tilt rate (the barista reads the stream, not the
+    angle); before the milk reaches the lip the wrist swings at the full rate."""
+
+    def __init__(self, pitcher, moves, coupling, yaw=-math.pi / 2, gain=math.radians(0.8) / 1e-6,
+                 gain_i=math.radians(1.5) / 1e-6, max_rate=math.radians(60.0), swing_rate=math.radians(60.0),
+                 tail=1.0):
+        self.pitcher, self.moves, self.cp = pitcher, moves, coupling
+        self.yaw, self.gain, self.gain_i, self.max_rate, self.swing_rate = yaw, gain, gain_i, max_rate, swing_rate
+        self.T = sum(m.dur for m in moves) + tail
+        self.tilt = 0.0
+        self.ierr = 0.0                 # integrated flow error [m^3]
+        self.offset = np.zeros(2)       # world xy: hit point - tip, from the last frame with a jet
+
+    def intent(self, t):
+        acc = 0.0
+        for m in self.moves:
+            if t < acc + m.dur:
+                f = (t - acc) / m.dur
+                e = 0.5 - 0.5 * math.cos(math.pi * f)
+                x = m.p0[0] + (m.p1[0] - m.p0[0]) * e + m.wobble * math.sin(2 * math.pi * m.wfreq * (t - acc))
+                y = m.p0[1] + (m.p1[1] - m.p0[1]) * e
+                z = m.z0 + (m.z1 - m.z0) * e
+                Q = m.Q0 + (m.Q1 - m.Q0) * f
+                return (x, y), z, Q, m.name
+            acc += m.dur
+        last = self.moves[-1]
+        return last.p1, last.z1, 0.0, "settle"
+
+    def pose_at(self, t):
+        (x, y), z, Q_want, name = self.intent(t)
+        tip = (x * self.cp.D_L - self.offset[0], y * self.cp.D_L - self.offset[1], z)
+        return Pose(tip=tip, yaw=self.yaw, tilt=self.tilt, roll=0.0), Q_want, name
+
+    def step(self, dt):
+        """One control frame: update the tilt from the flow error, advance the pitcher.  Returns (record, label)."""
+        t = self.pitcher.state.t
+        pose, Q_want, name = self.pose_at(t)
+        st = self.pitcher.state
+        if Q_want <= 0:
+            rate = -self.swing_rate                      # stop: swing back up
+            self.ierr = 0.0
+        elif not st.flowing and st.Q <= 0:
+            rate = self.swing_rate                       # milk not at the lip yet: tilt until it is
+        else:
+            err = Q_want - st.Q
+            self.ierr = max(-2e-6, min(2e-6, self.ierr + err * dt))
+            rate = max(-self.max_rate, min(self.max_rate, self.gain * err + self.gain_i * self.ierr))
+        self.tilt = max(0.0, min(math.radians(150), self.tilt + rate * dt))
+        pose.tilt = self.tilt
+        (x1, y1), _, _, _ = self.intent(t + dt)
+        (x0, y0), _, _, _ = self.intent(t)
+        scan = math.hypot(x1 - x0, y1 - y0) / dt
+        rec = self.pitcher.step(pose, dt)
+        if rec["jet"] is not None:
+            self.offset = rec["jet"]["x_hit"] - np.asarray(pose.tip[:2])
+        rec["Q_want"] = Q_want
+        rec["label"] = name
+        rec["inlet"] = self.cp.inlet(rec, scan_speed=scan)
+        return rec, name
+
+
+def heart_moves():
+    """Heart as the V0.5 script does it, written as barista intent instead of inlet records:
+    low disc at the far side, approach the centre, lift and cut back through."""
+    return [
+        Move(4.0, (0.0, 0.20), (0.0, 0.16), z0=0.015, Q0=15e-6, name="disc: low, 15 mL/s"),
+        Move(1.6, (0.0, 0.16), (0.0, 0.00), z0=0.015, z1=0.02, Q0=9e-6, name="approach centre, 9 mL/s"),
+        Move(0.35, (0.0, 0.00), (0.0, 0.00), z0=0.02, z1=0.07, Q0=5e-6, Q1=4e-6, name="lift"),
+        Move(0.8, (0.0, 0.00), (0.0, -0.27), z0=0.07, Q0=4e-6, Q1=1e-6, name="cut through, high"),
+        Move(0.5, (0.0, -0.27), (0.0, -0.27), z0=0.07, z1=0.10, Q0=0.0, name="stop"),
+    ]
+
+
+class BaristaScript:
+    """Adapter with the run.py sampler interface (sample(t) -> (Inlet, label)) driven frame by frame.
+    The pitcher is stateful, so sample() must be called with non-decreasing t; it advances the pitcher
+    to t and returns the latest record."""
+
+    def __init__(self, moves=None, pitcher=None, coupling=None, dt=1.0 / 120.0, V0=2.0e-4, **kw):
+        self.pitcher = pitcher or Pitcher(V0=V0)
+        self.cp = coupling or Coupling()
+        self.barista = Barista(self.pitcher, moves or heart_moves(), self.cp, **kw)
+        self.dt = dt
+        self.T = self.barista.T
+        self.name = "pitcher_heart"
+        self.records = []
+        self.params = dict(PHYSICAL_PARAMS)
+        self._last = (Inlet(active=False), "start")
+
+    def sample(self, t):
+        while self.pitcher.state.t < t - 1e-9:
+            rec, name = self.barista.step(min(self.dt, t - self.pitcher.state.t))
+            self.records.append(rec)
+            self._last = (rec["inlet"], name)
+        return self._last
+
+
+def records_table(records):
+    """Flatten the records into float arrays for plotting / CSV."""
+    keys = ["t", "V", "Q", "Q_want", "Q_ss", "h_max", "h_bar", "tilt"]
+    out = {k: np.array([r[k] for r in records], float) for k in keys}
+    out["z_tip"] = np.array([r["tip"][2] for r in records])
+    J = [r["jet"] for r in records]
+    out["U_perp"] = np.array([j["U_perp"] if j else np.nan for j in J])
+    out["u_h"] = np.array([np.hypot(*j["u_h"]) if j else np.nan for j in J])
+    out["d_hit"] = np.array([j["d_hit"] if j else np.nan for j in J])
+    out["d0"] = np.array([j["d0"] if j else np.nan for j in J])
+    out["x_hit"] = np.array([j["x_hit"][0] if j else np.nan for j in J])
+    out["y_hit"] = np.array([j["x_hit"][1] if j else np.nan for j in J])
+    out["drop"] = np.array([j["drop"] if j else np.nan for j in J])
+    out["coherent"] = np.array([j["coherent"] if j else True for j in J])
+    out["label"] = [r.get("label", "") for r in records]
+    return out

@@ -83,3 +83,23 @@ Differences from the CPU solver: viscosity and mixing are always explicit (sub-c
 `D*dt/h^2` exceeds 0.2), the deposited-milk ledger uses the exact kernel normalisation (`chi*S*dt`).
 Per sub-step there are ~10 kernel launches plus 2 host reads per PCG iteration; at N=768 this is launch-bound
 (~0.5 ms per sub-step), so a 10 000-step pattern is expected to take 5–10 s on an RTX 4090 in FP64.
+
+## Pitcher model (level 0)
+
+`pitcher.py` closes the chain upstream of the inlet record: pitcher pose (tip position, yaw, tilt) and
+remaining volume -> horizontal free surface (weighted quantile over interior sample points) -> sharp-crested
+weir outflow over the rim (`Q = C_d (2/3) sqrt(2g) ∮ h^{3/2} dl`, Kindsvater head correction, start/stop
+hysteresis, spout lag) -> free jet (Torricelli exit speed, ballistic flight, continuity thinning) -> the
+six impact quantities in SI -> `Coupling` -> `solver.Inlet` in cup units.  Derivation and defaults:
+`PITCHER_MODEL.md`.  A `Barista` turns intent (stream path, tip height, wanted flow) into poses with a
+rate-limited wrist controller, so "pour longer -> tilt more" appears by itself.
+
+```
+python -m latte_imex.test_pitcher                               # capacity, V-notch law, bookkeeping, ballistics, inversion
+python -m latte_imex.run --pattern heart --control pitcher --N 256 --out runs/pitcher_heart_256
+python -m latte_imex.pitcher_demo --out results/pitcher_demo    # inputs.png, side_view.png, tilt_flow.png, records.csv
+```
+
+`web/pitcher_playground.html` is the same model ported to JavaScript with a three.js scene: drag the spout,
+hold to pour, replay the heart script; the coffee surface only shows where the stream lands (no PDE in the
+browser).  The physics port was checked against the Python model (same Q within 0.3 % at 60–70° tilt).
