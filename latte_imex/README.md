@@ -110,4 +110,7 @@ Level 1 (`OutflowLaw.slosh`, on by default): the free surface follows the effect
 moving pitcher through its first sloshing mode (damped oscillator, `zeta` 0.08), the jet carries the pitcher
 velocity, and the barista reacts to low-passed flow and aim.  `pitcher_cad.py` turns a STEP pitcher into the
 (z, phi) cavity grid used by `GridPitcherGeometry` (`--pitcher nx`) and by the web page (`web/pitcher_nx.json`).
-See `PITCHER_MODEL.md` sections 9 and 10.
+See `PITCHER_MODEL.md` sections 9 and 10.  Conservation ledger (bulk, lip buffer, in-flight parcels with
+arrival windows, cup; `Q_feed`, `Q_out`, `Q_hit`) and the lip-flux second-moment footprint: section 12;
+`PITCHER_MODEL_V12_PLAN.md` is the reviewed V1.2 plan (its F1 and flux-moment items are the ones implemented).
+The web page runs the 2-D solver in a Web Worker (grids 64²–768², the model clock waits for the solver).
