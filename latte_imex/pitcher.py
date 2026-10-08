@@ -602,6 +602,7 @@ class Move:
     wfreq: float = 0.0
     wobble1: float = None   # wobble amplitude at the end of the move (linear ramp)
     wobble_axis: str = "x"  # "x": lateral (across the spout direction), "y": fore-aft (along the spout direction)
+    wobble_dir: float = None  # wiggle direction in the cup plane [rad] (0 = lateral x, pi/2 = fore-aft y); overrides wobble_axis
     bezier: tuple = None    # optional cubic Bezier control points ((c1x, c1y), (c2x, c2y)) between p0 and p1
     name: str = ""
 
@@ -648,8 +649,11 @@ class Barista:
                 else:
                     x = m.p0[0] + (m.p1[0] - m.p0[0]) * e
                     y = m.p0[1] + (m.p1[1] - m.p0[1]) * e
-                x += wob if m.wobble_axis == "x" else 0.0
-                y += wob if m.wobble_axis == "y" else 0.0
+                if m.wobble_dir is not None:
+                    x += wob * math.cos(m.wobble_dir); y += wob * math.sin(m.wobble_dir)
+                else:
+                    x += wob if m.wobble_axis == "x" else 0.0
+                    y += wob if m.wobble_axis == "y" else 0.0
                 z = m.z0 + (m.z1 - m.z0) * e
                 Q = m.Q0 + (m.Q1 - m.Q0) * f
                 return (x, y), z, Q, m.name
