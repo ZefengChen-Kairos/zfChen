@@ -226,7 +226,10 @@ const st={V:200e-6, Q:0, flowing:false, t:0};
 const kin={tipPrev:null, vel:[0,0,0], acc:[0,0,0], slope:[0,0], slopeRate:[0,0], omega:0};
 function kinematics(tip, dt){
   let vNew=[0,0,0], aRaw=[0,0,0];
-  if(kin.tipPrev){ for(let i=0;i<3;i++){ vNew[i]=(tip[i]-kin.tipPrev[i])/dt; aRaw[i]=(vNew[i]-kin.vel[i])/dt; } }
+  if(kin.tipPrev){ for(let i=0;i<3;i++){ vNew[i]=(tip[i]-kin.tipPrev[i])/dt; } }
+  // a hand cannot move faster than ~1.5 m/s or accelerate harder than ~30 m/s^2: a mouse jump is a teleport, not a kick
+  const vn=Math.hypot(vNew[0],vNew[1],vNew[2]); if(vn>1.5){ for(let i=0;i<3;i++) vNew[i]*=1.5/vn; }
+  if(kin.tipPrev){ for(let i=0;i<3;i++) aRaw[i]=(vNew[i]-kin.vel[i])/dt; const an=Math.hypot(aRaw[0],aRaw[1],aRaw[2]); if(an>30){ for(let i=0;i<3;i++) aRaw[i]*=30/an; } }
   const f=1-Math.exp(-dt/law.accTau); for(let i=0;i<3;i++) kin.acc[i]+=(aRaw[i]-kin.acc[i])*f;
   kin.tipPrev=[tip[0],tip[1],tip[2]]; kin.vel=vNew;
   const gz=Math.max(G+kin.acc[2],0.2*G); const sqs=[-kin.acc[0]/gz, -kin.acc[1]/gz];
@@ -382,7 +385,7 @@ document.getElementById('refill').addEventListener('click',()=>{ st.V=+ui.fill.v
 document.getElementById('clear').addEventListener('click',()=>{ solver.reset(); hits.length=0; paintField(); });
 document.getElementById('grid').addEventListener('change',ev=>{ newSolver(+ev.target.value); });
 let nxGrid=null;
-function usePitcher(which){ const g=(which==='nx'&&nxGrid)?nxGrid:parametricGrid(); buildGeometry(g); buildMeshes(); st.Q=0; st.flowing=false; kin.tipPrev=null; kin.slope=[0,0]; kin.slopeRate=[0,0];
+function usePitcher(which){ const g=(which==='nx'&&nxGrid)?nxGrid:parametricGrid(); buildGeometry(g); buildMeshes(); st.Q=0; st.flowing=false; resetKin();
   out('pitcherv').textContent=(capacity*1e6).toFixed(0)+' mL'; }
 document.getElementById('pitchersel').addEventListener('change',ev=>usePitcher(ev.target.value));
 fetch('pitcher_nx.json').then(r=>r.json()).then(j=>{ nxGrid=gridFromJSON(j); if(document.getElementById('pitchersel').value==='nx') usePitcher('nx'); })
@@ -409,20 +412,23 @@ const MOVES_LAYERED=[ {dur:3.2,p0:[0,.08],p1:[0,.14],z0:.015,z1:.015,Q0:6e-6,Q1:
   {dur:3.2,p0:[0,.14],p1:[0,.14],z0:.015,z1:.015,Q0:13.5e-6,Q1:13.5e-6,wob:.045,wob1:.045,wf:2.5,name:'定点抖壶 13.5 mL/s'},
   {dur:.3,p0:[0,.14],p1:[0,.14],z0:.015,z1:.07,Q0:5e-6,Q1:4e-6,name:'抬壶'},
   {dur:1.0,p0:[0,.14],p1:[0,-.32],z0:.07,z1:.07,Q0:4e-6,Q1:1e-6,name:'高位切过 4→1 mL/s'},
-  {dur:.7,p0:[0,-.32],p1:[0,-.32],z0:.07,z1:.10,Q0:0,Q1:0,name:'停'} ];
+  {dur:.5,p0:[0,-.32],p1:[0,-.32],z0:.07,z1:.09,Q0:0,Q1:0,name:'停'},
+  {dur:.8,p0:[0,-.32],p1:[0,-.9],z0:.09,z1:.12,Q0:0,Q1:0,name:'移开'} ];
 let MOVES=null;
 const MOVES_HEART=[ {dur:4.0,p0:[0,.20],p1:[0,.16],z0:.015,z1:.015,Q0:15e-6,Q1:15e-6,name:'低位圆盘 15 mL/s'},
   {dur:1.6,p0:[0,.16],p1:[0,0],z0:.015,z1:.02,Q0:9e-6,Q1:9e-6,name:'回到中心 9 mL/s'},
   {dur:.35,p0:[0,0],p1:[0,0],z0:.02,z1:.07,Q0:5e-6,Q1:4e-6,name:'抬壶'},
   {dur:.8,p0:[0,0],p1:[0,-.27],z0:.07,z1:.07,Q0:4e-6,Q1:1e-6,name:'高位切过 4→1 mL/s'},
-  {dur:.5,p0:[0,-.27],p1:[0,-.27],z0:.07,z1:.10,Q0:0,Q1:0,name:'停'} ];
+  {dur:.5,p0:[0,-.27],p1:[0,-.27],z0:.07,z1:.09,Q0:0,Q1:0,name:'停'},
+  {dur:.8,p0:[0,-.27],p1:[0,-.9],z0:.09,z1:.12,Q0:0,Q1:0,name:'移开'} ];
 function intent(t){ let acc=0; for(const m of MOVES){ if(t<acc+m.dur){ const f=(t-acc)/m.dur, e=.5-.5*Math.cos(PI*f);
   let amp=(m.wob||0)+((m.wob1===undefined?m.wob||0:m.wob1)-(m.wob||0))*f; amp*=Math.min(1,(t-acc)/0.25,(acc+m.dur-t)/0.25);
   const wob=m.wf?amp*Math.sin(2*PI*m.wf*(t-acc)):0;
   return {x:m.p0[0]+(m.p1[0]-m.p0[0])*e+wob, y:m.p0[1]+(m.p1[1]-m.p0[1])*e, z:m.z0+(m.z1-m.z0)*e, Q:m.Q0+(m.Q1-m.Q0)*f, name:m.name}; } acc+=m.dur; }
   const last=MOVES[MOVES.length-1]; return {x:last.p1[0],y:last.p1[1],z:last.z1,Q:0,name:'结束'}; }
 function startScript(moves){ MOVES=moves; st.V=200e-6; st.Q=0; st.flowing=false; solver.reset(); hits.length=0; pose.yaw=rad(-90); ui.yaw.value=-90; pose.tilt=0; manualTilt=null; pouring=false;
-  kin.slope=[0,0]; kin.slopeRate=[0,0]; auto={t:0, ierr:0, off:[0,0], Qseen:0}; }
+  resetKin(); auto={t:0, ierr:0, off:[0,0], Qseen:0}; }
+function resetKin(){ kin.tipPrev=null; kin.vel=[0,0,0]; kin.acc=[0,0,0]; kin.slope=[0,0]; kin.slopeRate=[0,0]; NRM=[0,0,1]; GEFF=G; }
 document.getElementById('auto').addEventListener('click',()=>startScript(MOVES_HEART));
 document.getElementById('auto2').addEventListener('click',()=>startScript(MOVES_LAYERED));
 

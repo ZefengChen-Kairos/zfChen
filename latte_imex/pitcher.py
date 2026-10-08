@@ -382,7 +382,13 @@ class Pitcher:
             a_raw = np.zeros(3)
         else:
             v_new = (tip - np.asarray(st.tip_prev)) / dt
+            vn = np.linalg.norm(v_new)
+            if vn > 1.5:                                   # a hand: at most ~1.5 m/s, ~30 m/s^2
+                v_new = v_new * (1.5 / vn)
             a_raw = (v_new - np.asarray(st.vel)) / dt
+            an = np.linalg.norm(a_raw)
+            if an > 30.0:
+                a_raw = a_raw * (30.0 / an)
         acc = np.asarray(st.acc) + (a_raw - np.asarray(st.acc)) * (1.0 - math.exp(-dt / law.acc_tau))
         st.tip_prev, st.vel, st.acc = tuple(tip), tuple(v_new), tuple(acc)
         # quasi-static slope of the free surface in the accelerated frame: perpendicular to g - a
@@ -609,7 +615,8 @@ def heart_moves():
         Move(1.6, (0.0, 0.16), (0.0, 0.00), z0=0.015, z1=0.02, Q0=9e-6, name="approach centre, 9 mL/s"),
         Move(0.35, (0.0, 0.00), (0.0, 0.00), z0=0.02, z1=0.07, Q0=5e-6, Q1=4e-6, name="lift"),
         Move(0.8, (0.0, 0.00), (0.0, -0.27), z0=0.07, Q0=4e-6, Q1=1e-6, name="cut through, high"),
-        Move(0.5, (0.0, -0.27), (0.0, -0.27), z0=0.07, z1=0.10, Q0=0.0, name="stop"),
+        Move(0.5, (0.0, -0.27), (0.0, -0.27), z0=0.07, z1=0.09, Q0=0.0, name="stop"),
+        Move(0.8, (0.0, -0.27), (0.0, -0.9), z0=0.09, z1=0.12, Q0=0.0, name="move away"),
     ]
 
 
@@ -624,7 +631,8 @@ def layered_heart_moves(axis="x", amp=1.0, freq=2.5):
              name="held wiggle 13.5 mL/s"),
         Move(0.3, (0.0, 0.14), (0.0, 0.14), z0=0.015, z1=0.07, Q0=5e-6, Q1=4e-6, name="lift"),
         Move(1.0, (0.0, 0.14), (0.0, -0.32), z0=0.07, Q0=4e-6, Q1=1e-6, name="cut through, high"),
-        Move(0.7, (0.0, -0.32), (0.0, -0.32), z0=0.07, z1=0.10, Q0=0.0, name="stop"),
+        Move(0.5, (0.0, -0.32), (0.0, -0.32), z0=0.07, z1=0.09, Q0=0.0, name="stop"),
+        Move(0.8, (0.0, -0.32), (0.0, -0.9), z0=0.09, z1=0.12, Q0=0.0, name="move away"),
     ]
 
 
