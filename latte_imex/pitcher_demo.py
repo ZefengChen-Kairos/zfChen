@@ -80,7 +80,7 @@ def side_view(P, S, records, path, times=(1.0, 3.0, 5.0, 6.4)):
             ax.plot(poly[:, 1] * 100, poly[:, 2] * 100, color="0.3", lw=0.4)
         # cup: 8.6 cm wide, 7 cm tall, tilted 25 deg towards the pitcher so that its near rim sits 6 mm above the
         # (horizontal) coffee surface z = 0; the surface centre is the origin of the cup frame
-        a = math.radians(25.0); R, H = 4.3, 7.0
+        a = S.barista.cup.tilt if S.barista.cup else 0.0; R, H = 4.3, 7.0
         u = np.array([math.sin(a), math.cos(a)]); w = np.array([math.cos(a), -math.sin(a)])
         d = (0.6 + R * math.sin(a)) / math.cos(a)
         rim_c = d * u; bot_c = -(H - d) * u
@@ -90,14 +90,14 @@ def side_view(P, S, records, path, times=(1.0, 3.0, 5.0, 6.4)):
             f = -p[1] / (q[1] - p[1]); return p + f * (q - p)
         coffee = np.array([corners[0], corners[1], cross(corners[1], corners[2]), cross(corners[0], corners[3])])
         ax.fill(coffee[:, 0], coffee[:, 1], color=BROWN, alpha=0.9)
-        cl = P.clearance(pose) * 100
-        ax.text(-8.5, 14.5, f"壶壁最低点离咖啡面 {cl:+.1f} cm" if np.isfinite(cl) else "壶壁不在杯口上方", fontsize=8)
+        lift = r.get("lift", 0.0) * 100
+        ax.text(-8.5, 14.5, f"为避免穿模抬高 {lift:.1f} cm" if lift > 0.05 else "壶与杯不相碰", fontsize=8)
         ax.set_aspect("equal"); ax.set_xlim(-9, 9); ax.set_ylim(-5, 16)
         q = r["Q"] * 1e6
         ax.set_title(f"t = {r['t']:.2f} s   tilt {math.degrees(r['tilt']):.0f}°   Q {q:.1f} mL/s\n{r['label']}", fontsize=9)
         ax.set_xlabel("y [cm]"); ax.grid(alpha=0.2)
     axs[0].set_ylabel("z [cm]")
-    fig.suptitle("侧视：壶、水平液面（虚线）、自由射流落到咖啡面；杯子按咖啡师的习惯向壶倾斜 25°", fontsize=11)
+    fig.suptitle(f"侧视：壶、液面（虚线）、自由射流落到咖啡面；杯子向壶倾斜 {math.degrees(S.barista.cup.tilt) if S.barista.cup else 0:.0f}°，壶壁碰到杯沿或咖啡面时自动抬高", fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.savefig(path, dpi=120); plt.close(fig)
 

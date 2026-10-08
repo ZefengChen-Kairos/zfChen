@@ -185,6 +185,18 @@ class OutflowLaw:
 
 
 @dataclass
+class Cup:
+    """Cup as an obstacle: coffee surface at world z = 0 (centre at the origin), open cylinder tilted by `tilt`
+    towards the pitcher body (the barista tilts the cup towards the pitcher and pours over its near rim)."""
+    r_in: float = 0.040
+    r_out: float = 0.043
+    height: float = 0.07
+    rim_z: float = 0.010     # rim above the coffee surface when upright [m]
+    tilt: float = math.radians(20.0)
+    margin: float = 0.002
+
+
+@dataclass
 class PitcherState:
     V: float = 2.0e-4       # remaining milk [m^3]
     Q: float = 0.0          # current outflow [m^3/s]
@@ -312,6 +324,54 @@ class Pitcher:
         if not inside.any():
             return float("inf")
         return float(W[inside, 2].min() - z_surface)
+
+    def wall_samples(self, pose, nz=40, nphi=36):
+        """Outer-wall sample points in the world frame (n, 3)."""
+        zz = np.linspace(0, self.geom.height, nz)
+        ph = np.linspace(-math.pi, math.pi, nphi, endpoint=False)
+        Z, PH = np.meshgrid(zz, ph, indexing="ij")
+        if hasattr(self.geom, "r_outer"):
+            Rb = self.geom.r_outer(Z)
+        else:
+            Rb = self.geom.r_body(Z) + 0.0015
+        return self.world(pose, np.stack([Rb * np.cos(PH), Rb * np.sin(PH), Z], -1).reshape(-1, 3))
+
+    def required_lift(self, pose, cup: "Cup", iters=14):
+        """Smallest vertical lift of the pitcher that keeps its wall clear of the cup (tilted towards the pitcher
+        body) and of the coffee surface.  The cup is tilted about the horizontal axis perpendicular to the spout
+        direction so that its rim on the pitcher's side goes down."""
+        W = self.wall_samples(pose)
+        R = rotation(pose.yaw, 0.0, 0.0)
+        e = R @ np.array([1.0, 0.0, 0.0])          # horizontal spout direction (pitcher body is on the -e side)
+        d = -e[:2] / max(np.linalg.norm(e[:2]), 1e-9)
+        ct, st = math.cos(cup.tilt), math.sin(cup.tilt)
+        # cup frame: z' along the tilted cup axis (the +d rim goes down), coordinates of a world point p:
+        #   along = p.d (horizontal, towards the pitcher), z' = ct*z - st*along ... rotation about the axis z x d
+        def ok(L):
+            x, y, z = W[:, 0], W[:, 1], W[:, 2] + L
+            along = x * d[0] + y * d[1]
+            perp = -x * d[1] + y * d[0]
+            zc = ct * z + st * along            # cup-frame height: the rim on the pitcher's side (+along) is lower
+            ac = ct * along - st * z
+            r = np.hypot(ac, perp)
+            inside = r < cup.r_in - cup.margin
+            onrim = (r >= cup.r_in - cup.margin) & (r <= cup.r_out + cup.margin)
+            outside = r > cup.r_out + cup.margin
+            table = -(cup.height - cup.rim_z)          # the cup stands on the table (world z of its base, upright)
+            good = (inside & (z > cup.margin)) | (onrim & (zc > cup.rim_z + cup.margin)) | (outside & (z > table))
+            return bool(good.all())
+        if ok(0.0):
+            return 0.0
+        lo, hi = 0.0, 0.15
+        if not ok(hi):
+            return hi
+        for _ in range(iters):
+            m = 0.5 * (lo + hi)
+            if ok(m):
+                hi = m
+            else:
+                lo = m
+        return hi
 
     # ---- level 1: pitcher acceleration -> effective gravity -> free-surface slope (first sloshing mode)
     def kinematics(self, pose, dt):
@@ -471,8 +531,10 @@ class Barista:
 
     def __init__(self, pitcher, moves, coupling, yaw=-math.pi / 2, gain=math.radians(0.8) / 1e-6,
                  gain_i=math.radians(1.5) / 1e-6, max_rate=math.radians(60.0), swing_rate=math.radians(60.0),
-                 tail=1.0):
+                 tail=1.0, cup=None):
         self.pitcher, self.moves, self.cp = pitcher, moves, coupling
+        self.cup = Cup() if cup is None else cup           # None-safe: pass cup=False to disable the collision lift
+        self.lift = 0.0
         self.yaw, self.gain, self.gain_i, self.max_rate, self.swing_rate = yaw, gain, gain_i, max_rate, swing_rate
         self.T = sum(m.dur for m in moves) + tail
         self.tilt = 0.0
@@ -521,6 +583,10 @@ class Barista:
             rate = max(-self.max_rate, min(self.max_rate, self.gain * err + self.gain_i * self.ierr))
         self.tilt = max(0.0, min(math.radians(150), self.tilt + rate * dt))
         pose.tilt = self.tilt
+        if self.cup:
+            self.lift = self.pitcher.required_lift(pose, self.cup)
+            if self.lift > 0:
+                pose.tip = (pose.tip[0], pose.tip[1], pose.tip[2] + self.lift)
         (x1, y1), _, _, _ = self.intent(t + dt)
         (x0, y0), _, _, _ = self.intent(t)
         scan = math.hypot(x1 - x0, y1 - y0) / dt
@@ -530,6 +596,7 @@ class Barista:
             self.offset = self.offset + (off - self.offset) * (1.0 - math.exp(-dt / 0.3))
         rec["Q_want"] = Q_want
         rec["label"] = name
+        rec["lift"] = self.lift
         rec["inlet"] = self.cp.inlet(rec, scan_speed=scan)
         return rec, name
 
@@ -613,5 +680,6 @@ def records_table(records):
     out["acc_x"] = np.array([r["acc"][0] if "acc" in r else 0.0 for r in records])
     out["slope_x"] = np.array([r["slope"][0] if "slope" in r else 0.0 for r in records])
     out["g_eff"] = np.array([r.get("g_eff", G) for r in records])
+    out["lift"] = np.array([r.get("lift", 0.0) for r in records])
     out["label"] = [r.get("label", "") for r in records]
     return out

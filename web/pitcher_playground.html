@@ -65,7 +65,7 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
   <div class="stage" id="stage">
     <canvas id="gl"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="hint">拖动 = 移动壶嘴 · 滚轮 = 升降 · 右键拖 = 转视角 · 双击杯子 = 杯面 2D 图<br><kbd>空格</kbd> 按住倒奶 · <kbd>W</kbd>/<kbd>S</kbd> 手动倾角</div>
+    <div class="hint">拖动 = 移动壶嘴 · 滚轮 = 升降 · 右键拖 = 转视角 · 双击杯子 = 杯面 2D 图 · 壶碰到杯子会自动抬高<br><kbd>空格</kbd> 按住倒奶 · <kbd>W</kbd>/<kbd>S</kbd> 手动倾角</div>
     <div class="overlay" id="overlay" hidden>
       <canvas id="top2d" width="768" height="768"></canvas>
       <div class="bar"><span id="top2dinfo"></span><button id="closeTop">关闭（或再次双击）</button></div>
@@ -92,6 +92,7 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
       <div class="row"><label for="height">壶嘴高</label><input type="range" id="height" min="0.5" max="15" step="0.1" value="3"><span class="val" id="heightv">3.0 cm</span></div>
       <div class="row"><label for="yaw">壶嘴朝向</label><input type="range" id="yaw" min="-180" max="180" step="1" value="-90"><span class="val" id="yawv">-90°</span></div>
       <div class="row"><label for="fill">装奶量</label><input type="range" id="fill" min="50" max="330" step="5" value="200"><span class="val" id="fillv">200 mL</span></div>
+      <div class="row"><label for="cuptilt">杯子倾斜</label><input type="range" id="cuptilt" min="0" max="35" step="1" value="20"><span class="val" id="cuptiltv">20°</span></div>
       <div class="row"><label for="cd">C_d</label><input type="range" id="cd" min="0.4" max="0.8" step="0.01" value="0.60"><span class="val" id="cdv">0.60</span></div>
     </div>
     <div>
@@ -265,10 +266,26 @@ applyTheme(); dark.addEventListener('change',applyTheme); new MutationObserver(a
 // table / ground
 const ground=new THREE.Mesh(new THREE.CircleGeometry(0.30,64), new THREE.MeshLambertMaterial({color:0xb9bec7}));
 ground.rotation.x=-PI/2; ground.position.y=-CUP_H+0.01; scene.add(ground);
-// cup: open cylinder, rim at z=+1 cm, coffee surface z=0
+// cup: open cylinder, rim at z=+1 cm when upright, coffee surface z=0 (horizontal, kept outside the cup group).
+// The cup group is tilted towards the pitcher body like a barista does, about the surface centre.
+const cupGroup=new THREE.Group(); scene.add(cupGroup);
 const cup=new THREE.Mesh(new THREE.CylinderGeometry(CUP_R,CUP_R*0.78,CUP_H,48,1,true), new THREE.MeshLambertMaterial({color:0xe9e4da,side:THREE.DoubleSide}));
-cup.position.y=0.01-CUP_H/2; scene.add(cup);
-const cupBottom=new THREE.Mesh(new THREE.CircleGeometry(CUP_R*0.78,48), new THREE.MeshLambertMaterial({color:0xe9e4da})); cupBottom.rotation.x=-PI/2; cupBottom.position.y=0.01-CUP_H; scene.add(cupBottom);
+cup.position.y=0.01-CUP_H/2; cupGroup.add(cup);
+const cupBottom=new THREE.Mesh(new THREE.CircleGeometry(CUP_R*0.78,48), new THREE.MeshLambertMaterial({color:0xe9e4da})); cupBottom.rotation.x=-PI/2; cupBottom.position.y=0.01-CUP_H; cupGroup.add(cupBottom);
+const CUP={r_in:0.040, r_out:0.043, height:CUP_H, rim_z:0.01, tilt:rad(20), margin:0.002};
+let cupDir=[0,1];   // horizontal unit vector from the cup centre towards the pitcher body (= -spout direction)
+function placeCup(yaw){ cupDir=[-Math.cos(yaw), -Math.sin(yaw)]; const a=[-cupDir[1], cupDir[0], 0];   // world axis z x d
+  cupGroup.quaternion.setFromAxisAngle(new THREE.Vector3(a[0],a[2],-a[1]).normalize(), CUP.tilt); }
+// smallest vertical lift that keeps the pitcher wall clear of the (tilted) cup rim / wall and of the coffee surface
+function requiredLift(R, tip){ const ct=Math.cos(CUP.tilt), st=Math.sin(CUP.tilt); const pts=[];
+  for(let i=0;i<40;i++){ const z=i/39*geom.H; for(let k=0;k<36;k++){ const ph=k/36*2*PI; const Rb=rOut(Math.min(z,geom.H-1e-6),ph); pts.push(worldXYZ(R,tip,Rb*Math.cos(ph),Rb*Math.sin(ph),z)); } }
+  const table=-(CUP.height-CUP.rim_z);
+  const ok=L=>{ for(const p of pts){ const x=p[0], y=p[1], z=p[2]+L; const along=x*cupDir[0]+y*cupDir[1], perp=-x*cupDir[1]+y*cupDir[0];
+      const zc=ct*z+st*along, ac=ct*along-st*z, r=Math.hypot(ac,perp);
+      if(r<CUP.r_in-CUP.margin){ if(!(z>CUP.margin)) return false; }
+      else if(r<=CUP.r_out+CUP.margin){ if(!(zc>CUP.rim_z+CUP.margin)) return false; }
+      else if(!(z>table)) return false; } return true; };
+  if(ok(0)) return 0; let lo=0, hi=0.15; if(!ok(hi)) return hi; for(let i=0;i<14;i++){ const m=0.5*(lo+hi); if(ok(m)) hi=m; else lo=m; } return hi; }
 // coffee surface = painted canvas texture
 /* 2-D surface-layer solver (latte2d.js): the coffee surface texture is its milk fraction c = m/l */
 let solver=null, solN=96, fieldCanvas=document.createElement('canvas'), fctx=fieldCanvas.getContext('2d'), fieldImg=null, cField=null;
@@ -360,6 +377,7 @@ ui.height.addEventListener('input',()=>{ pose.tip[2]=+ui.height.value/100; auto=
 ui.yaw.addEventListener('input',()=>{ pose.yaw=rad(+ui.yaw.value); });
 ui.fill.addEventListener('input',()=>{ out('fillv').textContent=ui.fill.value+' mL'; });
 ui.cd.addEventListener('input',()=>{ law.Cd=+ui.cd.value; out('cdv').textContent=law.Cd.toFixed(2); });
+document.getElementById('cuptilt').addEventListener('input',ev=>{ CUP.tilt=rad(+ev.target.value); out('cuptiltv').textContent=ev.target.value+'°'; placeCup(pose.yaw); });
 document.getElementById('refill').addEventListener('click',()=>{ st.V=+ui.fill.value*1e-6; st.Q=0; st.flowing=false; });
 document.getElementById('clear').addEventListener('click',()=>{ solver.reset(); hits.length=0; paintField(); });
 document.getElementById('grid').addEventListener('change',ev=>{ newSolver(+ev.target.value); });
@@ -419,7 +437,7 @@ function drawStrip(){ const w=strip.clientWidth, h=150; if(strip.width!==w*2){st
 
 /* ---------------------------------------------------------------- main loop */
 const fmt=(v,n)=>v.toFixed(n);
-let last=performance.now(), acc=0; const DT=1/120; let prevTip=[0,0]; let simSec=0, wallSec=0;
+let last=performance.now(), acc=0; const DT=1/120; let prevTip=[0,0]; let simSec=0, wallSec=0, lift=0;
 function frame(now){ requestAnimationFrame(frame); let el=Math.min(0.1,(now-last)/1000); last=now; acc+=el; let rec=null; const budget=performance.now()+14;
   while(acc>=DT){ acc-=DT;
     if(performance.now()>budget){ acc=Math.min(acc,DT); break; }   // solver slower than real time: the model clock slows down
@@ -430,7 +448,11 @@ function frame(now){ requestAnimationFrame(frame); let el=Math.min(0.1,(now-last
       pose.tilt=Math.max(0,Math.min(rad(150),pose.tilt+rate*DT)); if(auto.t>MOVES.reduce((s,m)=>s+m.dur,0)+1.5) auto=null; out('hud').textContent='脚本：'+it.name; }
     else if(manualTilt!==null){ pose.tilt=manualTilt; }
     else { let rate=0; if(pouring) rate=rad(45); else rate=-rad(60); if(keyTilt) rate=keyTilt*rad(45); pose.tilt=Math.max(0,Math.min(rad(150),pose.tilt+rate*DT)); }
+    placeCup(pose.yaw);
+    lift=requiredLift(rot(pose.yaw,pose.tilt,0), pose.tip);
+    const tipUser=pose.tip[2]; pose.tip[2]+=lift;
     rec=stepPitcher(pose,DT);
+    pose.tip[2]=tipUser;
     if(rec.jet&&auto){ const f=1-Math.exp(-DT/0.3); auto.off[0]+=(rec.jet.x_hit[0]-pose.tip[0]-auto.off[0])*f; auto.off[1]+=(rec.jet.x_hit[1]-pose.tip[1]-auto.off[1])*f; }
     // 2-D solver: one control frame with the coupled inlet record
     const scan=Math.hypot(pose.tip[0]-prevTip[0],pose.tip[1]-prevTip[1])/D_L/DT; prevTip=[pose.tip[0],pose.tip[1]];
@@ -452,13 +474,13 @@ function frame(now){ requestAnimationFrame(frame); let el=Math.min(0.1,(now-last
   const swap=new THREE.Matrix4().set(1,0,0,0, 0,0,-1,0, 0,1,0,0, 0,0,0,1); // three-body -> body coords (x,y,z)=(x,-z,y)
   const tr=new THREE.Matrix4().makeTranslation(-tipB[0],-tipB[1],-tipB[2]);
   const toThree=new THREE.Matrix4().set(1,0,0,0, 0,0,1,0, 0,-1,0,0, 0,0,0,1);
-  m.copy(new THREE.Matrix4().makeTranslation(pose.tip[0],pose.tip[2],-pose.tip[1])).multiply(toThree).multiply(Rt).multiply(tr).multiply(swap);
+  m.copy(new THREE.Matrix4().makeTranslation(pose.tip[0],pose.tip[2]+lift,-pose.tip[1])).multiply(toThree).multiply(Rt).multiply(tr).multiply(swap);
   pitcherGroup.matrixAutoUpdate=false; pitcherGroup.matrix.copy(m);
   milkMat.clippingPlanes[0].set(new THREE.Vector3(-NRM[0],-NRM[2],NRM[1]), rec.c);  // keep points with p.n < c (surface tilted by the sloshing mode)
   buildJet(rec.jet);
   if(rec.jet){ marker.visible=true; marker.position.set(rec.jet.x_hit[0],0.0006,-rec.jet.x_hit[1]); } else marker.visible=false;
   // readouts
-  ui.tilt.value=deg(pose.tilt).toFixed(1); out('tiltv').textContent=fmt(deg(pose.tilt),1)+'°'; out('heightv').textContent=fmt(pose.tip[2]*100,1)+' cm'; out('yawv').textContent=Math.round(deg(pose.yaw))+'°';
+  ui.tilt.value=deg(pose.tilt).toFixed(1); out('tiltv').textContent=fmt(deg(pose.tilt),1)+'°'; out('heightv').textContent=fmt(pose.tip[2]*100,1)+(lift>0.0005?' +'+fmt(lift*100,1):'')+' cm'; out('yawv').textContent=Math.round(deg(pose.yaw))+'°';
   out('rV').textContent=fmt(st.V*1e6,1)+' mL'; out('rh').textContent=(rec.h_max>0?'+':'')+fmt(rec.h_max*1e3,1)+' mm'; out('rQ').textContent=fmt(rec.Q*1e6,1)+' mL/s';
   const J=rec.jet; out('ru0').textContent=J?fmt(J.u0,2)+' m/s / '+fmt(J.d0*1e3,1)+' mm':'—'; out('rdrop').textContent=J?fmt(J.drop*100,1)+' cm':'—';
   out('rU').textContent=J?fmt(J.U_perp,2)+' / '+fmt(J.u_h,2)+' m/s':'—'; out('rd').textContent=J?fmt(J.d_hit*1e3,1)+' mm':'—';
@@ -466,7 +488,8 @@ function frame(now){ requestAnimationFrame(frame); let el=Math.min(0.1,(now-last
   const coh=out('rcoh'); coh.textContent=J?(J.coherent?'成束 (We '+Math.round(J.We)+')':'可能破碎'):'—'; coh.className=J&&!J.coherent?'warn':'ok';
   out('rslope').textContent=fmt(deg(Math.atan(Math.hypot(rec.slope[0],rec.slope[1]))),1)+'° / '+fmt(Math.hypot(rec.acc[0],rec.acc[1]),1)+' m/s²';
   const cl=out('rcl'); if(isFinite(rec.clearance)){ cl.textContent=(rec.clearance>=0?'+':'')+fmt(rec.clearance*100,1)+' cm'; cl.className=rec.clearance<0?'warn':''; } else { cl.textContent='不在杯口上方'; cl.className=''; }
-  if(!auto) out('hud').textContent='t '+fmt(st.t,1)+' s   倾角 '+fmt(deg(pose.tilt),0)+'°   Q '+fmt(rec.Q*1e6,1)+' mL/s';
+  if(!auto) out('hud').textContent='t '+fmt(st.t,1)+' s   倾角 '+fmt(deg(pose.tilt),0)+'°   Q '+fmt(rec.Q*1e6,1)+' mL/s'+(lift>0.0005?'   为避免穿模抬高 '+fmt(lift*100,1)+' cm':'');
+  else if(lift>0.0005) out('hud').textContent+='   为避免穿模抬高 '+fmt(lift*100,1)+' cm';
   renderer.render(scene,camera); drawStrip(); }
 requestAnimationFrame(frame);
 })();
