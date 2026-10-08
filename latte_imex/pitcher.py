@@ -461,8 +461,10 @@ class Pitcher:
         st.V -= feed
         st.V_lip += feed
         st.Q_feed = feed / dt
-        # lip buffer drains on the spout time constant: Q_out = V_lip / tau (== first-order lag of Q_feed)
-        tau = law.tau if st.Q_feed >= st.Q else law.tau_stop
+        # lip buffer drains on the spout time constant: Q_out = V_lip / tau (== first-order lag of Q_feed);
+        # tau_stop (slower) only once the head is gone and the channel merely trails off (comparing Q_feed with the
+        # previous Q_out instead flips tau every step and makes Q_out alternate)
+        tau = law.tau if st.Q_feed > 0 else law.tau_stop
         Q_out = st.V_lip / tau
         release = min(st.V_lip, Q_out * dt)
         st.V_lip -= release
@@ -803,8 +805,11 @@ class BaristaScript:
         self._last = (Inlet(active=False), "start")
 
     def sample(self, t):
-        while self.pitcher.state.t < t - 1e-9:
-            rec, name = self.barista.step(min(self.dt, t - self.pitcher.state.t))
+        """Advance the pitcher on its own fixed clock (dt = 1/120 s) up to t and return the latest record.  Fixed
+        steps keep the finite-difference kinematics clean: irregular steps (run.py shortens frames during fast
+        scans) made the acceleration estimate jump, the sloshing surface tilt, and the flow surge."""
+        while self.pitcher.state.t + self.dt <= t + 1e-9:
+            rec, name = self.barista.step(self.dt)
             self.records.append(rec)
             self._last = (rec["inlet"], name)
         return self._last
