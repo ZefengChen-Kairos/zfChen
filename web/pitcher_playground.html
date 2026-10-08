@@ -273,9 +273,10 @@ function stepPitcher(pose, dt){
   const tau=st.Qfeed>=st.Q?law.tau:law.tau_stop; const Qout=st.Vlip/tau; const release=Math.min(st.Vlip, Qout*dt); st.Vlip-=release; st.Q=release/dt; st.t+=dt;
   let J=null;
   if(release>0){ J=jet(R,st.Q,W.h_bar,W.origin,law.hk,W.width,W.tangent);
-    st.parcels.push({ta:st.t+J.t_hit, vol:release, x:J.x_hit[0], y:J.x_hit[1], U:J.U_perp, uhx:J.v0[0], uhy:J.v0[1], d:J.d_hit, r1:J.r1, r2:J.r2, phi:J.phi, coh:J.coherent}); st.Vjet+=release; }
-  let hit=null, vol=0; const keep=[]; const acc={x:0,y:0,U:0,uhx:0,uhy:0,d:0,r1:0,r2:0}; let phi=0, coh=true;
-  for(const pk of st.parcels){ if(pk.ta<=st.t){ vol+=pk.vol; for(const k in acc) acc[k]+=pk[k]*pk.vol; phi=pk.phi; coh=coh&&pk.coh; } else keep.push(pk); }
+    st.parcels.push({ta0:st.t-dt+J.t_hit, ta1:st.t+J.t_hit, vol:release, x:J.x_hit[0], y:J.x_hit[1], U:J.U_perp, uhx:J.v0[0], uhy:J.v0[1], d:J.d_hit, r1:J.r1, r2:J.r2, phi:J.phi, coh:J.coherent}); st.Vjet+=release; }
+  // arrivals during [t-dt, t]: overlap of each parcel's arrival window with the step (Q_hit stays a rate for any step size)
+  let hit=null, vol=0; const keep=[]; const acc={x:0,y:0,U:0,uhx:0,uhy:0,d:0,r1:0,r2:0}; let phi=0, coh=true; const t0=st.t-dt, t1=st.t;
+  for(const pk of st.parcels){ const ov=Math.max(0, Math.min(pk.ta1,t1)-Math.max(pk.ta0,t0)); if(ov>0){ const v=pk.vol*ov/Math.max(pk.ta1-pk.ta0,1e-12); vol+=v; for(const k in acc) acc[k]+=pk[k]*v; phi=pk.phi; coh=coh&&pk.coh; } if(pk.ta1>t1) keep.push(pk); }
   st.parcels=keep;
   if(vol>0){ st.Vjet-=vol; st.Vcup+=vol; for(const k in acc) acc[k]/=vol; hit={Q:vol/dt, x_hit:[acc.x,acc.y], U_perp:acc.U, v0:[acc.uhx,acc.uhy,0], d_hit:acc.d, r1:acc.r1, r2:acc.r2, phi, coherent:coh}; }
   st.Qhit=hit?hit.Q:0;

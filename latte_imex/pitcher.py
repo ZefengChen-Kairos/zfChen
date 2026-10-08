@@ -471,24 +471,34 @@ class Pitcher:
         J = None
         if release > 0:
             J = self.jet(pose, st.Q, W["h_bar"], W["origin"], z_surface, W["width"], W["tangent"])
-            st.parcels.append(dict(t_arrive=st.t + J["t_hit"], vol=release, x_hit=J["x_hit"].copy(), U_perp=J["U_perp"],
-                                   u_h=J["u_h"].copy(), d_hit=J["d_hit"], speed=J["speed"], r1=J["r1"], r2=J["r2"],
-                                   phi=J["phi"], coherent=J["coherent"]))
+            # the volume released during [t-dt, t] arrives during [t-dt+t_hit, t+t_hit]: a parcel with an arrival window,
+            # so that Q_hit is a proper rate whatever the sampling step (run.py shortens frames during fast scans)
+            st.parcels.append(dict(ta0=st.t - dt + J["t_hit"], ta1=st.t + J["t_hit"], vol=release, x_hit=J["x_hit"].copy(),
+                                   U_perp=J["U_perp"], u_h=J["u_h"].copy(), d_hit=J["d_hit"], speed=J["speed"],
+                                   r1=J["r1"], r2=J["r2"], phi=J["phi"], coherent=J["coherent"]))
             st.V_jet += release
-        # arrivals this frame (parcels are appended in order of release; arrival order may differ slightly)
-        arrived = [pk for pk in st.parcels if pk["t_arrive"] <= st.t]
-        st.parcels = [pk for pk in st.parcels if pk["t_arrive"] > st.t]
+        # arrivals during this step [t-dt, t]: the overlap of each parcel's arrival window with the step
+        t0, t1 = st.t - dt, st.t
+        vol = 0.0; acc = dict(x=0.0, y=0.0, U_perp=0.0, ux=0.0, uy=0.0, d_hit=0.0, speed=0.0, r1=0.0, r2=0.0)
+        phi = 0.0; coherent = True; keep = []
+        for pk in st.parcels:
+            ov = max(0.0, min(pk["ta1"], t1) - max(pk["ta0"], t0))
+            if ov > 0:
+                v = pk["vol"] * ov / max(pk["ta1"] - pk["ta0"], 1e-12)
+                vol += v
+                acc["x"] += v * pk["x_hit"][0]; acc["y"] += v * pk["x_hit"][1]; acc["U_perp"] += v * pk["U_perp"]
+                acc["ux"] += v * pk["u_h"][0]; acc["uy"] += v * pk["u_h"][1]; acc["d_hit"] += v * pk["d_hit"]
+                acc["speed"] += v * pk["speed"]; acc["r1"] += v * pk["r1"]; acc["r2"] += v * pk["r2"]
+                phi = pk["phi"]; coherent = coherent and pk["coherent"]
+            if pk["ta1"] > t1:
+                keep.append(pk)
+        st.parcels = keep
         hit = None
-        if arrived:
-            vol = sum(pk["vol"] for pk in arrived)
+        if vol > 0:
             st.V_jet -= vol; st.V_cup += vol
-            wsum = lambda key: sum(pk[key] * pk["vol"] for pk in arrived) / vol
-            hit = dict(Q=vol / dt, x_hit=np.array([wsum("x_hit") if False else sum(pk["x_hit"][0] * pk["vol"] for pk in arrived) / vol,
-                                                   sum(pk["x_hit"][1] * pk["vol"] for pk in arrived) / vol]),
-                       U_perp=wsum("U_perp"), u_h=np.array([sum(pk["u_h"][0] * pk["vol"] for pk in arrived) / vol,
-                                                            sum(pk["u_h"][1] * pk["vol"] for pk in arrived) / vol]),
-                       d_hit=wsum("d_hit"), speed=wsum("speed"), r1=wsum("r1"), r2=wsum("r2"), phi=arrived[-1]["phi"],
-                       coherent=all(pk["coherent"] for pk in arrived))
+            hit = dict(Q=vol / dt, x_hit=np.array([acc["x"], acc["y"]]) / vol, U_perp=acc["U_perp"] / vol,
+                       u_h=np.array([acc["ux"], acc["uy"]]) / vol, d_hit=acc["d_hit"] / vol, speed=acc["speed"] / vol,
+                       r1=acc["r1"] / vol, r2=acc["r2"] / vol, phi=phi, coherent=coherent)
         st.Q_hit = hit["Q"] if hit else 0.0
         return dict(t=st.t, V=st.V, Q=st.Q, Q_feed=st.Q_feed, Q_hit=st.Q_hit, V_lip=st.V_lip, V_jet=st.V_jet, V_cup=st.V_cup,
                     Q_ss=W["Q_ss"], h_max=W["h_max"], h_bar=W["h_bar"], c=c, width=W["width"],
