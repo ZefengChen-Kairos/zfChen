@@ -9,7 +9,7 @@
   'use strict';
 
   const DEFAULT_PARAMS = { cp: 0.3, beta: 3.0, nu: 1e-3, D: 1e-7, kappa_Q: 125.0, kappa_c: 1.0, kappa_t: 0.7, kappa_r: 0.3,
-    B_dep: 4.0, p_dep: 2.0, return_law: 'v05' };
+    B_dep: 2.5, p_dep: 2.0, return_law: 'v05' };
   const DEFAULT_NUM = { cup_radius: 0.49, cfl: 0.5, frame_dt: 1 / 120, max_substeps: 64, cg_tol: 1e-10, cg_maxiter: 500,
     kernel_quadrature: 3, scan_safety: 0.5, explicit_mixing_limit: 0.05, explicit_visc_limit: 0.2, l_floor: 1e-3 };
 

@@ -566,10 +566,12 @@ class Coupling:
                      phi=float(phi), scan_speed=float(scan_speed))
 
 
-# physics for the physical-velocity inlet: same model, B_dep rescaled so that chi ~ 0.85 at the low pour
-# (U_perp 0.26, d 0.04 -> z_c 0.42) and ~ 0.1 at the high cut (U_perp 0.5, d 0.018 -> z_c 3.3).
+# physics for the physical-velocity inlet: same model, B_dep rescaled so that chi ~ 0.85 at the low pour and ~ 0.14
+# at the high cut.  The deposition scale is tied to how d_jet is defined: with the physical footprint
+# (d = 2 sqrt(r1 r2): low pour 5 mm = 0.063 D_L, high cut 2.6 mm = 0.033 D_L) B_dep = 2.5; with the V0.5 continuity
+# footprint (about half these diameters) it was 4.0.
 PHYSICAL_PARAMS = dict(cp=0.3, beta=3.0, nu=1e-3, D=1e-7, kappa_Q=125.0, kappa_c=1.0, kappa_t=0.7, kappa_r=0.3,
-                       B_dep=4.0, p_dep=2.0, return_law="v05")
+                       B_dep=2.5, p_dep=2.0, return_law="v05")
 
 
 # --------------------------------------------------------------------------- virtual barista
