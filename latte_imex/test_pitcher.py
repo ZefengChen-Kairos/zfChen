@@ -56,6 +56,15 @@ def main():
     Q = P.weir(pose, c)["Q_ss"]
     print(f"[5] tilt for 15 mL/s at 200 mL: {math.degrees(th):.2f} deg -> Q {Q*1e6:.2f} mL/s")
     ok &= abs(Q - 15e-6) < 0.05e-6
+    # 6. conservation ledger and flight delay
+    S = BaristaScript(); S.sample(S.T)
+    T = records_table(S.records)
+    tot = T["V"] + T["V_lip"] + T["V_jet"] + T["V_cup"]
+    err = float(np.abs(tot - 200e-6).max())
+    q1, q2 = T["Q"], T["Q_hit"]
+    lag = int(np.argmax([np.dot(q1[:len(q1) - l], q2[l:]) for l in range(0, 30)])) / 120
+    print(f"[6] ledger |V_b+V_lip+V_jet+V_cup - V0| max {err:.1e} m3; Q_hit lags Q_out by {lag*1e3:.0f} ms; V_cup {T['V_cup'][-1]*1e6:.1f} mL")
+    ok &= err < 1e-12 and 0.03 < lag < 0.2
     print("PASS" if ok else "FAIL")
     return ok
 

@@ -296,16 +296,20 @@
   }
 
   /* SI impact record -> inlet (cup units), port of pitcher.Coupling */
-  const COUPLING = { D_L: 0.08, c_S: 0.05 / 15e-6, c_U: 0.263 / 0.70, c_u: 0.5 / 0.15, kappa_Q: 125.0, max_jet_angle: Math.PI / 3 };
+  const COUPLING = { D_L: 0.08, c_S: 0.05 / 15e-6, c_U: 0.263 / 0.70, c_u: 0.5 / 0.15, kappa_Q: 125.0, max_jet_angle: Math.PI / 3, footprint: 'physical' };
   function coupleInlet(rec, scanSpeed, cp) {
     cp = Object.assign({}, COUPLING, cp || {});
-    const J = rec.jet; if (!J || rec.Q <= 0) return { active: false };
-    const x = J.x_hit[0] / cp.D_L, y = J.x_hit[1] / cp.D_L, S = cp.c_S * rec.Q, U = cp.c_U * J.U_perp;
+    // what arrives on the coffee this frame (flight delay) when the record carries it, else what leaves the spout
+    const J = rec.hit !== undefined ? rec.hit : rec.jet; const Q = rec.hit !== undefined ? (J ? J.Q : 0) : rec.Q;
+    if (!J || Q <= 0) return { active: false };
+    const x = J.x_hit[0] / cp.D_L, y = J.x_hit[1] / cp.D_L, S = cp.c_S * Q, U = cp.c_U * J.U_perp;
     let ux = cp.c_u * J.v0[0], uy = cp.c_u * J.v0[1]; let vt = Math.hypot(ux, uy);
     if (vt > 0) { const sc = Math.min(1, U * Math.tan(cp.max_jet_angle) / vt); ux *= sc; uy *= sc; vt *= sc; }
-    const Qrec = S / cp.kappa_Q, speed = Math.hypot(U, vt), aspect = speed / U, r = Math.sqrt(Qrec / (Math.PI * U));
-    return { active: true, x_hit: [x, y], S_eff: S, u_in: [ux, uy], U_perp: U, d_jet: 2 * Math.sqrt(Qrec / speed / Math.PI),
-      r1: r * Math.sqrt(aspect), r2: r / Math.sqrt(aspect), phi: Math.atan2(uy, ux), scan_speed: scanSpeed || 0 };
+    const Qrec = S / cp.kappa_Q, speed = Math.hypot(U, vt);
+    let r1, r2, phi, d;
+    if (cp.footprint !== 'v05' && J.r1 !== undefined) { r1 = J.r1 / cp.D_L; r2 = J.r2 / cp.D_L; phi = J.phi; d = 2 * Math.sqrt(r1 * r2); }
+    else { const aspect = speed / U, r = Math.sqrt(Qrec / (Math.PI * U)); r1 = r * Math.sqrt(aspect); r2 = r / Math.sqrt(aspect); phi = Math.atan2(uy, ux); d = 2 * Math.sqrt(Qrec / speed / Math.PI); }
+    return { active: true, x_hit: [x, y], S_eff: S, u_in: [ux, uy], U_perp: U, d_jet: d, r1, r2, phi, scan_speed: scanSpeed || 0 };
   }
 
   const api = { Latte2D, coupleInlet, DEFAULT_PARAMS, DEFAULT_NUM, COUPLING };

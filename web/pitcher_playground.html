@@ -112,7 +112,8 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
       <dl class="read">
         <dt>壶内剩余 V</dt><dd id="rV">200.0 mL</dd>
         <dt>液面高出壶嘴 h</dt><dd id="rh">—</dd>
-        <dt>流量 Q</dt><dd id="rQ">0.0 mL/s</dd>
+        <dt>流量 出壶 / 落杯</dt><dd id="rQ">0.0 / 0.0 mL/s</dd>
+        <dt>账本 壶内+嘴+空中+杯</dt><dd id="rledger">—</dd>
         <dt>出口速度 u₀ / 直径 d₀</dt><dd id="ru0">—</dd>
         <dt>落差</dt><dd id="rdrop">—</dd>
         <dt>冲击速度 U⊥ / 水平 u_h</dt><dd id="rU">—</dd>
@@ -212,10 +213,17 @@ function weir(R, tip, c, Cd, hk){
     const w=Math.pow(he,1.5)*dl; S32+=w; S52+=Math.pow(he,2.5)*dl;
     ox+=w*.5*(a[0]+b[0]); oy+=w*.5*(a[1]+b[1]); oz+=w*.5*(a[2]+b[2]); }
   const Q=Cd*(2/3)*Math.sqrt(2*GEFF)*S32;
-  return {Q_ss:Q, h_max:hmax, h_bar:S32>0?S52/S32:0, origin:S32>0?[ox/S32,oy/S32,oz/S32]:lowest};
+  let width=0, tangent=[1,0];
+  if(S32>0){ const cx=ox/S32, cy=oy/S32; let sxx=0,sxy=0,syy=0;
+    for(let k=0;k<NRIM;k++){ const a=W[k], b=W[(k+1)%NRIM]; const h=c-.5*(dotn(a)+dotn(b)); const he=Math.max(h-hk,0); if(he<=0) continue;
+      const sx=b[0]-a[0], sy=b[1]-a[1], sz=b[2]-a[2], sn=sx*NRM[0]+sy*NRM[1]+sz*NRM[2]; const dl=Math.hypot(sx-sn*NRM[0], sy-sn*NRM[1], sz-sn*NRM[2]);
+      const w=Math.pow(he,1.5)*dl, dx=.5*(a[0]+b[0])-cx, dy=.5*(a[1]+b[1])-cy; sxx+=w*dx*dx; sxy+=w*dx*dy; syy+=w*dy*dy; }
+    sxx/=S32; sxy/=S32; syy/=S32; const tr=sxx+syy, det=sxx*syy-sxy*sxy; const l1=tr/2+Math.sqrt(Math.max(tr*tr/4-det,0));
+    width=Math.sqrt(12*Math.max(l1,0)); const vx=sxy, vy=l1-sxx; const vn=Math.hypot(vx,vy); tangent=vn>1e-12?[vx/vn,vy/vn]:(sxx>=syy?[1,0]:[0,1]); }
+  return {Q_ss:Q, h_max:hmax, h_bar:S32>0?S52/S32:0, origin:S32>0?[ox/S32,oy/S32,oz/S32]:lowest, width, tangent};
 }
-function jet(R, Q, h_bar, origin, hk){
-  if(Q<=0||h_bar<=0) return null;
+function jet(R, Q, h_bar, origin, hk, width, tangent){
+  if(Q<=0) return null; width=width||0; tangent=tangent||[1,0];
   const u0=Math.sqrt(2*GEFF*Math.max(h_bar,hk)), A0=Q/u0, d0=2*Math.sqrt(A0/PI);
   const ca=Math.cos(geom.lip), sa=-Math.sin(geom.lip);
   const v0=[u0*(R[0]*ca+R[2]*sa)+kin.vel[0], u0*(R[3]*ca+R[5]*sa)+kin.vel[1], u0*(R[6]*ca+R[8]*sa)+kin.vel[2]];   // carries the pitcher velocity
@@ -223,8 +231,10 @@ function jet(R, Q, h_bar, origin, hk){
   const vz=v0[2]-G*t, speed=Math.hypot(v0[0],v0[1],vz);
   const We=1030*u0*u0*d0/0.045, Lb=19.5*d0*Math.pow(We,0.325);
   const path=Math.abs(v0[2])*t+.5*G*t*t+Math.hypot(v0[0]*t,v0[1]*t);
+  const L=Math.max(width,d0), thick=A0/L, aspect0=L/thick, tcap=Math.sqrt(1030*thick*thick*thick/0.045), rounding=1-Math.exp(-t/Math.max(tcap,1e-6));
+  const aspect=Math.pow(aspect0,1-rounding), Ahit=A0*u0/speed, r1=Math.sqrt(Ahit*aspect/PI), r2=Math.sqrt(Ahit/aspect/PI), phi=Math.atan2(tangent[1],tangent[0]);
   return {u0,d0,v0,origin,t_hit:t,x_hit:[origin[0]+v0[0]*t, origin[1]+v0[1]*t],U_perp:Math.max(-vz,0),u_h:Math.hypot(v0[0],v0[1]),speed,
-          d_hit:d0*Math.sqrt(u0/speed),We,L_break:Lb,coherent:path<Lb,drop:z0};
+          d_hit:d0*Math.sqrt(u0/speed),We,L_break:Lb,coherent:path<Lb,drop:z0, r1, r2, phi, aspect, rounding};
 }
 function clearance(R, tip, cupR){
   let zmin=Infinity;
@@ -233,7 +243,7 @@ function clearance(R, tip, cupR){
   return zmin;
 }
 const law={Cd:0.60, hk:0.0008, h_on:0.0025, h_off:0.0005, tau:0.08, tau_stop:0.15, slosh:true, zeta:0.30, slopeMax:0.36, accTau:0.02};
-const st={V:200e-6, Q:0, flowing:false, t:0};
+const st={V:200e-6, Q:0, flowing:false, t:0, Vlip:0, Vjet:0, Vcup:0, Qfeed:0, Qhit:0, parcels:[]};
 // level 1: pitcher acceleration -> effective gravity g - a -> free-surface slope through the first sloshing mode
 const kin={tipPrev:null, vel:[0,0,0], acc:[0,0,0], slope:[0,0], slopeRate:[0,0], omega:0};
 function kinematics(tip, dt){
@@ -258,11 +268,18 @@ function stepPitcher(pose, dt){
   const fs=freeSurface(R,tip,st.V); const W=weir(R,tip,fs.c,law.Cd,law.hk);
   if(!st.flowing && W.h_max>law.h_on) st.flowing=true;
   if(st.flowing && W.h_max<law.h_off) st.flowing=false;
-  let Qt=st.flowing?W.Q_ss:0; if(fs.overflow>0) Qt+=fs.overflow/dt;
-  const tau=Qt>=st.Q?law.tau:law.tau_stop; st.Q+=(Qt-st.Q)*(1-Math.exp(-dt/tau));
-  const dV=Math.min(st.Q*dt, st.V); st.V-=dV; st.t+=dt; const Qe=dV/dt;
-  const J=Qe>0?jet(R,Qe,W.h_bar,W.origin,law.hk):null;
-  return {R, c:fs.c, Q:Qe, h_max:W.h_max, h_bar:W.h_bar, jet:J, clearance:clearance(R,tip,0.043), slope:[kin.slope[0],kin.slope[1]], acc:[kin.acc[0],kin.acc[1],kin.acc[2]]};
+  let Qfeed=st.flowing?W.Q_ss:0; if(fs.overflow>0) Qfeed+=fs.overflow/dt;
+  const feed=Math.min(Qfeed*dt, st.V); st.V-=feed; st.Vlip+=feed; st.Qfeed=feed/dt;
+  const tau=st.Qfeed>=st.Q?law.tau:law.tau_stop; const Qout=st.Vlip/tau; const release=Math.min(st.Vlip, Qout*dt); st.Vlip-=release; st.Q=release/dt; st.t+=dt;
+  let J=null;
+  if(release>0){ J=jet(R,st.Q,W.h_bar,W.origin,law.hk,W.width,W.tangent);
+    st.parcels.push({ta:st.t+J.t_hit, vol:release, x:J.x_hit[0], y:J.x_hit[1], U:J.U_perp, uhx:J.v0[0], uhy:J.v0[1], d:J.d_hit, r1:J.r1, r2:J.r2, phi:J.phi, coh:J.coherent}); st.Vjet+=release; }
+  let hit=null, vol=0; const keep=[]; const acc={x:0,y:0,U:0,uhx:0,uhy:0,d:0,r1:0,r2:0}; let phi=0, coh=true;
+  for(const pk of st.parcels){ if(pk.ta<=st.t){ vol+=pk.vol; for(const k in acc) acc[k]+=pk[k]*pk.vol; phi=pk.phi; coh=coh&&pk.coh; } else keep.push(pk); }
+  st.parcels=keep;
+  if(vol>0){ st.Vjet-=vol; st.Vcup+=vol; for(const k in acc) acc[k]/=vol; hit={Q:vol/dt, x_hit:[acc.x,acc.y], U_perp:acc.U, v0:[acc.uhx,acc.uhy,0], d_hit:acc.d, r1:acc.r1, r2:acc.r2, phi, coherent:coh}; }
+  st.Qhit=hit?hit.Q:0;
+  return {R, c:fs.c, Q:st.Q, Qfeed:st.Qfeed, Qhit:st.Qhit, h_max:W.h_max, h_bar:W.h_bar, jet:J, hit, clearance:clearance(R,tip,0.043), slope:[kin.slope[0],kin.slope[1]], acc:[kin.acc[0],kin.acc[1],kin.acc[2]], width:W.width};
 }
 
 /* ---------------------------------------------------------------- scene (three.js; world z -> three y, world y -> three -z) */
@@ -401,11 +418,12 @@ ui.yaw.addEventListener('input',()=>{ pose.yaw=rad(+ui.yaw.value); });
 ui.fill.addEventListener('input',()=>{ out('fillv').textContent=ui.fill.value+' mL'; });
 ui.cd.addEventListener('input',()=>{ law.Cd=+ui.cd.value; out('cdv').textContent=law.Cd.toFixed(2); });
 document.getElementById('cuptilt').addEventListener('input',ev=>{ CUP.tilt=rad(+ev.target.value); out('cuptiltv').textContent=ev.target.value+'°'; placeCup(pose.yaw); });
-document.getElementById('refill').addEventListener('click',()=>{ st.V=+ui.fill.value*1e-6; st.Q=0; st.flowing=false; });
+function resetLedger(V){ st.V=V; st.Q=0; st.flowing=false; st.Vlip=0; st.Vjet=0; st.Vcup=0; st.Qfeed=0; st.Qhit=0; st.parcels=[]; }
+document.getElementById('refill').addEventListener('click',()=>{ resetLedger(+ui.fill.value*1e-6); });
 document.getElementById('clear').addEventListener('click',()=>{ solver.reset(); hits.length=0; paintField(); });
 document.getElementById('grid').addEventListener('change',ev=>{ newSolver(+ev.target.value); });
 let nxGrid=null;
-function usePitcher(which){ const g=(which==='nx'&&nxGrid)?nxGrid:parametricGrid(); buildGeometry(g); buildMeshes(); st.Q=0; st.flowing=false; resetKin();
+function usePitcher(which){ const g=(which==='nx'&&nxGrid)?nxGrid:parametricGrid(); buildGeometry(g); buildMeshes(); resetLedger(st.V+st.Vlip+st.Vjet); resetKin();
   out('pitcherv').textContent=(capacity*1e6).toFixed(0)+' mL'; }
 document.getElementById('pitchersel').addEventListener('change',ev=>usePitcher(ev.target.value));
 fetch('pitcher_nx.json').then(r=>r.json()).then(j=>{ nxGrid=gridFromJSON(j); if(document.getElementById('pitchersel').value==='nx') usePitcher('nx'); })
@@ -449,7 +467,7 @@ function intent(t){ let acc=0; for(const m of MOVES){ if(t<acc+m.dur){ const f=(
   if(m.axis==='y') y+=wob; else x+=wob;
   return {x, y, z:m.z0+(m.z1-m.z0)*e, Q:m.Q0+(m.Q1-m.Q0)*f, name:m.name}; } acc+=m.dur; }
   const last=MOVES[MOVES.length-1]; return {x:last.p1[0],y:last.p1[1],z:last.z1,Q:0,name:'结束'}; }
-function startScript(moves){ MOVES=moves; st.V=(geom&&geom.name!=='参数化壶')?250e-6:200e-6; ui.fill.value=Math.round(st.V*1e6); out('fillv').textContent=ui.fill.value+' mL'; st.Q=0; st.flowing=false; solver.reset(); hits.length=0; pose.yaw=rad(-90); ui.yaw.value=-90; pose.tilt=rad(40); manualTilt=null; pouring=false;
+function startScript(moves){ MOVES=moves; resetLedger((geom&&geom.name!=='参数化壶')?250e-6:200e-6); ui.fill.value=Math.round(st.V*1e6); out('fillv').textContent=ui.fill.value+' mL'; st.Q=0; st.flowing=false; solver.reset(); hits.length=0; pose.yaw=rad(-90); ui.yaw.value=-90; pose.tilt=rad(40); manualTilt=null; pouring=false;
   resetKin(); auto={t:0, ierr:0, off:[0,0], Qseen:0}; }
 function resetKin(){ kin.tipPrev=null; kin.vel=[0,0,0]; kin.acc=[0,0,0]; kin.slope=[0,0]; kin.slopeRate=[0,0]; NRM=[0,0,1]; GEFF=G; }
 let SCRIPTS={heart:{moves:MOVES_HEART}, layered_heart:{moves:MOVES_LAYERED}};
@@ -511,7 +529,7 @@ function frame(now){ requestAnimationFrame(frame); let el=Math.min(0.1,(now-last
   if(rec.jet){ marker.visible=true; marker.position.set(rec.jet.x_hit[0],0.0006,-rec.jet.x_hit[1]); } else marker.visible=false;
   // readouts
   ui.tilt.value=deg(pose.tilt).toFixed(1); out('tiltv').textContent=fmt(deg(pose.tilt),1)+'°'; out('heightv').textContent=fmt(pose.tip[2]*100,1)+(lift>0.0005?' +'+fmt(lift*100,1):'')+' cm'; out('yawv').textContent=Math.round(deg(pose.yaw))+'°';
-  out('rV').textContent=fmt(st.V*1e6,1)+' mL'; out('rh').textContent=(rec.h_max>0?'+':'')+fmt(rec.h_max*1e3,1)+' mm'; out('rQ').textContent=fmt(rec.Q*1e6,1)+' mL/s';
+  out('rV').textContent=fmt(st.V*1e6,1)+' mL'; out('rh').textContent=(rec.h_max>0?'+':'')+fmt(rec.h_max*1e3,1)+' mm'; out('rQ').textContent=fmt(rec.Q*1e6,1)+' / '+fmt(rec.Qhit*1e6,1)+' mL/s'; out('rledger').textContent=fmt(st.V*1e6,1)+'+'+fmt(st.Vlip*1e6,2)+'+'+fmt(st.Vjet*1e6,2)+'+'+fmt(st.Vcup*1e6,1)+' = '+fmt((st.V+st.Vlip+st.Vjet+st.Vcup)*1e6,1)+' mL';
   const J=rec.jet; out('ru0').textContent=J?fmt(J.u0,2)+' m/s / '+fmt(J.d0*1e3,1)+' mm':'—'; out('rdrop').textContent=J?fmt(J.drop*100,1)+' cm':'—';
   out('rU').textContent=J?fmt(J.U_perp,2)+' / '+fmt(J.u_h,2)+' m/s':'—'; out('rd').textContent=J?fmt(J.d_hit*1e3,1)+' mm':'—';
   out('rhit').textContent=J?'('+fmt(J.x_hit[0]/D_L,2)+', '+fmt(J.x_hit[1]/D_L,2)+')':'—';

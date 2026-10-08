@@ -199,10 +199,17 @@ class Cup:
 
 @dataclass
 class PitcherState:
-    V: float = 2.0e-4       # remaining milk [m^3]
-    Q: float = 0.0          # current outflow [m^3/s]
+    V: float = 2.0e-4       # bulk milk in the cavity [m^3]
+    Q: float = 0.0          # outflow leaving the spout, Q_out [m^3/s]
     flowing: bool = False
     t: float = 0.0
+    # conservation ledger: V + V_lip + V_jet + V_cup == V0 at all times
+    V_lip: float = 0.0      # milk in the spout channel (the lip buffer: Q_out = V_lip / tau)
+    V_jet: float = 0.0      # milk in flight
+    V_cup: float = 0.0      # milk that has arrived on the coffee
+    Q_feed: float = 0.0     # bulk -> lip (weir law)
+    Q_hit: float = 0.0      # arriving on the coffee this frame
+    parcels: list = field(default_factory=list)   # in-flight parcels (dicts), FIFO by arrival time
     tip_prev: tuple = None          # last tip position (for the finite-difference velocity)
     vel: tuple = (0.0, 0.0, 0.0)    # pitcher (tip) velocity [m/s]
     acc: tuple = (0.0, 0.0, 0.0)    # low-passed pitcher acceleration [m/s^2]
@@ -261,14 +268,21 @@ class Pitcher:
         w32 = he ** 1.5 * dl
         S32 = float(w32.sum())
         Q_ss = self.law.C_d * (2.0 / 3.0) * math.sqrt(2 * self.g_eff) * S32
+        width = 0.0; tangent = np.array([1.0, 0.0])
         if S32 > 0:
             h_bar = float((he ** 2.5 * dl).sum() / S32)          # discharge-weighted head
             origin = (w32[:, None] * mid).sum(0) / S32            # discharge-weighted crest point
+            # second moment of the lip flux in the horizontal plane: wetted lip extent and its direction
+            d2 = mid[:, :2] - origin[:2]
+            cov = (w32[:, None, None] * d2[:, :, None] * d2[:, None, :]).sum(0) / S32
+            evals, evecs = np.linalg.eigh(cov)
+            width = float(math.sqrt(12.0 * max(evals[-1], 0.0)))  # uniform segment of length L has variance L^2/12
+            tangent = evecs[:, -1]
         else:
             h_bar = 0.0
             origin = rim[np.argmin(rim @ self.n)]
         A_wet = float((np.maximum(h, 0.0) * dl).sum())
-        return dict(Q_ss=Q_ss, h_max=h_max, h_bar=h_bar, origin=origin, A_wet=A_wet)
+        return dict(Q_ss=Q_ss, h_max=h_max, h_bar=h_bar, origin=origin, A_wet=A_wet, width=width, tangent=tangent)
 
     def exit_direction(self, pose):
         R = rotation(pose.yaw, pose.tilt, pose.roll)
@@ -276,13 +290,13 @@ class Pitcher:
         return R @ e
 
     # ---- jet
-    def jet(self, pose, Q, h_bar, origin, z_surface=0.0):
+    def jet(self, pose, Q, h_bar, origin, z_surface=0.0, width=0.0, tangent=(1.0, 0.0)):
         """Free jet from the crest to the coffee surface.  Exit speed sqrt(2 g_eff h_bar) relative to the pitcher
         (Torricelli at the discharge-weighted head), direction along the spout, plus the pitcher's own velocity;
         then free flight under g, continuity thinning d ~ |v|^{-1/2}."""
-        if Q <= 0 or h_bar <= 0:
+        if Q <= 0:
             return None
-        u0 = math.sqrt(2 * self.g_eff * max(h_bar, self.law.h_k))   # floor: the trailing dribble leaves at the h_k head
+        u0 = math.sqrt(2 * self.g_eff * max(h_bar, self.law.h_k))   # the lip buffer may drain after the head is gone   # floor: the trailing dribble leaves at the h_k head
         A0 = Q / u0
         d0 = 2 * math.sqrt(A0 / math.pi)
         v0 = u0 * self.exit_direction(pose)
@@ -297,12 +311,24 @@ class Pitcher:
         vz = v0[2] - G * t_hit
         speed = math.sqrt(v0[0] ** 2 + v0[1] ** 2 + vz ** 2)
         d_hit = d0 * math.sqrt(u0 / speed)
+        # exit sheet: wetted lip width L and thickness A0/L; surface tension rounds it up on the capillary time
+        # t_cap = sqrt(rho t^3 / sigma); what remains at impact is an ellipse of the continuity area A0*u0/|v|
+        L = max(float(width), d0)
+        thick = A0 / L
+        aspect0 = L / thick
+        t_cap = math.sqrt(self.milk.rho * thick ** 3 / self.milk.sigma)
+        rounding = 1.0 - math.exp(-t_hit / max(t_cap, 1e-6))
+        aspect = aspect0 ** (1.0 - rounding)
+        A_hit = A0 * u0 / speed
+        r1 = math.sqrt(A_hit * aspect / math.pi); r2 = math.sqrt(A_hit / aspect / math.pi)
+        phi_lip = math.atan2(float(tangent[1]), float(tangent[0]))
         We = self.milk.rho * u0 ** 2 * d0 / self.milk.sigma
         L_break = 19.5 * d0 * We ** 0.325 if We > 0 else 0.0       # Grant & Middleman, laminar jet
         path = abs(v0[2]) * t_hit + 0.5 * G * t_hit ** 2 + np.hypot(*(v0[:2] * t_hit))
         return dict(u0=u0, d0=d0, v0=v0, origin=np.asarray(origin, float), t_hit=t_hit, x_hit=np.asarray(x_hit, float),
                     U_perp=max(-vz, 0.0), u_h=v0[:2].copy(), speed=speed, d_hit=d_hit, We=We,
-                    L_break=L_break, coherent=bool(path < L_break), drop=z0)
+                    L_break=L_break, coherent=bool(path < L_break), drop=z0,
+                    r1=r1, r2=r2, phi=phi_lip, aspect=aspect, width=L, rounding=rounding)
 
     def jet_polyline(self, J, n=24):
         """World-frame points along the jet for drawing."""
@@ -428,19 +454,46 @@ class Pitcher:
             st.flowing = True
         if st.flowing and W["h_max"] < law.h_off:
             st.flowing = False
-        Q_target = W["Q_ss"] if st.flowing else 0.0
+        Q_feed = W["Q_ss"] if st.flowing else 0.0
         if overflow > 0:
-            Q_target += overflow / dt                   # spill of whatever cannot be held
-        tau = law.tau if Q_target >= st.Q else law.tau_stop
-        st.Q += (Q_target - st.Q) * (1.0 - math.exp(-dt / tau))
-        dV = min(st.Q * dt, st.V)
-        st.V -= dV
+            Q_feed += overflow / dt                     # spill of whatever cannot be held
+        feed = min(Q_feed * dt, st.V)                   # bulk -> lip buffer
+        st.V -= feed
+        st.V_lip += feed
+        st.Q_feed = feed / dt
+        # lip buffer drains on the spout time constant: Q_out = V_lip / tau (== first-order lag of Q_feed)
+        tau = law.tau if st.Q_feed >= st.Q else law.tau_stop
+        Q_out = st.V_lip / tau
+        release = min(st.V_lip, Q_out * dt)
+        st.V_lip -= release
+        st.Q = release / dt
         st.t += dt
-        Q_eff = dV / dt
-        J = self.jet(pose, Q_eff, W["h_bar"], W["origin"], z_surface) if Q_eff > 0 else None
-        return dict(t=st.t, V=st.V, Q=Q_eff, Q_ss=W["Q_ss"], h_max=W["h_max"], h_bar=W["h_bar"], c=c,
+        J = None
+        if release > 0:
+            J = self.jet(pose, st.Q, W["h_bar"], W["origin"], z_surface, W["width"], W["tangent"])
+            st.parcels.append(dict(t_arrive=st.t + J["t_hit"], vol=release, x_hit=J["x_hit"].copy(), U_perp=J["U_perp"],
+                                   u_h=J["u_h"].copy(), d_hit=J["d_hit"], speed=J["speed"], r1=J["r1"], r2=J["r2"],
+                                   phi=J["phi"], coherent=J["coherent"]))
+            st.V_jet += release
+        # arrivals this frame (parcels are appended in order of release; arrival order may differ slightly)
+        arrived = [pk for pk in st.parcels if pk["t_arrive"] <= st.t]
+        st.parcels = [pk for pk in st.parcels if pk["t_arrive"] > st.t]
+        hit = None
+        if arrived:
+            vol = sum(pk["vol"] for pk in arrived)
+            st.V_jet -= vol; st.V_cup += vol
+            wsum = lambda key: sum(pk[key] * pk["vol"] for pk in arrived) / vol
+            hit = dict(Q=vol / dt, x_hit=np.array([wsum("x_hit") if False else sum(pk["x_hit"][0] * pk["vol"] for pk in arrived) / vol,
+                                                   sum(pk["x_hit"][1] * pk["vol"] for pk in arrived) / vol]),
+                       U_perp=wsum("U_perp"), u_h=np.array([sum(pk["u_h"][0] * pk["vol"] for pk in arrived) / vol,
+                                                            sum(pk["u_h"][1] * pk["vol"] for pk in arrived) / vol]),
+                       d_hit=wsum("d_hit"), speed=wsum("speed"), r1=wsum("r1"), r2=wsum("r2"), phi=arrived[-1]["phi"],
+                       coherent=all(pk["coherent"] for pk in arrived))
+        st.Q_hit = hit["Q"] if hit else 0.0
+        return dict(t=st.t, V=st.V, Q=st.Q, Q_feed=st.Q_feed, Q_hit=st.Q_hit, V_lip=st.V_lip, V_jet=st.V_jet, V_cup=st.V_cup,
+                    Q_ss=W["Q_ss"], h_max=W["h_max"], h_bar=W["h_bar"], c=c, width=W["width"],
                     flowing=st.flowing, overflow=overflow, tilt=pose.tilt, tip=np.asarray(pose.tip, float),
-                    jet=J, acc=np.asarray(st.acc, float), slope=np.asarray(st.slope, float), n=self.n.copy(),
+                    jet=J, hit=hit, acc=np.asarray(st.acc, float), slope=np.asarray(st.slope, float), n=self.n.copy(),
                     g_eff=self.g_eff, vel=np.asarray(st.vel, float))
 
     def tilt_for_flow(self, pose, Q_want, V=None, lo=0.0, hi=math.radians(150), iters=30):
@@ -479,14 +532,17 @@ class Coupling:
     kappa_Q: float = 125.0
     max_jet_angle: float = math.radians(60.0)
     axes: tuple = (0, 1)            # world (x, y) -> cup (x, y)
+    footprint: str = "physical"     # "physical": exit-sheet ellipse with capillary rounding; "v05": continuity ellipse
+    use_arrivals: bool = True       # feed the solver with what arrives this frame (flight delay), not what leaves
 
     def inlet(self, rec, scan_speed=0.0):
-        J = rec["jet"]
-        if J is None or rec["Q"] <= 0:
+        J = rec.get("hit") if self.use_arrivals else rec.get("jet")
+        Q = (J["Q"] if self.use_arrivals else rec["Q"]) if J else 0.0
+        if J is None or Q <= 0:
             return Inlet(active=False)
         x = J["x_hit"][self.axes[0]] / self.D_L
         y = J["x_hit"][self.axes[1]] / self.D_L
-        S = self.c_S * rec["Q"]
+        S = self.c_S * Q
         U = self.c_U * J["U_perp"]
         ux, uy = self.c_u * J["u_h"][self.axes[0]], self.c_u * J["u_h"][self.axes[1]]
         vt = math.hypot(ux, uy)
@@ -495,13 +551,19 @@ class Coupling:
             ux, uy, vt = ux * sc, uy * sc, vt * sc
         Q_rec = S / self.kappa_Q
         speed = math.hypot(U, vt)
-        aspect = speed / U
-        r = math.sqrt(Q_rec / (math.pi * U))
-        r1, r2 = r * math.sqrt(aspect), r / math.sqrt(aspect)
-        d = 2 * math.sqrt(Q_rec / speed / math.pi)
+        if self.footprint == "physical" and "r1" in J:
+            r1, r2 = J["r1"] / self.D_L, J["r2"] / self.D_L
+            phi = J["phi"]
+            d = 2 * math.sqrt(r1 * r2)
+        else:
+            aspect = speed / U
+            r = math.sqrt(Q_rec / (math.pi * U))
+            r1, r2 = r * math.sqrt(aspect), r / math.sqrt(aspect)
+            d = 2 * math.sqrt(Q_rec / speed / math.pi)
+            phi = math.atan2(uy, ux)
         return Inlet(active=True, x_hit=(float(x), float(y)), S_eff=float(S), u_in=(float(ux), float(uy)),
                      U_perp=float(U), d_jet=float(d), r1=float(r1), r2=float(r2),
-                     phi=float(math.atan2(uy, ux)), scan_speed=float(scan_speed))
+                     phi=float(phi), scan_speed=float(scan_speed))
 
 
 # physics for the physical-velocity inlet: same model, B_dep rescaled so that chi ~ 0.85 at the low pour
@@ -754,5 +816,7 @@ def records_table(records):
     out["slope_x"] = np.array([r["slope"][0] if "slope" in r else 0.0 for r in records])
     out["g_eff"] = np.array([r.get("g_eff", G) for r in records])
     out["lift"] = np.array([r.get("lift", 0.0) for r in records])
+    for k in ("Q_feed", "Q_hit", "V_lip", "V_jet", "V_cup"):
+        out[k] = np.array([r.get(k, 0.0) for r in records])
     out["label"] = [r.get("label", "") for r in records]
     return out
