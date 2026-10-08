@@ -433,14 +433,14 @@ const MOVES_LAYERED=[ {dur:3.2,p0:[0,.08],p1:[0,.14],z0:.015,z1:.015,Q0:6e-6,Q1:
   {dur:.3,p0:[0,.14],p1:[0,.14],z0:.015,z1:.07,Q0:5e-6,Q1:4e-6,name:'抬壶'},
   {dur:1.0,p0:[0,.14],p1:[0,-.32],z0:.07,z1:.07,Q0:4e-6,Q1:1e-6,name:'高位切过 4→1 mL/s'},
   {dur:.5,p0:[0,-.32],p1:[0,-.32],z0:.07,z1:.09,Q0:0,Q1:0,name:'停'},
-  {dur:.8,p0:[0,-.32],p1:[0,-.9],z0:.09,z1:.12,Q0:0,Q1:0,name:'移开'} ];
+  {dur:1.0,p0:[0,-.32],p1:[0,-1.8],z0:.09,z1:.14,Q0:0,Q1:0,name:'移开'} ];
 let MOVES=null;
 const MOVES_HEART=[ {dur:4.0,p0:[0,.20],p1:[0,.16],z0:.015,z1:.015,Q0:15e-6,Q1:15e-6,name:'低位圆盘 15 mL/s'},
   {dur:1.6,p0:[0,.16],p1:[0,0],z0:.015,z1:.02,Q0:9e-6,Q1:9e-6,name:'回到中心 9 mL/s'},
   {dur:.35,p0:[0,0],p1:[0,0],z0:.02,z1:.07,Q0:5e-6,Q1:4e-6,name:'抬壶'},
   {dur:.8,p0:[0,0],p1:[0,-.27],z0:.07,z1:.07,Q0:4e-6,Q1:1e-6,name:'高位切过 4→1 mL/s'},
   {dur:.5,p0:[0,-.27],p1:[0,-.27],z0:.07,z1:.09,Q0:0,Q1:0,name:'停'},
-  {dur:.8,p0:[0,-.27],p1:[0,-.9],z0:.09,z1:.12,Q0:0,Q1:0,name:'移开'} ];
+  {dur:1.0,p0:[0,-.27],p1:[0,-1.8],z0:.09,z1:.14,Q0:0,Q1:0,name:'移开'} ];
 function intent(t){ let acc=0; for(const m of MOVES){ if(t<acc+m.dur){ const f=(t-acc)/m.dur, e=.5-.5*Math.cos(PI*f);
   let amp=(m.wob||0)+((m.wob1===undefined?m.wob||0:m.wob1)-(m.wob||0))*f; amp*=Math.min(1,(t-acc)/0.25,(acc+m.dur-t)/0.25);
   const wob=m.wf?amp*Math.sin(2*PI*m.wf*(t-acc)):0; let x,y;

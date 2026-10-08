@@ -617,6 +617,8 @@ class Barista:
         rec["label"] = name
         rec["lift"] = self.lift
         rec["inlet"] = self.cp.inlet(rec, scan_speed=scan)
+        if rec["inlet"].active and math.hypot(*rec["inlet"].x_hit) > 0.47:   # stream outside the cup (e.g. moving away)
+            rec["inlet"] = Inlet(active=False)
         return rec, name
 
 
@@ -629,7 +631,7 @@ def heart_moves():
         Move(0.35, (0.0, 0.00), (0.0, 0.00), z0=0.02, z1=0.07, Q0=5e-6, Q1=4e-6, name="lift"),
         Move(0.8, (0.0, 0.00), (0.0, -0.27), z0=0.07, Q0=4e-6, Q1=1e-6, name="cut through, high"),
         Move(0.5, (0.0, -0.27), (0.0, -0.27), z0=0.07, z1=0.09, Q0=0.0, name="stop"),
-        Move(0.8, (0.0, -0.27), (0.0, -0.9), z0=0.09, z1=0.12, Q0=0.0, name="move away"),
+        Move(1.0, (0.0, -0.27), (0.0, -1.8), z0=0.09, z1=0.14, Q0=0.0, name="move away"),
     ]
 
 
@@ -645,7 +647,7 @@ def layered_heart_moves(axis="x", amp=1.0, freq=2.5):
         Move(0.3, (0.0, 0.14), (0.0, 0.14), z0=0.015, z1=0.07, Q0=5e-6, Q1=4e-6, name="lift"),
         Move(1.0, (0.0, 0.14), (0.0, -0.32), z0=0.07, Q0=4e-6, Q1=1e-6, name="cut through, high"),
         Move(0.5, (0.0, -0.32), (0.0, -0.32), z0=0.07, z1=0.09, Q0=0.0, name="stop"),
-        Move(0.8, (0.0, -0.32), (0.0, -0.9), z0=0.09, z1=0.12, Q0=0.0, name="move away"),
+        Move(1.0, (0.0, -0.32), (0.0, -1.8), z0=0.09, z1=0.14, Q0=0.0, name="move away"),
     ]
 
 
@@ -660,6 +662,11 @@ def height_from_radius(r):
     import numpy as _np
     rs = _np.log([a for a, _ in _R_Z][::-1]); zs = [b for _, b in _R_Z][::-1]
     return float(_np.interp(math.log(max(r, 1e-4)), rs, zs))
+
+
+def away_point(p, dist=1.8):
+    """Point `dist` cup diameters from the cup centre, away along the barista's side (-y), keeping x."""
+    return (p[0], -math.sqrt(max(dist * dist - p[0] * p[0], 0.0)))
 
 
 def v05_moves(name):
@@ -681,8 +688,7 @@ def v05_moves(name):
                           wfreq=p.get("frequency", 0.0), bezier=bez,
                           name=f"{label} {Q0*1e6:.0f}->{Q1*1e6:.0f} mL/s, h {z0*100:.1f}->{z1*100:.1f} cm"))
     last = moves[-1]
-    away = (last.p1[0], last.p1[1] - 0.6) if abs(last.p1[1]) < 0.6 else (last.p1[0], last.p1[1] * 1.8)
-    moves.append(Move(0.8, last.p1, away, z0=max(last.z1, 0.09), z1=0.12, Q0=0.0, name="move away"))
+    moves.append(Move(1.0, last.p1, away_point(last.p1), z0=max(last.z1, 0.09), z1=0.14, Q0=0.0, name="move away"))
     return moves
 
 
