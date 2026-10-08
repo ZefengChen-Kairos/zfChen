@@ -96,7 +96,8 @@ def run(pattern, N=256, out=None, params=None, snap_dt=1.0 / 24.0, video=True, q
     L = sol.ledger(); ke, pe = sol.energy()
     metrics = dict(pattern=pattern, control=control, N=N, T=T, elapsed_s=elapsed, params=pdict, numerics=vars(num), backend=backend,
                    stats=sol.stats, ledger=L, kinetic_energy=ke, pressure_energy=pe,
-                   white_area_c_gt_0p4=float(np.nansum(c > 0.4) * sol.g.area), events=events, script_kw=script_kw or {})
+                   white_area_c_gt_0p4=float(np.nansum(c > 0.4) * sol.g.area), events=events,
+                   script_kw={k: (v if isinstance(v, (int, float, str, bool, type(None))) else repr(v)) for k, v in (script_kw or {}).items()})
     with open(os.path.join(out, "metrics.json"), "w") as f:
         json.dump(metrics, f, indent=1, ensure_ascii=False)
     if video:
