@@ -620,12 +620,13 @@ class Barista:
 
     def __init__(self, pitcher, moves, coupling, yaw=-math.pi / 2, gain=math.radians(0.8) / 1e-6,
                  gain_i=math.radians(1.5) / 1e-6, max_rate=math.radians(60.0), swing_rate=math.radians(60.0),
-                 tail=1.0, cup=None, tilt0=math.radians(40.0)):
+                 tail=1.0, cup=None, tilt0=math.radians(40.0), hold_rate=math.radians(4.0)):
         self.pitcher, self.moves, self.cp = pitcher, moves, coupling
         self.cup = Cup() if cup is None else cup           # None-safe: pass cup=False to disable the collision lift
         self.lift = 0.0
         self.tilt0 = tilt0                                 # the barista arrives already tilted, just below the flow onset
         self.yaw, self.gain, self.gain_i, self.max_rate, self.swing_rate = yaw, gain, gain_i, max_rate, swing_rate
+        self.hold_rate = hold_rate      # slow tilt-back once the stream has stopped (stays just below the onset head)
         self.T = sum(m.dur for m in moves) + tail
         self.tilt = tilt0
         self.ierr = 0.0                 # integrated flow error [m^3]
@@ -673,10 +674,12 @@ class Barista:
         st = self.pitcher.state
         self.Q_seen += (st.Q - self.Q_seen) * (1.0 - math.exp(-dt / self.tau_see))
         if Q_want <= 0:
-            rate = -self.swing_rate                      # stop: swing back up
+            # stop: swing back only until the head is off the lip, then hold just below it (a barista does not
+            # straighten the pitcher between two petals; the next phase must restart the stream in ~0.1 s)
+            rate = -self.swing_rate if st.flowing else -self.hold_rate
             self.ierr = 0.0
-        elif not st.flowing and st.Q <= 0:
-            rate = self.swing_rate                       # milk not at the lip yet: tilt until it is
+        elif not st.flowing:
+            rate = self.swing_rate                       # milk not at the lip (or just left it): tilt until it is
         else:
             err = Q_want - self.Q_seen
             self.ierr = max(-2e-6, min(2e-6, self.ierr + err * dt))
