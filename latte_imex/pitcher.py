@@ -774,7 +774,16 @@ def moves_to_json(moves):
             for m in moves]
 
 
-MOVES = dict(heart=heart_moves, layered_heart=layered_heart_moves,
+def v05_moves_low(name, z_low=0.015):
+    """Same as v05_moves but every pouring move below 5 cm is put at z_low (tests the height map's effect)."""
+    mv = v05_moves(name)
+    for m in mv:
+        if m.Q0 > 0 and m.z0 < 0.05:
+            m.z0 = z_low; m.z1 = min(m.z1, z_low) if m.z1 < 0.05 else m.z1
+    return mv
+
+
+MOVES = dict(heart=heart_moves, layered_heart=layered_heart_moves, tulip_low=lambda: v05_moves_low("tulip"),
              v05_heart=lambda: v05_moves("heart"), push_heart=lambda: v05_moves("push_heart"),
              v05_layered_heart=lambda: v05_moves("layered_heart"), tulip=lambda: v05_moves("tulip"),
              leaf=lambda: v05_moves("leaf"), swan=lambda: v05_moves("swan"),
