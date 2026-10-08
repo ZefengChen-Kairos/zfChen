@@ -65,7 +65,7 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
   <div class="stage" id="stage">
     <canvas id="gl"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="hint">拖动 = 移动壶嘴 · 滚轮 = 升降 · 右键拖 = 转视角 · 双击杯子 = 杯面 2D 图 · 壶碰到杯子会自动抬高<br><kbd>空格</kbd> 按住倒奶 · <kbd>W</kbd>/<kbd>S</kbd> 手动倾角</div>
+    <div class="hint">拖动 = 移动壶嘴 · 滚轮 = 升降 · 右键拖或右侧滑块 = 转视角 · Shift+滚轮 = 远近 · 双击杯子 = 杯面 2D 图<br><kbd>空格</kbd> 按住倒奶 · <kbd>W</kbd>/<kbd>S</kbd> 手动倾角</div>
     <div class="overlay" id="overlay" hidden>
       <canvas id="top2d" width="768" height="768"></canvas>
       <div class="bar"><span id="top2dinfo"></span><button id="closeTop">关闭（或再次双击）</button></div>
@@ -85,6 +85,18 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
       </div>
       <div class="row" style="margin-top:8px"><label for="pitchersel">壶形</label><select id="pitchersel"><option value="nx" selected>你的 NX 壶（STEP）</option><option value="param">参数化壶</option></select><span class="val" id="pitcherv">—</span></div>
       <div class="row" style="margin-top:8px"><label for="grid">求解网格</label><select id="grid"><option value="64">64²（快）</option><option value="96" selected>96²</option><option value="128">128²（慢）</option></select><span class="val" id="speedv">—</span></div>
+    </div>
+    <div>
+      <h2>视角</h2>
+      <div class="btns">
+        <button class="view" data-az="75" data-el="22">侧视</button>
+        <button class="view" data-az="180" data-el="30">咖啡师视角</button>
+        <button class="view" data-az="0" data-el="30">对面</button>
+        <button class="view" data-az="75" data-el="80">俯视</button>
+      </div>
+      <div class="row"><label for="camaz">环绕</label><input type="range" id="camaz" min="-180" max="180" step="1" value="75"><span class="val" id="camazv">75°</span></div>
+      <div class="row"><label for="camel">俯仰</label><input type="range" id="camel" min="5" max="85" step="1" value="22"><span class="val" id="camelv">22°</span></div>
+      <div class="row"><label for="camd">距离</label><input type="range" id="camd" min="0.2" max="0.8" step="0.01" value="0.42"><span class="val" id="camdv">42 cm</span></div>
     </div>
     <div>
       <h2>姿态</h2>
@@ -260,8 +272,9 @@ const renderer=new THREE.WebGLRenderer({canvas, antialias:true}); renderer.local
 const scene=new THREE.Scene();
 const camera=new THREE.PerspectiveCamera(38,1,0.01,5);
 const toT=(x,y,z)=>new THREE.Vector3(x,z,-y);
-scene.add(new THREE.HemisphereLight(0xffffff,0x6a5a4a,0.9));
-const sun=new THREE.DirectionalLight(0xffffff,0.7); sun.position.set(0.3,0.6,0.4); scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xffffff,0x6a5a4a,1.0));
+const sun=new THREE.DirectionalLight(0xffffff,0.8); sun.position.set(0.3,0.6,0.4); scene.add(sun);
+const fill=new THREE.DirectionalLight(0xffffff,0.35); fill.position.set(-0.4,0.3,-0.3); scene.add(fill);
 const dark=matchMedia('(prefers-color-scheme: dark)');
 function themeDark(){ const t=document.documentElement.getAttribute('data-theme'); return t?t==='dark':dark.matches; }
 function applyTheme(){ renderer.setClearColor(themeDark()?0x1d232b:0xffffff); }
@@ -312,7 +325,7 @@ function paintField(){ if(!solver) return; const N=solN; solver.concentration(cF
 newSolver(96);
 // pitcher mesh from the (z, phi) grid: outer wall, inner (liquid) wall, bottom, rim band.  three local coords = (x, z, -y) of the body frame
 const pitcherGroup=new THREE.Group(); scene.add(pitcherGroup);
-const steel=new THREE.MeshStandardMaterial({color:0xcfd4da,metalness:0.85,roughness:0.35,side:THREE.DoubleSide});
+const steel=new THREE.MeshPhongMaterial({color:0xd9dde3,specular:0x9aa3ad,shininess:60,side:THREE.DoubleSide});
 const milkMat=new THREE.MeshLambertMaterial({color:0xf4efe6,side:THREE.DoubleSide,clippingPlanes:[new THREE.Plane(new THREE.Vector3(0,-1,0),0)]});
 let meshes=[];
 function surfaceFromGrid(rfun, zTop, scale){ const nz=48, nphi=72, pos=[], idx=[];
@@ -348,10 +361,15 @@ function buildJet(J){ if(jetMesh){scene.remove(jetMesh); jetMesh.geometry.dispos
 const marker=new THREE.Mesh(new THREE.RingGeometry(0.003,0.0045,32), new THREE.MeshBasicMaterial({color:0x2f6aa5,side:THREE.DoubleSide})); marker.rotation.x=-PI/2; marker.position.y=0.0005; scene.add(marker);
 
 /* ---------------------------------------------------------------- camera orbit */
-const cam={az:rad(35), el:rad(28), dist:0.42, target:new THREE.Vector3(0,0.03,0)};
+const cam={az:rad(75), el:rad(22), dist:0.42, target:new THREE.Vector3(0,0.035,0)};
 function placeCam(){ camera.position.set(cam.target.x+cam.dist*Math.cos(cam.el)*Math.sin(cam.az), cam.target.y+cam.dist*Math.sin(cam.el), cam.target.z+cam.dist*Math.cos(cam.el)*Math.cos(cam.az)); camera.lookAt(cam.target); }
 function resize(){ const w=stage.clientWidth, h=Math.max(300,Math.min(560,Math.round(w*0.62))); stage.style.height=h+'px'; renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); }
 addEventListener('resize',resize); resize(); placeCam();
+function syncCamUI(){ document.getElementById('camaz').value=Math.round(deg(cam.az)); out('camazv').textContent=Math.round(deg(cam.az))+'°'; document.getElementById('camel').value=Math.round(deg(cam.el)); out('camelv').textContent=Math.round(deg(cam.el))+'°'; document.getElementById('camd').value=cam.dist.toFixed(2); out('camdv').textContent=Math.round(cam.dist*100)+' cm'; }
+for(const b of document.querySelectorAll('button.view')) b.addEventListener('click',()=>{ cam.az=rad(+b.dataset.az); cam.el=rad(+b.dataset.el); placeCam(); syncCamUI(); });
+document.getElementById('camaz').addEventListener('input',ev=>{ cam.az=rad(+ev.target.value); placeCam(); syncCamUI(); });
+document.getElementById('camel').addEventListener('input',ev=>{ cam.el=rad(+ev.target.value); placeCam(); syncCamUI(); });
+document.getElementById('camd').addEventListener('input',ev=>{ cam.dist=+ev.target.value; placeCam(); syncCamUI(); });
 
 /* ---------------------------------------------------------------- interaction */
 const pose={tip:[0, 0.016, 0.03], yaw:rad(-90), tilt:0};
@@ -364,11 +382,12 @@ function pickPlane(ev){ const r=canvas.getBoundingClientRect(); ndc.set((ev.clie
 let drag=null;
 canvas.addEventListener('pointerdown',ev=>{ canvas.setPointerCapture(ev.pointerId); if(ev.button===2||ev.ctrlKey){ drag={mode:'orbit',x:ev.clientX,y:ev.clientY}; return; }
   const p=pickPlane(ev); if(p){ drag={mode:'move',ox:p.x-pose.tip[0], oy:-p.z-pose.tip[1]}; auto=null; } });
-canvas.addEventListener('pointermove',ev=>{ if(!drag) return; if(drag.mode==='orbit'){ cam.az-=(ev.clientX-drag.x)*0.01; cam.el=Math.min(rad(80),Math.max(rad(5),cam.el+(ev.clientY-drag.y)*0.01)); drag.x=ev.clientX; drag.y=ev.clientY; placeCam(); return; }
+canvas.addEventListener('pointermove',ev=>{ if(!drag) return; if(drag.mode==='orbit'){ cam.az-=(ev.clientX-drag.x)*0.01; cam.el=Math.min(rad(80),Math.max(rad(5),cam.el+(ev.clientY-drag.y)*0.01)); drag.x=ev.clientX; drag.y=ev.clientY; placeCam(); syncCamUI(); return; }
   const p=pickPlane(ev); if(!p) return; pose.tip[0]=Math.max(-0.1,Math.min(0.1,p.x-drag.ox)); pose.tip[1]=Math.max(-0.1,Math.min(0.1,-p.z-drag.oy)); });
 canvas.addEventListener('pointerup',()=>{drag=null;}); canvas.addEventListener('pointercancel',()=>{drag=null;});
 canvas.addEventListener('contextmenu',ev=>ev.preventDefault());
-canvas.addEventListener('wheel',ev=>{ ev.preventDefault(); const z=Math.max(0.005,Math.min(0.15,pose.tip[2]-ev.deltaY*0.0001)); pose.tip[2]=z; ui.height.value=(z*100).toFixed(1); auto=null; },{passive:false});
+canvas.addEventListener('wheel',ev=>{ ev.preventDefault(); if(ev.shiftKey||ev.ctrlKey){ cam.dist=Math.max(0.2,Math.min(0.8,cam.dist+ev.deltaY*0.0005)); placeCam(); syncCamUI(); return; }
+  const z=Math.max(0.005,Math.min(0.15,pose.tip[2]-ev.deltaY*0.0001)); pose.tip[2]=z; ui.height.value=(z*100).toFixed(1); auto=null; },{passive:false});
 const pourBtn=document.getElementById('pour');
 function setPour(on){ pouring=on; pourBtn.classList.toggle('active',on); if(on){auto=null; manualTilt=null;} }
 pourBtn.addEventListener('pointerdown',ev=>{ev.preventDefault(); pourBtn.setPointerCapture(ev.pointerId); setPour(true);});
