@@ -79,8 +79,8 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
         <button class="pour" id="pour">按住倒奶（倾斜手腕）</button>
         <button id="refill">重新装奶 200 mL</button>
         <button id="clear">擦掉杯面</button>
-        <button class="primary" id="auto">回放心形脚本</button>
-        <button class="primary" id="auto2">回放千层心（抖壶）</button>
+        <select id="scriptsel"><option value="heart">大白心</option><option value="push_heart">推推乐</option><option value="layered_heart">千层心</option><option value="tulip">压纹郁金香</option><option value="leaf">树叶</option><option value="swan">天鹅</option></select>
+        <button class="primary" id="auto">回放脚本</button>
         <button id="show2d">杯面 2D 图</button>
       </div>
       <div class="row" style="margin-top:8px"><label for="pitchersel">壶形</label><select id="pitchersel"><option value="nx" selected>你的 NX 壶（STEP）</option><option value="param">参数化壶</option></select><span class="val" id="pitcherv">—</span></div>
@@ -424,14 +424,18 @@ const MOVES_HEART=[ {dur:4.0,p0:[0,.20],p1:[0,.16],z0:.015,z1:.015,Q0:15e-6,Q1:1
   {dur:.8,p0:[0,-.27],p1:[0,-.9],z0:.09,z1:.12,Q0:0,Q1:0,name:'移开'} ];
 function intent(t){ let acc=0; for(const m of MOVES){ if(t<acc+m.dur){ const f=(t-acc)/m.dur, e=.5-.5*Math.cos(PI*f);
   let amp=(m.wob||0)+((m.wob1===undefined?m.wob||0:m.wob1)-(m.wob||0))*f; amp*=Math.min(1,(t-acc)/0.25,(acc+m.dur-t)/0.25);
-  const wob=m.wf?amp*Math.sin(2*PI*m.wf*(t-acc)):0;
-  return {x:m.p0[0]+(m.p1[0]-m.p0[0])*e+wob, y:m.p0[1]+(m.p1[1]-m.p0[1])*e, z:m.z0+(m.z1-m.z0)*e, Q:m.Q0+(m.Q1-m.Q0)*f, name:m.name}; } acc+=m.dur; }
+  const wob=m.wf?amp*Math.sin(2*PI*m.wf*(t-acc)):0; let x,y;
+  if(m.bez){ const [[ax,ay],[bx,by]]=m.bez; const u=1-e; x=u*u*u*m.p0[0]+3*u*u*e*ax+3*u*e*e*bx+e*e*e*m.p1[0]; y=u*u*u*m.p0[1]+3*u*u*e*ay+3*u*e*e*by+e*e*e*m.p1[1]; }
+  else { x=m.p0[0]+(m.p1[0]-m.p0[0])*e; y=m.p0[1]+(m.p1[1]-m.p0[1])*e; }
+  if(m.axis==='y') y+=wob; else x+=wob;
+  return {x, y, z:m.z0+(m.z1-m.z0)*e, Q:m.Q0+(m.Q1-m.Q0)*f, name:m.name}; } acc+=m.dur; }
   const last=MOVES[MOVES.length-1]; return {x:last.p1[0],y:last.p1[1],z:last.z1,Q:0,name:'结束'}; }
 function startScript(moves){ MOVES=moves; st.V=(geom&&geom.name!=='参数化壶')?250e-6:200e-6; ui.fill.value=Math.round(st.V*1e6); out('fillv').textContent=ui.fill.value+' mL'; st.Q=0; st.flowing=false; solver.reset(); hits.length=0; pose.yaw=rad(-90); ui.yaw.value=-90; pose.tilt=rad(40); manualTilt=null; pouring=false;
   resetKin(); auto={t:0, ierr:0, off:[0,0], Qseen:0}; }
 function resetKin(){ kin.tipPrev=null; kin.vel=[0,0,0]; kin.acc=[0,0,0]; kin.slope=[0,0]; kin.slopeRate=[0,0]; NRM=[0,0,1]; GEFF=G; }
-document.getElementById('auto').addEventListener('click',()=>startScript(MOVES_HEART));
-document.getElementById('auto2').addEventListener('click',()=>startScript(MOVES_LAYERED));
+let SCRIPTS={heart:{moves:MOVES_HEART}, layered_heart:{moves:MOVES_LAYERED}};
+fetch('scripts.json').then(r=>r.json()).then(j=>{ SCRIPTS=j; }).catch(e=>console.warn('scripts.json not available, built-in scripts only', e));
+document.getElementById('auto').addEventListener('click',()=>{ const k=document.getElementById('scriptsel').value; const sc=SCRIPTS[k]||SCRIPTS.heart; startScript(sc.moves); });
 
 /* ---------------------------------------------------------------- strip chart */
 const strip=document.getElementById('strip'), sctx=strip.getContext('2d'); const hist2=[];

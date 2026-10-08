@@ -525,6 +525,7 @@ class Move:
     wfreq: float = 0.0
     wobble1: float = None   # wobble amplitude at the end of the move (linear ramp)
     wobble_axis: str = "x"  # "x": lateral (across the spout direction), "y": fore-aft (along the spout direction)
+    bezier: tuple = None    # optional cubic Bezier control points ((c1x, c1y), (c2x, c2y)) between p0 and p1
     name: str = ""
 
     def __post_init__(self):
@@ -563,8 +564,15 @@ class Barista:
                 amp = m.wobble + (m.wobble1 - m.wobble) * f
                 amp *= min(1.0, (t - acc) / 0.25, (acc + m.dur - t) / 0.25)   # ease the wiggle in and out (no impulsive start)
                 wob = amp * math.sin(2 * math.pi * m.wfreq * (t - acc))
-                x = m.p0[0] + (m.p1[0] - m.p0[0]) * e + (wob if m.wobble_axis == "x" else 0.0)
-                y = m.p0[1] + (m.p1[1] - m.p0[1]) * e + (wob if m.wobble_axis == "y" else 0.0)
+                if m.bezier is not None:
+                    (ax, ay), (bx, by) = m.bezier
+                    x = (1 - e) ** 3 * m.p0[0] + 3 * (1 - e) ** 2 * e * ax + 3 * (1 - e) * e * e * bx + e ** 3 * m.p1[0]
+                    y = (1 - e) ** 3 * m.p0[1] + 3 * (1 - e) ** 2 * e * ay + 3 * (1 - e) * e * e * by + e ** 3 * m.p1[1]
+                else:
+                    x = m.p0[0] + (m.p1[0] - m.p0[0]) * e
+                    y = m.p0[1] + (m.p1[1] - m.p0[1]) * e
+                x += wob if m.wobble_axis == "x" else 0.0
+                y += wob if m.wobble_axis == "y" else 0.0
                 z = m.z0 + (m.z1 - m.z0) * e
                 Q = m.Q0 + (m.Q1 - m.Q0) * f
                 return (x, y), z, Q, m.name
@@ -641,7 +649,53 @@ def layered_heart_moves(axis="x", amp=1.0, freq=2.5):
     ]
 
 
+# V0.5 effective flow S -> physical flow: S = c_S Q with c_S = 0.05 / 15 mL/s
+S_TO_Q = 15e-6 / 0.05
+# V0.5 footprint radius -> pitcher height above the surface (the radius encodes the pouring height through the
+# continuity rule U_perp = Q/(pi r^2)); log-linear table, cup-diameter units -> metres
+_R_Z = [(0.035, 0.015), (0.022, 0.015), (0.015, 0.02), (0.008, 0.035), (0.004, 0.07), (0.0015, 0.09)]
+
+
+def height_from_radius(r):
+    import numpy as _np
+    rs = _np.log([a for a, _ in _R_Z][::-1]); zs = [b for _, b in _R_Z][::-1]
+    return float(_np.interp(math.log(max(r, 1e-4)), rs, zs))
+
+
+def v05_moves(name):
+    """Barista intent from a V0.5 control file: stream path, height (from the footprint radius), wanted flow
+    (from S), lateral wiggle (amplitude/frequency, with ramps); flow pulsation and jet wiggle are dropped
+    (the pitcher physics has to produce them); zero-flow bridges become Q = 0 moves; a move-away is appended."""
+    from .v05_program import load_control, Program
+    prog = Program(load_control(name))
+    moves = []
+    for p in prog.phases:
+        Q0 = p["Q"] * S_TO_Q; Q1 = p.get("Q_end", p["Q"]) * S_TO_Q
+        z0 = height_from_radius(p["radius"]); z1 = height_from_radius(p.get("radius_end", p["radius"]))
+        if Q0 <= 0 and Q1 <= 0:                      # bridges and stops: hold at least 3 cm, or the previous height
+            z0 = z1 = max(moves[-1].z1 if moves else 0.0, 0.03)
+        bez = tuple(tuple(c) for c in p["bezier_controls"]) if p.get("bezier_controls") else None
+        label = "reposition" if p.get("purpose") else ("wiggle" if p.get("amplitude", 0) > 0 and p.get("frequency", 0) > 0 else ("stop" if Q0 <= 0 else "pour"))
+        moves.append(Move(p["duration"], tuple(p["start"]), tuple(p["end"]), z0=z0, z1=z1, Q0=Q0, Q1=Q1,
+                          wobble=p.get("amplitude", 0.0), wobble1=p.get("amplitude_end", p.get("amplitude", 0.0)),
+                          wfreq=p.get("frequency", 0.0), bezier=bez,
+                          name=f"{label} {Q0*1e6:.0f}->{Q1*1e6:.0f} mL/s, h {z0*100:.1f}->{z1*100:.1f} cm"))
+    last = moves[-1]
+    away = (last.p1[0], last.p1[1] - 0.6) if abs(last.p1[1]) < 0.6 else (last.p1[0], last.p1[1] * 1.8)
+    moves.append(Move(0.8, last.p1, away, z0=max(last.z1, 0.09), z1=0.12, Q0=0.0, name="move away"))
+    return moves
+
+
+def moves_to_json(moves):
+    return [dict(dur=m.dur, p0=list(m.p0), p1=list(m.p1), z0=m.z0, z1=m.z1, Q0=m.Q0, Q1=m.Q1, wob=m.wobble, wob1=m.wobble1,
+                 wf=m.wfreq, axis=m.wobble_axis, bez=([list(m.bezier[0]), list(m.bezier[1])] if m.bezier else None), name=m.name)
+            for m in moves]
+
+
 MOVES = dict(heart=heart_moves, layered_heart=layered_heart_moves,
+             v05_heart=lambda: v05_moves("heart"), push_heart=lambda: v05_moves("push_heart"),
+             v05_layered_heart=lambda: v05_moves("layered_heart"), tulip=lambda: v05_moves("tulip"),
+             leaf=lambda: v05_moves("leaf"), swan=lambda: v05_moves("swan"),
              layered_heart_y=lambda: layered_heart_moves(axis="y"),
              layered_heart_big=lambda: layered_heart_moves(axis="x", amp=2.2, freq=4.0))
 
