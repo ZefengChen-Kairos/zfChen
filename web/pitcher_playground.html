@@ -84,7 +84,7 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
         <button id="show2d">杯面 2D 图</button>
       </div>
       <div class="row" style="margin-top:8px"><label for="pitchersel">壶形</label><select id="pitchersel"><option value="nx" selected>你的 NX 壶（STEP）</option><option value="param">参数化壶</option></select><span class="val" id="pitcherv">—</span></div>
-      <div class="row" style="margin-top:8px"><label for="grid">求解网格</label><select id="grid"><option value="64">64²（快）</option><option value="96" selected>96²</option><option value="128">128²（慢）</option></select><span class="val" id="speedv">—</span></div>
+      <div class="row" style="margin-top:8px"><label for="grid">求解网格</label><select id="grid"><option value="64">64²（快）</option><option value="96" selected>96²（约实时）</option><option value="128">128²（约 1/2 实时）</option><option value="256">256²（约 1/8 实时）</option><option value="512">512²（很慢，约 1/40）</option><option value="768">768²（极慢，仅离线对照）</option></select><span class="val" id="speedv">—</span></div>
     </div>
     <div>
       <h2>视角</h2>
@@ -135,7 +135,7 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
 <div class="chart">
   <div class="legend"><span><i style="background:var(--accent)"></i>流量 Q [mL/s]</span><span><i style="background:var(--coffee)"></i>倾角 [°] ÷ 4</span><span><i style="background:var(--muted)"></i>液面高出壶嘴 h [mm]</span></div>
   <canvas id="strip"></canvas>
-  <p class="note">最近 20 s。曲线很陡是真实的：壶里 200 mL 时 8 到 22 mL/s 只差 2° 倾角，所以流量要靠手腕微调，倒得越久要越倾斜。</p>
+  <p class="note">网格越细越慢：求解器跟不上时模型时钟自动放慢，右侧"求解网格"旁的倍率就是当前模拟速度相对实时的比例；256² 以上建议只用来回放脚本后看 2D 杯面图。最近 20 s。曲线很陡是真实的：壶里 200 mL 时 8 到 22 mL/s 只差 2° 倾角，所以流量要靠手腕微调，倒得越久要越倾斜。</p>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
