@@ -126,6 +126,8 @@ if __name__ == "__main__":
     ap.add_argument("--backend", default="cpu", choices=["cpu", "cuda"])
     ap.add_argument("--pitcher", default="param", help="pitcher geometry for --control pitcher: param | nx | path.json")
     ap.add_argument("--V0", type=float, default=None, help="initial milk volume [mL] for --control pitcher")
+    ap.add_argument("--c_u", type=float, default=None, help="coupling: horizontal velocity scale [D_L/s per m/s] (default 3.33; 12.5 = pure dimensional)")
+    ap.add_argument("--footprint", default=None, choices=["physical", "v05"], help="coupling footprint rule")
     a = ap.parse_args()
     overrides = {}
     for kv in a.param:
@@ -139,5 +141,13 @@ if __name__ == "__main__":
         script_kw["geometry"] = a.pitcher
         if a.V0 is not None:
             script_kw["V0"] = a.V0 * 1e-6
+        if a.c_u is not None or a.footprint is not None:
+            from .pitcher import Coupling
+            ckw = {}
+            if a.c_u is not None:
+                ckw["c_u"] = a.c_u
+            if a.footprint is not None:
+                ckw["footprint"] = a.footprint
+            script_kw["coupling"] = Coupling(**ckw)
     run(a.pattern, N=a.N, out=a.out, params=overrides, video=not a.no_video, T_max=a.T, control=a.control, best=a.best,
         numerics=numerics, backend=a.backend, script_kw=script_kw)
