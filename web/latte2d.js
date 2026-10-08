@@ -11,7 +11,7 @@
   const DEFAULT_PARAMS = { cp: 0.3, beta: 3.0, nu: 1e-3, D: 1e-7, kappa_Q: 125.0, kappa_c: 1.0, kappa_t: 0.7, kappa_r: 0.3,
     B_dep: 2.5, p_dep: 2.0, return_law: 'v05' };
   const DEFAULT_NUM = { cup_radius: 0.49, cfl: 0.5, frame_dt: 1 / 120, max_substeps: 64, cg_tol: 1e-10, cg_maxiter: 500,
-    kernel_quadrature: 3, scan_safety: 0.5, explicit_mixing_limit: 0.05, explicit_visc_limit: 0.2, l_floor: 1e-3 };
+    kernel_quadrature: 3, scan_safety: 0.5, explicit_mixing_limit: 0.05, explicit_visc_limit: 0.2, visc_tol: 1e-8, l_floor: 1e-3 };
 
   class Latte2D {
     constructor(N, params, num) {
@@ -133,21 +133,33 @@
         outy[f] = Math.min(Math.max(v, Math.min(cL, cR)), Math.max(cL, cR));
       }
     }
-    pcgMass(kx, ky, dt, b, diag, x) {
+    pcgMass(kx, ky, dt, b, diag, x) { return this.pcg(kx, ky, null, 1, dt, b, diag, x, this.num.cg_tol); }
+    // PCG for  (aArr|aScal)*phi - bmul*div(k grad phi) = b,  Jacobi preconditioner
+    pcg(kx, ky, aArr, aScal, bmul, b, diag, x, tol) {
       const w = this.w, n = this.N * this.N, r = w.r, p = w.p, Ap = w.Ap, z = w.z;
-      this.applyDiffusion(x, kx, ky, null, 1, dt, Ap);
+      this.applyDiffusion(x, kx, ky, aArr, aScal, bmul, Ap);
       let rz = 0, bn = 0;
       for (let k = 0; k < n; k++) { r[k] = b[k] - Ap[k]; p[k] = r[k] / diag[k]; rz += r[k] * p[k]; bn += b[k] * b[k]; }
       bn = Math.sqrt(bn) + 1e-300; let it = 0;
       for (it = 1; it <= this.num.cg_maxiter; it++) {
-        this.applyDiffusion(p, kx, ky, null, 1, dt, Ap);
+        this.applyDiffusion(p, kx, ky, aArr, aScal, bmul, Ap);
         let pAp = 0; for (let k = 0; k < n; k++) pAp += p[k] * Ap[k];
         const alpha = rz / (pAp + 1e-300); let rr = 0, rzn = 0;
         for (let k = 0; k < n; k++) { x[k] += alpha * p[k]; r[k] -= alpha * Ap[k]; rr += r[k] * r[k]; z[k] = r[k] / diag[k]; rzn += r[k] * z[k]; }
-        if (Math.sqrt(rr) <= this.num.cg_tol * bn) break;
+        if (Math.sqrt(rr) <= tol * bn) break;
         const beta = rzn / rz; for (let k = 0; k < n; k++) p[k] = z[k] + beta * p[k]; rz = rzn;
       }
       return it;
+    }
+    // diag of  a*phi - dt*div(k grad phi)
+    diagOf(aArr, kx, ky, dt, out) {
+      const N = this.N, ih2 = 1 / (this.h * this.h);
+      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+        const k = j * N + i; let v = 0;
+        if (i < N - 1) v += kx[j * (N - 1) + i]; if (i > 0) v += kx[j * (N - 1) + i - 1];
+        if (j < N - 1) v += ky[k]; if (j > 0) v += ky[k - N];
+        out[k] = aArr[k] + dt * ih2 * v;
+      }
     }
 
     // ---------------------------------------------------------------- one sub-step
@@ -231,18 +243,33 @@
       // D: explicit viscosity and mixing (l frozen at l^{n+1}); the implicit branch is not ported (nu dt/h^2 is small here)
       this.faceAvg(w.lnew, w.lfx, w.lfy);
       if (P.nu > 0) {
-        if (P.nu * dt / (h * h) >= this.num.explicit_visc_limit) throw new Error('viscosity needs the implicit branch (nu*dt/h^2 too large)');
         for (let f = 0; f < w.kx.length; f++) { w.kx[f] = P.nu * w.lfx[f]; w.ky[f] = P.nu * w.lfy[f]; }
         for (let k = 0; k < n; k++) { w.ux[k] = w.qxn[k] / w.lnew[k]; w.uy[k] = w.qyn[k] / w.lnew[k]; }
-        this.applyDiffusion(w.ux, w.kx, w.ky, null, 0, -1, w.tmp); for (let k = 0; k < n; k++) if (mask[k]) w.qxn[k] += dt * w.tmp[k];
-        this.applyDiffusion(w.uy, w.kx, w.ky, null, 0, -1, w.tmp); for (let k = 0; k < n; k++) if (mask[k]) w.qyn[k] += dt * w.tmp[k];
+        if (P.nu * dt / (h * h) < this.num.explicit_visc_limit) {
+          this.applyDiffusion(w.ux, w.kx, w.ky, null, 0, -1, w.tmp); for (let k = 0; k < n; k++) if (mask[k]) w.qxn[k] += dt * w.tmp[k];
+          this.applyDiffusion(w.uy, w.kx, w.ky, null, 0, -1, w.tmp); for (let k = 0; k < n; k++) if (mask[k]) w.qyn[k] += dt * w.tmp[k];
+        } else {
+          // implicit: l (u+ - u-)/dt = div(nu l grad u+), l frozen at l^{n+1}; one PCG per component
+          this.diagOf(w.lnew, w.kx, w.ky, dt, w.diag);
+          for (let k = 0; k < n; k++) w.rhs[k] = w.lnew[k] * w.ux[k];
+          this.stats.cg_visc = (this.stats.cg_visc || 0) + this.pcg(w.kx, w.ky, w.lnew, 0, dt, w.rhs, w.diag, w.ux, this.num.visc_tol);
+          for (let k = 0; k < n; k++) w.rhs[k] = w.lnew[k] * w.uy[k];
+          this.stats.cg_visc += this.pcg(w.kx, w.ky, w.lnew, 0, dt, w.rhs, w.diag, w.uy, this.num.visc_tol);
+          for (let k = 0; k < n; k++) { w.qxn[k] = mask[k] ? w.lnew[k] * w.ux[k] : 0; w.qyn[k] = mask[k] ? w.lnew[k] * w.uy[k] : 0; }
+        }
       }
       if (P.D > 0) {
-        if (P.D * dt / (h * h) >= this.num.explicit_mixing_limit) throw new Error('mixing needs the implicit branch');
         for (let f = 0; f < w.kx.length; f++) { w.kx[f] = P.D * w.lfx[f]; w.ky[f] = P.D * w.lfy[f]; }
         for (let k = 0; k < n; k++) w.c[k] = mask[k] ? w.mnew[k] / w.lnew[k] : 0;
-        this.applyDiffusion(w.c, w.kx, w.ky, null, 0, -1, w.tmp);
-        for (let k = 0; k < n; k++) w.mnew[k] = mask[k] ? Math.min(Math.max(w.mnew[k] + dt * w.tmp[k], 0), w.lnew[k]) : 0;
+        if (P.D * dt / (h * h) < this.num.explicit_mixing_limit) {
+          this.applyDiffusion(w.c, w.kx, w.ky, null, 0, -1, w.tmp);
+          for (let k = 0; k < n; k++) w.mnew[k] = mask[k] ? Math.min(Math.max(w.mnew[k] + dt * w.tmp[k], 0), w.lnew[k]) : 0;
+        } else {
+          this.diagOf(w.lnew, w.kx, w.ky, dt, w.diag);
+          for (let k = 0; k < n; k++) w.rhs[k] = w.lnew[k] * w.c[k];
+          this.pcg(w.kx, w.ky, w.lnew, 0, dt, w.rhs, w.diag, w.c, this.num.cg_tol);
+          for (let k = 0; k < n; k++) w.mnew[k] = mask[k] ? w.lnew[k] * Math.min(Math.max(w.c[k], 0), 1) : 0;
+        }
       }
       // accept
       let ok = true, lmin = Infinity, ssum = 0;

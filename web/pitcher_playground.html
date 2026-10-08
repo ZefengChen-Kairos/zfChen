@@ -270,7 +270,7 @@ function stepPitcher(pose, dt){
   if(st.flowing && W.h_max<law.h_off) st.flowing=false;
   let Qfeed=st.flowing?W.Q_ss:0; if(fs.overflow>0) Qfeed+=fs.overflow/dt;
   const feed=Math.min(Qfeed*dt, st.V); st.V-=feed; st.Vlip+=feed; st.Qfeed=feed/dt;
-  const tau=st.Qfeed>=st.Q?law.tau:law.tau_stop; const Qout=st.Vlip/tau; const release=Math.min(st.Vlip, Qout*dt); st.Vlip-=release; st.Q=release/dt; st.t+=dt;
+  const tau=st.Qfeed>0?law.tau:law.tau_stop; const Qout=st.Vlip/tau; const release=Math.min(st.Vlip, Qout*dt); st.Vlip-=release; st.Q=release/dt; st.t+=dt;
   let J=null;
   if(release>0){ J=jet(R,st.Q,W.h_bar,W.origin,law.hk,W.width,W.tangent);
     st.parcels.push({ta0:st.t-dt+J.t_hit, ta1:st.t+J.t_hit, vol:release, x:J.x_hit[0], y:J.x_hit[1], U:J.U_perp, uhx:J.v0[0], uhy:J.v0[1], d:J.d_hit, r1:J.r1, r2:J.r2, phi:J.phi, coh:J.coherent}); st.Vjet+=release; }
@@ -323,15 +323,46 @@ function requiredLift(R, tip){ const ct=Math.cos(CUP.tilt), st=Math.sin(CUP.tilt
   if(ok(0)) return 0; let lo=0, hi=0.15; if(!ok(hi)) return hi; for(let i=0;i<14;i++){ const m=0.5*(lo+hi); if(ok(m)) hi=m; else lo=m; } return hi; }
 // coffee surface = painted canvas texture
 /* 2-D surface-layer solver (latte2d.js): the coffee surface texture is its milk fraction c = m/l */
-let solver=null, solN=96, fieldCanvas=document.createElement('canvas'), fctx=fieldCanvas.getContext('2d'), fieldImg=null, cField=null;
+let solN=96, fieldCanvas=document.createElement('canvas'), fctx=fieldCanvas.getContext('2d'), fieldImg=null, cField=null;
 const paint=document.createElement('canvas'); paint.width=paint.height=512; const pctx=paint.getContext('2d');
 const tex=new THREE.CanvasTexture(paint); tex.anisotropy=4;
 const coffee=new THREE.Mesh(new THREE.CircleGeometry(CUP_R-0.001,64), new THREE.MeshLambertMaterial({map:tex}));
 coffee.rotation.x=-PI/2; coffee.position.y=0; scene.add(coffee);
 const hits=[];   // recent hit points for the 2-D view
-function newSolver(N){ solN=N; solver=new Latte2D.Latte2D(N, {}, {cg_tol:1e-8}); fieldCanvas.width=fieldCanvas.height=N; fieldImg=fctx.createImageData(N,N); cField=new Float32Array(N*N); hits.length=0; paintField(); }
+/* The solver runs in a Web Worker (the main thread only does the pitcher and the drawing).  `solver` is a proxy:
+   t, deposited, area mirror the worker state; control frames are queued and sent in batches; when the worker falls
+   behind, the queue fills and the model clock stops advancing until it catches up (backpressure). */
+const solver={t:0, deposited:0, area:1/(96*96), N:96, queue:[], inflight:false, worker:null, local:null, modelSec:0, wallT0:0, speed:0};
+function makeWorker(){
+  try{
+    const src=`importScripts(${JSON.stringify(new URL('latte2d.js', location.href).href)});
+let sol=null; const {Latte2D}=self.Latte2D;
+function post(id){ const c=sol.concentration(); self.postMessage({type:'state', id, t:sol.t, deposited:sol.deposited, area:sol.area, N:sol.N, c}, [c.buffer]); }
+self.onmessage=e=>{ const m=e.data;
+  if(m.type==='init'){ sol=new Latte2D(m.N, m.params||{}, m.num||{cg_tol:1e-8}); post(m.id); }
+  else if(m.type==='reset'){ sol.reset(); post(m.id); }
+  else if(m.type==='frames'){ for(const f of m.frames){ try{ sol.advanceFrame(f.inlet, f.dt); }catch(err){ sol.reset(); } } post(m.id); } };`;
+    const w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+    w.onmessage=e=>{ const m=e.data; if(m.type!=='state') return; solver.inflight=false; solver.t=m.t; solver.deposited=m.deposited; solver.area=m.area;
+      if(m.N===solN){ cField=m.c; paintField(); if(!overlay.hidden) drawTop(); } pump(); };
+    w.onerror=err=>{ console.warn('worker failed, falling back to the main thread', err.message); solver.worker=null; solver.local=new Latte2D.Latte2D(solN,{}, {cg_tol:1e-8}); };
+    return w;
+  }catch(e){ console.warn('no worker:', e.message); return null; }
+}
+function pump(){ if(solver.inflight||solver.queue.length===0) return;
+  const frames=solver.queue.splice(0, solver.queue.length);
+  if(solver.worker){ solver.inflight=true; solver.worker.postMessage({type:'frames', frames}); }
+  else if(solver.local){ for(const f of frames){ try{ solver.local.advanceFrame(f.inlet,f.dt); }catch(err){ solver.local.reset(); } } solver.t=solver.local.t; solver.deposited=solver.local.deposited; solver.area=solver.local.area; solver.local.concentration(cField); paintField(); if(!overlay.hidden) drawTop(); } }
+function solverPush(inlet, dt){ solver.queue.push({inlet, dt}); solver.modelSec+=dt; pump(); }
+function solverBusy(){ return solver.queue.length>=4 || (solver.inflight && solver.queue.length>=2); }
+function solverReset(){ solver.queue.length=0; solver.t=0; solver.deposited=0; if(solver.worker){ solver.inflight=true; solver.worker.postMessage({type:'reset'}); } else if(solver.local){ solver.local.reset(); solver.local.concentration(cField); paintField(); } }
+function newSolver(N){ solN=N; solver.N=N; solver.area=1/(N*N); fieldCanvas.width=fieldCanvas.height=N; fieldImg=fctx.createImageData(N,N); cField=new Float32Array(N*N).fill(NaN); hits.length=0;
+  solver.queue.length=0; solver.t=0; solver.deposited=0;
+  if(!solver.worker && !solver.local) solver.worker=makeWorker();
+  if(solver.worker){ solver.inflight=true; solver.worker.postMessage({type:'init', N, num:{cg_tol:1e-8}}); } else { solver.local=new Latte2D.Latte2D(N,{}, {cg_tol:1e-8}); solver.local.concentration(cField); }
+  paintField(); }
 // brown -> white as render.py: v = clip(c/0.8)^0.8
-function paintField(){ if(!solver) return; const N=solN; solver.concentration(cField); const d=fieldImg.data;
+function paintField(){ if(!cField) return; const N=solN; const d=fieldImg.data;
   for(let j=0;j<N;j++) for(let i=0;i<N;i++){ const c=cField[j*N+i]; const o=4*((N-1-j)*N+i); // image row 0 = top = +y
     if(!(c===c)){ d[o]=0x5a; d[o+1]=0x3a; d[o+2]=0x1e; d[o+3]=255; continue; }
     const v=Math.pow(Math.min(Math.max(c/0.8,0),1),0.8);
@@ -421,7 +452,7 @@ ui.cd.addEventListener('input',()=>{ law.Cd=+ui.cd.value; out('cdv').textContent
 document.getElementById('cuptilt').addEventListener('input',ev=>{ CUP.tilt=rad(+ev.target.value); out('cuptiltv').textContent=ev.target.value+'°'; placeCup(pose.yaw); });
 function resetLedger(V){ st.V=V; st.Q=0; st.flowing=false; st.Vlip=0; st.Vjet=0; st.Vcup=0; st.Qfeed=0; st.Qhit=0; st.parcels=[]; }
 document.getElementById('refill').addEventListener('click',()=>{ resetLedger(+ui.fill.value*1e-6); });
-document.getElementById('clear').addEventListener('click',()=>{ solver.reset(); hits.length=0; paintField(); });
+document.getElementById('clear').addEventListener('click',()=>{ solverReset(); hits.length=0; });
 document.getElementById('grid').addEventListener('change',ev=>{ newSolver(+ev.target.value); });
 let nxGrid=null;
 function usePitcher(which){ const g=(which==='nx'&&nxGrid)?nxGrid:parametricGrid(); buildGeometry(g); buildMeshes(); resetLedger(st.V+st.Vlip+st.Vjet); resetKin();
@@ -468,7 +499,7 @@ function intent(t){ let acc=0; for(const m of MOVES){ if(t<acc+m.dur){ const f=(
   if(m.axis==='y') y+=wob; else x+=wob;
   return {x, y, z:m.z0+(m.z1-m.z0)*e, Q:m.Q0+(m.Q1-m.Q0)*f, name:m.name}; } acc+=m.dur; }
   const last=MOVES[MOVES.length-1]; return {x:last.p1[0],y:last.p1[1],z:last.z1,Q:0,name:'结束'}; }
-function startScript(moves){ MOVES=moves; resetLedger((geom&&geom.name!=='参数化壶')?250e-6:200e-6); ui.fill.value=Math.round(st.V*1e6); out('fillv').textContent=ui.fill.value+' mL'; st.Q=0; st.flowing=false; solver.reset(); hits.length=0; pose.yaw=rad(-90); ui.yaw.value=-90; pose.tilt=rad(40); manualTilt=null; pouring=false;
+function startScript(moves){ MOVES=moves; resetLedger((geom&&geom.name!=='参数化壶')?250e-6:200e-6); ui.fill.value=Math.round(st.V*1e6); out('fillv').textContent=ui.fill.value+' mL'; solverReset(); hits.length=0; pose.yaw=rad(-90); ui.yaw.value=-90; pose.tilt=rad(40); manualTilt=null; pouring=false;
   resetKin(); auto={t:0, ierr:0, off:[0,0], Qseen:0}; }
 function resetKin(){ kin.tipPrev=null; kin.vel=[0,0,0]; kin.acc=[0,0,0]; kin.slope=[0,0]; kin.slopeRate=[0,0]; NRM=[0,0,1]; GEFF=G; }
 let SCRIPTS={heart:{moves:MOVES_HEART}, layered_heart:{moves:MOVES_LAYERED}};
@@ -486,10 +517,11 @@ function drawStrip(){ const w=strip.clientWidth, h=150; if(strip.width!==w*2){st
 
 /* ---------------------------------------------------------------- main loop */
 const fmt=(v,n)=>v.toFixed(n);
-let last=performance.now(), acc=0; const DT=1/120; let prevTip=[0,0]; let simSec=0, wallSec=0, lift=0;
+let last=performance.now(), acc=0; const DT=1/120; let prevTip=[0,0]; let lift=0; let speedT0=performance.now(), speedM0=0;
 function frame(now){ requestAnimationFrame(frame); let el=Math.min(0.1,(now-last)/1000); last=now; acc+=el; let rec=null; const budget=performance.now()+14;
-  while(acc>=DT){ acc-=DT;
-    if(performance.now()>budget){ acc=Math.min(acc,DT); break; }   // solver slower than real time: the model clock slows down
+  while(acc>=DT){
+    if(solverBusy()||performance.now()>budget){ acc=Math.min(acc,DT); break; }   // solver behind: the model clock waits for it
+    acc-=DT;
     // barista intent (script) or user inputs
     if(auto){ const it=intent(auto.t); auto.t+=DT; pose.tip[0]=it.x*D_L-auto.off[0]; pose.tip[1]=it.y*D_L-auto.off[1]; pose.tip[2]=it.z; ui.height.value=(it.z*100).toFixed(1);
       auto.Qseen+=(st.Q-auto.Qseen)*(1-Math.exp(-DT/0.25));
@@ -506,14 +538,12 @@ function frame(now){ requestAnimationFrame(frame); let el=Math.min(0.1,(now-last
     // 2-D solver: one control frame with the coupled inlet record
     const scan=Math.hypot(pose.tip[0]-prevTip[0],pose.tip[1]-prevTip[1])/D_L/DT; prevTip=[pose.tip[0],pose.tip[1]];
     const inl=Latte2D.coupleInlet(rec, scan);
-    const t0=performance.now();
-    try{ if(inl.active && Math.hypot(inl.x_hit[0],inl.x_hit[1])>0.47){ inl.active=false; } solver.advanceFrame(inl, DT); }catch(e){ console.warn('solver:',e.message); solver.reset(); }
-    wallSec+=(performance.now()-t0)/1000; simSec+=DT;
+    if(inl.active && Math.hypot(inl.x_hit[0],inl.x_hit[1])>0.47){ inl.active=false; }
+    solverPush(inl, DT);
     hits.push({x:inl.active?inl.x_hit[0]:0,y:inl.active?inl.x_hit[1]:0,on:!!inl.active}); if(hits.length>2400) hits.splice(0,hits.length-2400);
     hist2.push({t:st.t,Q:rec.Q,tilt:pose.tilt,h:rec.h_max}); if(hist2.length>3000) hist2.splice(0,hist2.length-3000); }
+  if(now-speedT0>1000){ out('speedv').textContent='×'+((solver.t-speedM0)/((now-speedT0)/1000)).toFixed(2); speedT0=now; speedM0=solver.t; }
   if(!rec) return;
-  paintField(); if(!overlay.hidden) drawTop();
-  if(simSec>0.5){ out('speedv').textContent='×'+(simSec/Math.max(wallSec,1e-6)).toFixed(1); simSec=0; wallSec=0; }
   out('rwhite').textContent=whiteArea().toFixed(3)+' / '+solver.deposited.toFixed(3);
   // pose the pitcher mesh: world = tip + R (P - tipB)
   const R=rec.R; const m=new THREE.Matrix4();
