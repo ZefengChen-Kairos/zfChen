@@ -50,7 +50,7 @@ button.pour.active{background:var(--coffee);color:var(--milk);border-color:var(-
 .ref p{margin:0;font-size:12px;color:var(--muted)}
 kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-bottom-width:2px;border-radius:3px;padding:0 4px}
 .overlay{position:absolute;inset:0;background:color-mix(in srgb,var(--panel) 92%,transparent);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:12px;z-index:5}
-.overlay canvas{max-width:100%;max-height:calc(100% - 60px);aspect-ratio:1;border-radius:50%;box-shadow:0 2px 12px rgba(0,0,0,.25)}
+.overlay canvas{width:60vmin;height:60vmin;border-radius:50%;box-shadow:0 2px 12px rgba(0,0,0,.25)}
 .overlay .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;font-size:12px;color:var(--muted)}
 .stage .hud b{color:var(--fg);font-weight:500}
 select{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:4px;padding:3px 6px}
@@ -220,7 +220,7 @@ function clearance(R, tip, cupR){
     if(Math.hypot(w[0],w[1])<cupR && w[2]<zmin) zmin=w[2]; } }
   return zmin;
 }
-const law={Cd:0.60, hk:0.0008, h_on:0.0025, h_off:0.0005, tau:0.08, tau_stop:0.15, slosh:true, zeta:0.08, accTau:0.02};
+const law={Cd:0.60, hk:0.0008, h_on:0.0025, h_off:0.0005, tau:0.08, tau_stop:0.15, slosh:true, zeta:0.30, slopeMax:0.36, accTau:0.02};
 const st={V:200e-6, Q:0, flowing:false, t:0};
 // level 1: pitcher acceleration -> effective gravity g - a -> free-surface slope through the first sloshing mode
 const kin={tipPrev:null, vel:[0,0,0], acc:[0,0,0], slope:[0,0], slopeRate:[0,0], omega:0};
@@ -234,7 +234,8 @@ function kinematics(tip, dt){
   kin.tipPrev=[tip[0],tip[1],tip[2]]; kin.vel=vNew;
   const gz=Math.max(G+kin.acc[2],0.2*G); const sqs=[-kin.acc[0]/gz, -kin.acc[1]/gz];
   if(law.slosh){ const Rb=geom.rbelly, depth=Math.max(st.V/(PI*Rb*Rb),0.005), k=1.841/Rb, om=Math.sqrt(G*k*Math.tanh(k*depth)); kin.omega=om;
-    for(let i=0;i<2;i++){ kin.slopeRate[i]+=dt*(om*om*(sqs[i]-kin.slope[i])-2*law.zeta*om*kin.slopeRate[i]); kin.slope[i]+=dt*kin.slopeRate[i]; } }
+    for(let i=0;i<2;i++){ kin.slopeRate[i]+=dt*(om*om*(sqs[i]-kin.slope[i])-2*law.zeta*om*kin.slopeRate[i]); kin.slope[i]+=dt*kin.slopeRate[i]; }
+    const sn=Math.hypot(kin.slope[0],kin.slope[1]); if(sn>law.slopeMax){ kin.slope[0]*=law.slopeMax/sn; kin.slope[1]*=law.slopeMax/sn; kin.slopeRate=[0,0]; } }
   else { kin.slope=[sqs[0],sqs[1]]; kin.slopeRate=[0,0]; }
   const nn=Math.hypot(kin.slope[0],kin.slope[1],1); NRM=[-kin.slope[0]/nn,-kin.slope[1]/nn,1/nn];
   GEFF=Math.hypot(kin.acc[0],kin.acc[1],G+kin.acc[2]);
@@ -401,7 +402,7 @@ function drawTop(){ const N=solN, W=top2d.width; tctx.imageSmoothingEnabled=true
   const last=hits[hits.length-1]; if(last&&last.on){ tctx.fillStyle='rgba(47,106,165,0.9)'; tctx.beginPath(); tctx.arc(X(last.x),Y(last.y),5,0,2*PI); tctx.fill(); }
   const area=whiteArea(); document.getElementById('top2dinfo').textContent=`杯面 2D 浓度场 c = m/ℓ，${N}×${N} 网格，模型时间 ${solver.t.toFixed(2)} s，白区面积 ${area.toFixed(3)} 杯径²（杯面积 0.754），蓝线为落点轨迹`; }
 function whiteArea(){ let a=0; for(let k=0;k<cField.length;k++) if(cField[k]>0.4) a++; return a*solver.area; }
-function toggleTop(force){ const show=force===undefined?overlay.hidden:force; overlay.hidden=!show; if(show) drawTop(); }
+function toggleTop(force){ const show=force===undefined?overlay.hidden:force; overlay.hidden=!show; if(show){ const sz=Math.max(120,Math.min(stage.clientWidth-24, stage.clientHeight-70)); top2d.style.width=sz+'px'; top2d.style.height=sz+'px'; drawTop(); } }
 canvas.addEventListener('dblclick',ev=>{ ev.preventDefault(); toggleTop(); });
 overlay.addEventListener('dblclick',()=>toggleTop(false));
 document.getElementById('closeTop').addEventListener('click',()=>toggleTop(false));
@@ -426,7 +427,7 @@ function intent(t){ let acc=0; for(const m of MOVES){ if(t<acc+m.dur){ const f=(
   const wob=m.wf?amp*Math.sin(2*PI*m.wf*(t-acc)):0;
   return {x:m.p0[0]+(m.p1[0]-m.p0[0])*e+wob, y:m.p0[1]+(m.p1[1]-m.p0[1])*e, z:m.z0+(m.z1-m.z0)*e, Q:m.Q0+(m.Q1-m.Q0)*f, name:m.name}; } acc+=m.dur; }
   const last=MOVES[MOVES.length-1]; return {x:last.p1[0],y:last.p1[1],z:last.z1,Q:0,name:'结束'}; }
-function startScript(moves){ MOVES=moves; st.V=200e-6; st.Q=0; st.flowing=false; solver.reset(); hits.length=0; pose.yaw=rad(-90); ui.yaw.value=-90; pose.tilt=rad(40); manualTilt=null; pouring=false;
+function startScript(moves){ MOVES=moves; st.V=(geom&&geom.name!=='参数化壶')?250e-6:200e-6; ui.fill.value=Math.round(st.V*1e6); out('fillv').textContent=ui.fill.value+' mL'; st.Q=0; st.flowing=false; solver.reset(); hits.length=0; pose.yaw=rad(-90); ui.yaw.value=-90; pose.tilt=rad(40); manualTilt=null; pouring=false;
   resetKin(); auto={t:0, ierr:0, off:[0,0], Qseen:0}; }
 function resetKin(){ kin.tipPrev=null; kin.vel=[0,0,0]; kin.acc=[0,0,0]; kin.slope=[0,0]; kin.slopeRate=[0,0]; NRM=[0,0,1]; GEFF=G; }
 document.getElementById('auto').addEventListener('click',()=>startScript(MOVES_HEART));

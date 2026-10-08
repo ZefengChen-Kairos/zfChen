@@ -179,7 +179,8 @@ class OutflowLaw:
     # level 1: the free surface follows the effective gravity g - a (pitcher acceleration) through the first
     # sloshing mode, a damped oscillator forced by the quasi-static slope; slosh=False keeps the surface horizontal
     slosh: bool = True
-    zeta: float = 0.08      # sloshing damping ratio (milk + foam, guess; to be calibrated)
+    zeta: float = 0.30      # sloshing damping ratio (foamed milk is strongly damped; guess, to be calibrated)
+    slope_max: float = 0.36 # cap on the free-surface slope (tan 20 deg): beyond this the single-mode model is meaningless
     acc_tau: float = 0.02   # low-pass on the finite-difference acceleration [s]
     carry_velocity: bool = True   # the jet leaves with the pitcher's velocity added
 
@@ -404,6 +405,9 @@ class Pitcher:
             # semi-implicit Euler for s'' + 2 zeta w s' + w^2 s = w^2 s_qs
             sr = sr + dt * (omega * omega * (s_qs - sl) - 2 * law.zeta * omega * sr)
             sl = sl + dt * sr
+            sn = float(np.linalg.norm(sl))
+            if sn > law.slope_max:
+                sl = sl * (law.slope_max / sn); sr = sr * 0.0
             st.slope, st.slope_rate = tuple(sl), tuple(sr)
         else:
             st.slope = tuple(s_qs)
