@@ -105,3 +105,9 @@ spout, hold to pour, replay the heart script), feeding `web/latte2d.js`, a port 
 explicit viscosity/mixing only).  The coffee surface shows its milk fraction and a double-click on the cup opens
 the 2-D field.  Both ports were checked against Python: same Q within 0.3 % at 60–70° tilt, and the heart at
 N=96 agrees to 3e-8 in c frame by frame (Node: about 2x real time at 96², 1x at 128²).
+
+Level 1 (`OutflowLaw.slosh`, on by default): the free surface follows the effective gravity `g - a` of the
+moving pitcher through its first sloshing mode (damped oscillator, `zeta` 0.08), the jet carries the pitcher
+velocity, and the barista reacts to low-passed flow and aim.  `pitcher_cad.py` turns a STEP pitcher into the
+(z, phi) cavity grid used by `GridPitcherGeometry` (`--pitcher nx`) and by the web page (`web/pitcher_nx.json`).
+See `PITCHER_MODEL.md` sections 9 and 10.

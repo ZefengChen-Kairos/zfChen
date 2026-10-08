@@ -36,7 +36,8 @@ def run(pattern, N=256, out=None, params=None, snap_dt=1.0 / 24.0, video=True, q
         pdict = dict(script.params); pdict.update(params or {})
     elif control == "pitcher":
         from .pitcher import BaristaScript
-        script = BaristaScript(**(script_kw or {}))
+        from .pitcher import MOVES as PITCHER_MOVES
+        script = BaristaScript(pattern=pattern if pattern in PITCHER_MOVES else "heart", **(script_kw or {}))
         pdict = dict(script.params); pdict.update(params or {})
     elif control == "zefeng":
         from .controls import ZScript
@@ -123,6 +124,8 @@ if __name__ == "__main__":
     ap.add_argument("--best", default=None, help="best.json from latte_imex.optimize (control=zefeng)")
     ap.add_argument("--cfl", type=float, default=None, help="material CFL (default 0.5)")
     ap.add_argument("--backend", default="cpu", choices=["cpu", "cuda"])
+    ap.add_argument("--pitcher", default="param", help="pitcher geometry for --control pitcher: param | nx | path.json")
+    ap.add_argument("--V0", type=float, default=None, help="initial milk volume [mL] for --control pitcher")
     a = ap.parse_args()
     overrides = {}
     for kv in a.param:
@@ -131,5 +134,10 @@ if __name__ == "__main__":
     numerics = {}
     if a.cfl is not None:
         numerics["cfl"] = a.cfl
+    script_kw = {}
+    if a.control == "pitcher":
+        script_kw["geometry"] = a.pitcher
+        if a.V0 is not None:
+            script_kw["V0"] = a.V0 * 1e-6
     run(a.pattern, N=a.N, out=a.out, params=overrides, video=not a.no_video, T_max=a.T, control=a.control, best=a.best,
-        numerics=numerics, backend=a.backend)
+        numerics=numerics, backend=a.backend, script_kw=script_kw)

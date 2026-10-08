@@ -74,6 +74,75 @@ class PitcherGeometry:
         self.capacity_to_crest = float(self.dv[self.points[:, 2] < self.tip[2]].sum())
 
 
+class GridPitcherGeometry:
+    """Pitcher cavity from a CAD model (latte_imex/pitcher_cad.py JSON): inner/outer wall radius on a (z, phi) grid,
+    rim height and radius per azimuth.  Same interface as PitcherGeometry (points, dv, rim, tip, capacity,
+    capacity_to_crest, height, r_body, lip_slope)."""
+
+    def __init__(self, data, nr=16, n_rim=720, lip_slope=math.radians(10.0), scale=1e-3):
+        self.name = data.get("name", "cad")
+        zs = np.asarray(data["zs"], float) * scale
+        phis = np.asarray(data["phis"], float) - data.get("spout_phi_residual", 0.0)   # spout exactly at phi = 0
+        r_in = np.asarray(data["r_in"], float) * scale
+        r_out = np.asarray(data["r_out"], float) * scale
+        z_rim = np.asarray(data["z_rim"], float) * scale
+        r_rim = np.asarray(data["r_rim"], float) * scale
+        self.zs, self.phis, self.r_in, self.r_out, self.z_rim_tab, self.r_rim_tab = zs, phis, r_in, r_out, z_rim, r_rim
+        self.height = float(zs[-1])
+        self.lip_slope = lip_slope
+        self.r_top = float(r_in[-1].mean()); self.r_belly = float(r_in.max(1).mean()); self.r_bottom = float(r_in[0].mean())
+        self.notch_half_angle = math.radians(25.0)
+        # interior sample points: polar cells, equal area in r^2
+        nz, nphi = r_in.shape
+        dphi = 2 * math.pi / nphi
+        edges = np.concatenate([[zs[0] - 0.5 * (zs[1] - zs[0])], 0.5 * (zs[1:] + zs[:-1]), [zs[-1] + 0.5 * (zs[-1] - zs[-2])]])
+        dz = np.diff(edges)
+        u = (np.arange(nr) + 0.5) / nr
+        pts, dv = [], []
+        for iz in range(nz):
+            keep = zs[iz] < z_rim                       # no liquid in the open notch / above the rim
+            for ip in np.nonzero(keep)[0]:
+                rr = r_in[iz, ip] * np.sqrt(u)
+                pts.append(np.stack([rr * math.cos(phis[ip]), rr * math.sin(phis[ip]), np.full(nr, zs[iz])], -1))
+                dv.append(np.full(nr, 0.5 * r_in[iz, ip] ** 2 * dphi * dz[iz] / nr))
+        self.points = np.concatenate(pts); self.dv = np.concatenate(dv)
+        self.capacity = float(self.dv.sum())
+        # rim polyline (dense, periodic linear interpolation)
+        ph = (np.arange(n_rim) + 0.5) / n_rim * 2 * math.pi - math.pi
+        self.rim = np.stack([self.r_rim(ph) * np.cos(ph), self.r_rim(ph) * np.sin(ph), self.z_rim(ph)], -1)
+        ip_tip = int(np.argmax(self.r_rim_tab))
+        self.tip = np.array([self.r_rim_tab[ip_tip] * math.cos(phis[ip_tip]), self.r_rim_tab[ip_tip] * math.sin(phis[ip_tip]), z_rim[ip_tip]])
+        self.capacity_to_crest = float(self.dv[self.points[:, 2] < z_rim.min()].sum())
+
+    def _interp_phi(self, tab, phi):
+        phi = (np.asarray(phi, float) - self.phis[0]) % (2 * math.pi) + self.phis[0]
+        xp = np.concatenate([self.phis, [self.phis[0] + 2 * math.pi]])
+        fp = np.concatenate([tab, [tab[0]]])
+        return np.interp(phi, xp, fp)
+
+    def z_rim(self, phi):
+        return self._interp_phi(self.z_rim_tab, phi)
+
+    def r_rim(self, phi):
+        return self._interp_phi(self.r_rim_tab, phi)
+
+    def r_body(self, z):
+        """Azimuth-mean inner radius (for drawing and the clearance check)."""
+        return np.interp(np.asarray(z, float), self.zs, self.r_in.mean(1))
+
+    def r_outer(self, z):
+        return np.interp(np.asarray(z, float), self.zs, self.r_out.mean(1))
+
+    @classmethod
+    def load(cls, path=None, **kw):
+        import json, os
+        path = path or os.path.join(os.path.dirname(__file__), "pitcher_geom", "pitcher_nx.json")
+        with open(path) as f:
+            data = json.load(f)
+        data.setdefault("name", os.path.splitext(os.path.basename(path))[0])
+        return cls(data, **kw)
+
+
 def rotation(yaw, tilt, roll):
     """R = Rz(yaw) Ry(tilt) Rx(roll); tilt > 0 brings the spout (body +X) down."""
     cy, sy = math.cos(yaw), math.sin(yaw)
@@ -107,6 +176,12 @@ class OutflowLaw:
     h_off: float = 0.0005   # flow stops below this head [m]
     tau: float = 0.08       # spout filling / emptying lag [s]
     tau_stop: float = 0.15  # trailing-off lag after the head drops below h_off [s]
+    # level 1: the free surface follows the effective gravity g - a (pitcher acceleration) through the first
+    # sloshing mode, a damped oscillator forced by the quasi-static slope; slosh=False keeps the surface horizontal
+    slosh: bool = True
+    zeta: float = 0.08      # sloshing damping ratio (milk + foam, guess; to be calibrated)
+    acc_tau: float = 0.02   # low-pass on the finite-difference acceleration [s]
+    carry_velocity: bool = True   # the jet leaves with the pitcher's velocity added
 
 
 @dataclass
@@ -115,6 +190,12 @@ class PitcherState:
     Q: float = 0.0          # current outflow [m^3/s]
     flowing: bool = False
     t: float = 0.0
+    tip_prev: tuple = None          # last tip position (for the finite-difference velocity)
+    vel: tuple = (0.0, 0.0, 0.0)    # pitcher (tip) velocity [m/s]
+    acc: tuple = (0.0, 0.0, 0.0)    # low-passed pitcher acceleration [m/s^2]
+    slope: tuple = (0.0, 0.0)       # free-surface slope (dz/dx, dz/dy) in the world frame
+    slope_rate: tuple = (0.0, 0.0)
+    omega: float = 0.0              # first sloshing mode [rad/s] at the current fill
 
 
 # --------------------------------------------------------------------------- the model
@@ -124,6 +205,8 @@ class Pitcher:
         self.milk = milk or Milk()
         self.law = law or OutflowLaw()
         self.state = PitcherState(V=V0)
+        self.n = np.array([0.0, 0.0, 1.0])     # current free-surface normal (unit, up)
+        self.g_eff = G                         # magnitude of the effective gravity driving the outflow
 
     # ---- kinematics
     def world(self, pose, P):
@@ -134,7 +217,7 @@ class Pitcher:
     def free_surface(self, pose, V):
         """Height c of the horizontal plane with volume V below it inside the pitcher.
         Returns (c, overflow) where overflow > 0 is the volume that cannot be held at this pose."""
-        zw = self.world(pose, self.geom.points)[:, 2]
+        zw = self.world(pose, self.geom.points) @ self.n     # height along the free-surface normal
         order = np.argsort(zw)
         zs = zw[order]
         cum = np.cumsum(self.geom.dv[order])
@@ -156,19 +239,21 @@ class Pitcher:
         rim = self.world(pose, self.geom.rim)
         nxt = np.roll(rim, -1, axis=0)
         mid = 0.5 * (rim + nxt)
-        dl = np.hypot(nxt[:, 0] - rim[:, 0], nxt[:, 1] - rim[:, 1])
-        h = c - mid[:, 2]
+        seg = nxt - rim
+        seg_n = seg @ self.n
+        dl = np.linalg.norm(seg - seg_n[:, None] * self.n[None, :], axis=1)   # rim element in the surface plane
+        h = c - mid @ self.n                                                   # head along the surface normal
         h_max = float(h.max())
         he = np.maximum(h - self.law.h_k, 0.0)
         w32 = he ** 1.5 * dl
         S32 = float(w32.sum())
-        Q_ss = self.law.C_d * (2.0 / 3.0) * math.sqrt(2 * G) * S32
+        Q_ss = self.law.C_d * (2.0 / 3.0) * math.sqrt(2 * self.g_eff) * S32
         if S32 > 0:
             h_bar = float((he ** 2.5 * dl).sum() / S32)          # discharge-weighted head
             origin = (w32[:, None] * mid).sum(0) / S32            # discharge-weighted crest point
         else:
             h_bar = 0.0
-            origin = rim[np.argmin(rim[:, 2])]
+            origin = rim[np.argmin(rim @ self.n)]
         A_wet = float((np.maximum(h, 0.0) * dl).sum())
         return dict(Q_ss=Q_ss, h_max=h_max, h_bar=h_bar, origin=origin, A_wet=A_wet)
 
@@ -179,14 +264,17 @@ class Pitcher:
 
     # ---- jet
     def jet(self, pose, Q, h_bar, origin, z_surface=0.0):
-        """Free jet from the crest to the coffee surface.  Exit speed sqrt(2 g h_bar) (Torricelli at the
-        discharge-weighted head), direction along the spout, continuity thinning d ~ |v|^{-1/2}."""
+        """Free jet from the crest to the coffee surface.  Exit speed sqrt(2 g_eff h_bar) relative to the pitcher
+        (Torricelli at the discharge-weighted head), direction along the spout, plus the pitcher's own velocity;
+        then free flight under g, continuity thinning d ~ |v|^{-1/2}."""
         if Q <= 0 or h_bar <= 0:
             return None
-        u0 = math.sqrt(2 * G * max(h_bar, self.law.h_k))   # floor: the trailing dribble leaves at the h_k head
+        u0 = math.sqrt(2 * self.g_eff * max(h_bar, self.law.h_k))   # floor: the trailing dribble leaves at the h_k head
         A0 = Q / u0
         d0 = 2 * math.sqrt(A0 / math.pi)
         v0 = u0 * self.exit_direction(pose)
+        if self.law.carry_velocity:
+            v0 = v0 + np.asarray(self.state.vel, float)
         z0 = origin[2] - z_surface
         if z0 <= 0:
             t_hit = 0.0
@@ -225,10 +313,44 @@ class Pitcher:
             return float("inf")
         return float(W[inside, 2].min() - z_surface)
 
+    # ---- level 1: pitcher acceleration -> effective gravity -> free-surface slope (first sloshing mode)
+    def kinematics(self, pose, dt):
+        st, law = self.state, self.law
+        tip = np.asarray(pose.tip, float)
+        if st.tip_prev is None:
+            v_new = np.zeros(3)
+            a_raw = np.zeros(3)
+        else:
+            v_new = (tip - np.asarray(st.tip_prev)) / dt
+            a_raw = (v_new - np.asarray(st.vel)) / dt
+        acc = np.asarray(st.acc) + (a_raw - np.asarray(st.acc)) * (1.0 - math.exp(-dt / law.acc_tau))
+        st.tip_prev, st.vel, st.acc = tuple(tip), tuple(v_new), tuple(acc)
+        # quasi-static slope of the free surface in the accelerated frame: perpendicular to g - a
+        gz = max(G + acc[2], 0.2 * G)
+        s_qs = np.array([-acc[0] / gz, -acc[1] / gz])
+        if law.slosh:
+            R = self.geom.r_belly
+            depth = max(st.V / (math.pi * R * R), 0.005)
+            k = 1.841 / R
+            omega = math.sqrt(G * k * math.tanh(k * depth))
+            st.omega = omega
+            sl, sr = np.asarray(st.slope), np.asarray(st.slope_rate)
+            # semi-implicit Euler for s'' + 2 zeta w s' + w^2 s = w^2 s_qs
+            sr = sr + dt * (omega * omega * (s_qs - sl) - 2 * law.zeta * omega * sr)
+            sl = sl + dt * sr
+            st.slope, st.slope_rate = tuple(sl), tuple(sr)
+        else:
+            st.slope = tuple(s_qs)
+            st.slope_rate = (0.0, 0.0)
+        n = np.array([-st.slope[0], -st.slope[1], 1.0])
+        self.n = n / np.linalg.norm(n)
+        self.g_eff = float(np.linalg.norm(np.array([0.0, 0.0, -G]) - acc))
+
     # ---- time step
     def step(self, pose, dt, z_surface=0.0):
         """Advance the pitcher by dt at the given pose.  Returns the impact record (SI) for this frame."""
         st, law = self.state, self.law
+        self.kinematics(pose, dt)
         c, overflow = self.free_surface(pose, st.V)
         W = self.weir(pose, c)
         # surface-tension hysteresis on the start / stop of the flow
@@ -248,7 +370,8 @@ class Pitcher:
         J = self.jet(pose, Q_eff, W["h_bar"], W["origin"], z_surface) if Q_eff > 0 else None
         return dict(t=st.t, V=st.V, Q=Q_eff, Q_ss=W["Q_ss"], h_max=W["h_max"], h_bar=W["h_bar"], c=c,
                     flowing=st.flowing, overflow=overflow, tilt=pose.tilt, tip=np.asarray(pose.tip, float),
-                    jet=J)
+                    jet=J, acc=np.asarray(st.acc, float), slope=np.asarray(st.slope, float), n=self.n.copy(),
+                    g_eff=self.g_eff, vel=np.asarray(st.vel, float))
 
     def tilt_for_flow(self, pose, Q_want, V=None, lo=0.0, hi=math.radians(150), iters=30):
         """Steady tilt that gives Q_want at the pose's yaw/roll/tip and volume V (bisection on the weir law)."""
@@ -328,13 +451,16 @@ class Move:
     z1: float = None
     Q0: float = 0.0
     Q1: float = None
-    wobble: float = 0.0     # lateral (x) wobble amplitude in cup units
+    wobble: float = 0.0     # lateral (x) wobble amplitude in cup units (start)
     wfreq: float = 0.0
+    wobble1: float = None   # wobble amplitude at the end of the move (linear ramp)
+    wobble_axis: str = "x"  # "x": lateral (across the spout direction), "y": fore-aft (along the spout direction)
     name: str = ""
 
     def __post_init__(self):
         self.z1 = self.z0 if self.z1 is None else self.z1
         self.Q1 = self.Q0 if self.Q1 is None else self.Q1
+        self.wobble1 = self.wobble if self.wobble1 is None else self.wobble1
 
 
 class Barista:
@@ -351,7 +477,9 @@ class Barista:
         self.T = sum(m.dur for m in moves) + tail
         self.tilt = 0.0
         self.ierr = 0.0                 # integrated flow error [m^3]
-        self.offset = np.zeros(2)       # world xy: hit point - tip, from the last frame with a jet
+        self.offset = np.zeros(2)       # world xy: hit point - tip, low-passed (the barista corrects the drift, not the wiggle)
+        self.Q_seen = 0.0               # low-passed flow the barista reacts to
+        self.tau_see = 0.25             # [s]
 
     def intent(self, t):
         acc = 0.0
@@ -359,8 +487,11 @@ class Barista:
             if t < acc + m.dur:
                 f = (t - acc) / m.dur
                 e = 0.5 - 0.5 * math.cos(math.pi * f)
-                x = m.p0[0] + (m.p1[0] - m.p0[0]) * e + m.wobble * math.sin(2 * math.pi * m.wfreq * (t - acc))
-                y = m.p0[1] + (m.p1[1] - m.p0[1]) * e
+                amp = m.wobble + (m.wobble1 - m.wobble) * f
+                amp *= min(1.0, (t - acc) / 0.25, (acc + m.dur - t) / 0.25)   # ease the wiggle in and out (no impulsive start)
+                wob = amp * math.sin(2 * math.pi * m.wfreq * (t - acc))
+                x = m.p0[0] + (m.p1[0] - m.p0[0]) * e + (wob if m.wobble_axis == "x" else 0.0)
+                y = m.p0[1] + (m.p1[1] - m.p0[1]) * e + (wob if m.wobble_axis == "y" else 0.0)
                 z = m.z0 + (m.z1 - m.z0) * e
                 Q = m.Q0 + (m.Q1 - m.Q0) * f
                 return (x, y), z, Q, m.name
@@ -378,13 +509,14 @@ class Barista:
         t = self.pitcher.state.t
         pose, Q_want, name = self.pose_at(t)
         st = self.pitcher.state
+        self.Q_seen += (st.Q - self.Q_seen) * (1.0 - math.exp(-dt / self.tau_see))
         if Q_want <= 0:
             rate = -self.swing_rate                      # stop: swing back up
             self.ierr = 0.0
         elif not st.flowing and st.Q <= 0:
             rate = self.swing_rate                       # milk not at the lip yet: tilt until it is
         else:
-            err = Q_want - st.Q
+            err = Q_want - self.Q_seen
             self.ierr = max(-2e-6, min(2e-6, self.ierr + err * dt))
             rate = max(-self.max_rate, min(self.max_rate, self.gain * err + self.gain_i * self.ierr))
         self.tilt = max(0.0, min(math.radians(150), self.tilt + rate * dt))
@@ -394,7 +526,8 @@ class Barista:
         scan = math.hypot(x1 - x0, y1 - y0) / dt
         rec = self.pitcher.step(pose, dt)
         if rec["jet"] is not None:
-            self.offset = rec["jet"]["x_hit"] - np.asarray(pose.tip[:2])
+            off = rec["jet"]["x_hit"] - np.asarray(pose.tip[:2])
+            self.offset = self.offset + (off - self.offset) * (1.0 - math.exp(-dt / 0.3))
         rec["Q_want"] = Q_want
         rec["label"] = name
         rec["inlet"] = self.cp.inlet(rec, scan_speed=scan)
@@ -413,18 +546,44 @@ def heart_moves():
     ]
 
 
+def layered_heart_moves(axis="x", amp=1.0, freq=2.5):
+    """V0.5 layered heart as intent: low wiggle pour building the base (amplitude ramp), a held wiggle, then a high
+    cut.  Flow in V0.5 effective units 0.02->0.045 and 0.045 ~ 6->13.5 and 13.5 mL/s.  axis "x" = lateral wiggle
+    (V0.5), "y" = fore-aft; amp scales the V0.5 amplitudes (0.008->0.025, then 0.045 cup diameters)."""
+    return [
+        Move(3.2, (0.0, 0.08), (0.0, 0.14), z0=0.015, Q0=6e-6, Q1=13.5e-6, wobble=0.008 * amp, wobble1=0.025 * amp,
+             wfreq=freq, wobble_axis=axis, name="wiggle base, 6->13.5 mL/s"),
+        Move(3.2, (0.0, 0.14), (0.0, 0.14), z0=0.015, Q0=13.5e-6, wobble=0.045 * amp, wfreq=freq, wobble_axis=axis,
+             name="held wiggle 13.5 mL/s"),
+        Move(0.3, (0.0, 0.14), (0.0, 0.14), z0=0.015, z1=0.07, Q0=5e-6, Q1=4e-6, name="lift"),
+        Move(1.0, (0.0, 0.14), (0.0, -0.32), z0=0.07, Q0=4e-6, Q1=1e-6, name="cut through, high"),
+        Move(0.7, (0.0, -0.32), (0.0, -0.32), z0=0.07, z1=0.10, Q0=0.0, name="stop"),
+    ]
+
+
+MOVES = dict(heart=heart_moves, layered_heart=layered_heart_moves,
+             layered_heart_y=lambda: layered_heart_moves(axis="y"),
+             layered_heart_big=lambda: layered_heart_moves(axis="x", amp=2.2, freq=4.0))
+
+
 class BaristaScript:
     """Adapter with the run.py sampler interface (sample(t) -> (Inlet, label)) driven frame by frame.
     The pitcher is stateful, so sample() must be called with non-decreasing t; it advances the pitcher
     to t and returns the latest record."""
 
-    def __init__(self, moves=None, pitcher=None, coupling=None, dt=1.0 / 120.0, V0=2.0e-4, **kw):
-        self.pitcher = pitcher or Pitcher(V0=V0)
+    def __init__(self, moves=None, pitcher=None, coupling=None, dt=1.0 / 120.0, V0=2.0e-4, pattern="heart",
+                 law=None, geometry="param", **kw):
+        if pitcher is None:
+            geom = None if geometry == "param" else GridPitcherGeometry.load(None if geometry == "nx" else geometry)
+            pitcher = Pitcher(geom=geom, V0=V0, law=law)
+        self.pitcher = pitcher
         self.cp = coupling or Coupling()
-        self.barista = Barista(self.pitcher, moves or heart_moves(), self.cp, **kw)
+        if moves is None:
+            moves = MOVES[pattern]()
+        self.barista = Barista(self.pitcher, moves, self.cp, **kw)
         self.dt = dt
         self.T = self.barista.T
-        self.name = "pitcher_heart"
+        self.name = f"pitcher_{pattern}"
         self.records = []
         self.params = dict(PHYSICAL_PARAMS)
         self._last = (Inlet(active=False), "start")
@@ -451,5 +610,8 @@ def records_table(records):
     out["y_hit"] = np.array([j["x_hit"][1] if j else np.nan for j in J])
     out["drop"] = np.array([j["drop"] if j else np.nan for j in J])
     out["coherent"] = np.array([j["coherent"] if j else True for j in J])
+    out["acc_x"] = np.array([r["acc"][0] if "acc" in r else 0.0 for r in records])
+    out["slope_x"] = np.array([r["slope"][0] if "slope" in r else 0.0 for r in records])
+    out["g_eff"] = np.array([r.get("g_eff", G) for r in records])
     out["label"] = [r.get("label", "") for r in records]
     return out

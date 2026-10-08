@@ -104,9 +104,10 @@ def side_view(P, S, records, path, times=(1.0, 3.0, 5.0, 6.4)):
 
 def tilt_flow(P, path):
     fig, ax = plt.subplots(figsize=(6, 4))
-    tilts = np.radians(np.linspace(30, 80, 101))
+    tilts = np.radians(np.linspace(20, 85, 131))
     pose = Pose(tip=(0, 0, 0.03), yaw=-math.pi / 2)
-    for V, col in [(250e-6, GREY), (200e-6, ACC), (150e-6, BROWN)]:
+    cap = P.geom.capacity
+    for V, col in [(0.66 * cap, GREY), (0.53 * cap, ACC), (0.4 * cap, BROWN)]:
         Q = []
         for th in tilts:
             pose.tilt = th
@@ -115,7 +116,7 @@ def tilt_flow(P, path):
         ax.plot(np.degrees(tilts), Q, color=col, label=f"壶内 {V*1e6:.0f} mL")
     ax.axhspan(6, 24, color=ACC, alpha=0.08, label="学长估计的 Q 区间 6–24 mL/s")
     ax.set_ylim(0, 60); ax.set_xlabel("倾角 [°]"); ax.set_ylabel("稳态流量 Q [mL/s]"); ax.grid(alpha=0.25); ax.legend(fontsize=8)
-    ax.set_title("V 形堰流：同一倾角下流量取决于壶里还剩多少", fontsize=10)
+    ax.set_title(f"堰流：同一倾角下流量取决于壶里还剩多少（{getattr(P.geom, 'name', '参数化壶')}，容量 {cap*1e6:.0f} mL）", fontsize=10)
     fig.tight_layout(); fig.savefig(path, dpi=120); plt.close(fig)
 
 
@@ -123,13 +124,15 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="results/pitcher_demo")
     ap.add_argument("--run", default="runs/pitcher_heart_256")
+    ap.add_argument("--pitcher", default="param", help="param | nx | path.json")
+    ap.add_argument("--V0", type=float, default=200.0, help="initial milk [mL]")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
-    S = BaristaScript(); S.sample(S.T)
+    S = BaristaScript(geometry=a.pitcher, V0=a.V0 * 1e-6); S.sample(S.T)
     T = records_table(S.records)
     inputs_figure(T, os.path.join(a.out, "inputs.png"))
     side_view(S.pitcher, S, S.records, os.path.join(a.out, "side_view.png"))
-    tilt_flow(Pitcher(), os.path.join(a.out, "tilt_flow.png"))
+    tilt_flow(S.pitcher.__class__(geom=S.pitcher.geom), os.path.join(a.out, "tilt_flow.png"))
     with open(os.path.join(a.out, "records.csv"), "w") as f:
         keys = ["t", "tilt", "V", "Q_want", "Q", "h_max", "h_bar", "z_tip", "U_perp", "u_h", "d0", "d_hit", "x_hit", "y_hit"]
         f.write(",".join(keys + ["label"]) + "\n")

@@ -80,8 +80,10 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
         <button id="refill">重新装奶 200 mL</button>
         <button id="clear">擦掉杯面</button>
         <button class="primary" id="auto">回放心形脚本</button>
+        <button class="primary" id="auto2">回放千层心（抖壶）</button>
         <button id="show2d">杯面 2D 图</button>
       </div>
+      <div class="row" style="margin-top:8px"><label for="pitchersel">壶形</label><select id="pitchersel"><option value="nx" selected>你的 NX 壶（STEP）</option><option value="param">参数化壶</option></select><span class="val" id="pitcherv">—</span></div>
       <div class="row" style="margin-top:8px"><label for="grid">求解网格</label><select id="grid"><option value="64">64²（快）</option><option value="96" selected>96²</option><option value="128">128²（慢）</option></select><span class="val" id="speedv">—</span></div>
     </div>
     <div>
@@ -104,6 +106,7 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
         <dt>落点直径 d_jet</dt><dd id="rd">—</dd>
         <dt>落点（杯坐标）</dt><dd id="rhit">—</dd>
         <dt>奶柱是否成束</dt><dd id="rcoh">—</dd>
+        <dt>液面倾斜 / 壶加速度</dt><dd id="rslope">—</dd>
         <dt>壶壁离咖啡面</dt><dd id="rcl">—</dd>
         <dt>杯面白区面积 / 已沉积</dt><dd id="rwhite">—</dd>
       </dl>
@@ -129,23 +132,42 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
 const G = 9.81, PI = Math.PI, rad = d => d*PI/180, deg = r => r*180/PI;
 
 /* ---------------------------------------------------------------- pitcher model (port of latte_imex/pitcher.py) */
-const geom = {H:0.095, rb:0.034, rbelly:0.040, zb:0.030, rt:0.030, depth:0.015, phiw:rad(25), beak:0.12, lip:rad(10)};
-function rBody(z){ return z < geom.zb ? geom.rb + (geom.rbelly-geom.rb)*z/geom.zb : geom.rbelly + (geom.rt-geom.rbelly)*(z-geom.zb)/(geom.H-geom.zb); }
-function zRim(phi){ phi=Math.abs(phi); return geom.H - geom.depth*Math.max(0,1-phi/geom.phiw); }
-function rRim(phi){ phi=Math.abs(phi); const w=Math.max(0,1-phi/geom.phiw); return geom.rt*(1+geom.beak*w*w); }
-const tipB = [rRim(0), 0, zRim(0)];
-
-// interior sample points with volume weights
-const NZ=32, NR=14, NPHI=24;
-const P = []; // flat [x,y,z,dv]
-for(let i=0;i<NZ;i++){ const z=(i+.5)/NZ*geom.H, dz=geom.H/NZ, Rb=rBody(z);
-  for(let j=0;j<NR;j++){ const r=Rb*Math.sqrt((j+.5)/NR);
-    for(let k=0;k<NPHI;k++){ const ph=(k+.5)/NPHI*2*PI-PI; if(z>=zRim(ph)) continue;
-      P.push(r*Math.cos(ph), r*Math.sin(ph), z, PI*Rb*Rb/NR*dz/NPHI); } } }
-const NP = P.length/4;
-let capacity=0; for(let i=0;i<NP;i++) capacity+=P[4*i+3];
-const NRIM=360, RIM=[]; for(let k=0;k<NRIM;k++){ const ph=(k+.5)/NRIM*2*PI-PI; RIM.push(rRim(ph)*Math.cos(ph), rRim(ph)*Math.sin(ph), zRim(ph)); }
-
+// ---- geometry as a (z, phi) grid of inner / outer wall radius, rim height and radius per azimuth.
+//      Built from the parametric pitcher (fallback) or loaded from a CAD extraction (pitcher_nx.json, latte_imex/pitcher_cad.py).
+let geom=null, P=null, NP=0, capacity=0, RIM=null, tipB=null; const NRIM=360;
+function parametricGrid(){ const g={H:0.095, rb:0.034, rbelly:0.040, zb:0.030, rt:0.030, depth:0.015, phiw:rad(25), beak:0.12};
+  const rBody=z=> z<g.zb ? g.rb+(g.rbelly-g.rb)*z/g.zb : g.rbelly+(g.rt-g.rbelly)*(z-g.zb)/(g.H-g.zb);
+  const zR=ph=>{ ph=Math.abs(ph); return g.H-g.depth*Math.max(0,1-ph/g.phiw); };
+  const rR=ph=>{ ph=Math.abs(ph); const w=Math.max(0,1-ph/g.phiw); return g.rt*(1+g.beak*w*w); };
+  const nz=40, nphi=72, zs=[], phis=[], rin=[], rout=[], zrim=[], rrim=[];
+  for(let k=0;k<nphi;k++){ const ph=(k+.5)/nphi*2*PI-PI; phis.push(ph); zrim.push(zR(ph)); rrim.push(rR(ph)); }
+  for(let i=0;i<nz;i++){ const z=(i+.5)/nz*g.H; zs.push(z); const row=[], rowo=[];
+    for(let k=0;k<nphi;k++){ const ph=phis[k]; const w=Math.max(0,1-Math.abs(ph)/g.phiw); const beak=1+g.beak*w*w*Math.max(0,(z-0.7*g.H)/(0.3*g.H)); row.push(rBody(z)*beak); rowo.push(rBody(z)*beak+0.0015); }
+    rin.push(row); rout.push(rowo); }
+  return {name:'参数化壶', zs, phis, rin, rout, zrim, rrim, H:g.H, lip:rad(10), rbelly:g.rbelly}; }
+function gridFromJSON(j){ const sc=0.001, res=j.spout_phi_residual||0;
+  const zs=j.zs.map(z=>z*sc), phis=j.phis.map(p=>p-res), rin=j.r_in.map(r=>r.map(v=>v*sc)), rout=j.r_out.map(r=>r.map(v=>v*sc));
+  const zrim=j.z_rim.map(z=>z*sc), rrim=j.r_rim.map(r=>r*sc); let rb=0; for(const row of rin) rb=Math.max(rb, Math.max(...row));
+  return {name:j.name||'CAD 壶', zs, phis, rin, rout, zrim, rrim, H:zs[zs.length-1], lip:rad(10), rbelly:rb}; }
+function periodic(tab, phi){ const n=tab.length, p0=geom.phis[0], d=2*PI/n; let u=((phi-p0)%(2*PI)+2*PI)%(2*PI)/d; let i=Math.floor(u); const f=u-i; i=((i%n)+n)%n; return tab[i]*(1-f)+tab[(i+1)%n]*f; }
+function zRim(phi){ return periodic(geom.zrim, phi); }
+function rRim(phi){ return periodic(geom.rrim, phi); }
+function gridR(grid, z, phi){ const zs=geom.zs; let iz=0; while(iz<zs.length-2 && zs[iz+1]<z) iz++; const fz=Math.min(1,Math.max(0,(z-zs[iz])/(zs[iz+1]-zs[iz]||1e-9)));
+  const n=geom.phis.length, d=2*PI/n; let u=((phi-geom.phis[0])%(2*PI)+2*PI)%(2*PI)/d; let ip=Math.floor(u); const fp=u-ip; ip=((ip%n)+n)%n; const ip1=(ip+1)%n;
+  return (grid[iz][ip]*(1-fp)+grid[iz][ip1]*fp)*(1-fz)+(grid[iz+1][ip]*(1-fp)+grid[iz+1][ip1]*fp)*fz; }
+function rIn(z,phi){ return gridR(geom.rin,z,phi); }
+function rOut(z,phi){ return gridR(geom.rout,z,phi); }
+function buildGeometry(g){ geom=g; const zs=g.zs, phis=g.phis, nz=zs.length, nphi=phis.length, dphi=2*PI/nphi;
+  const stride=Math.max(1,Math.round(nz/40)), NR=8; const pts=[];
+  const S=[]; for(let iz=0;iz<nz;iz+=stride) S.push(iz); if(S[S.length-1]!==nz-1) S.push(nz-1);
+  const bounds=[zs[0]-0.5*(zs[1]-zs[0])]; for(let j=0;j<S.length-1;j++) bounds.push(0.5*(zs[S[j]]+zs[S[j+1]])); bounds.push(zs[nz-1]+0.5*(zs[nz-1]-zs[nz-2]));
+  for(let j=0;j<S.length;j++){ const iz=S[j], z=zs[iz], dz=Math.max(bounds[j+1]-bounds[j],1e-6);
+    for(let k=0;k<nphi;k++){ if(z>=g.zrim[k]) continue; const ri=g.rin[iz][k];
+      for(let q=0;q<NR;q++){ const r=ri*Math.sqrt((q+.5)/NR); pts.push(r*Math.cos(phis[k]), r*Math.sin(phis[k]), z, 0.5*ri*ri*dphi*dz/NR); } } }
+  P=new Float64Array(pts); NP=P.length/4; capacity=0; for(let i=0;i<NP;i++) capacity+=P[4*i+3];
+  RIM=[]; for(let k=0;k<NRIM;k++){ const ph=(k+.5)/NRIM*2*PI-PI; RIM.push(rRim(ph)*Math.cos(ph), rRim(ph)*Math.sin(ph), zRim(ph)); }
+  let kt=0; for(let k=1;k<nphi;k++) if(g.rrim[k]>g.rrim[kt]) kt=k; tipB=[g.rrim[kt]*Math.cos(phis[kt]), g.rrim[kt]*Math.sin(phis[kt]), g.zrim[kt]]; }
+buildGeometry(parametricGrid());
 function rot(yaw,tilt,roll){ const cy=Math.cos(yaw),sy=Math.sin(yaw),ct=Math.cos(tilt),st=Math.sin(tilt),cr=Math.cos(roll),sr=Math.sin(roll);
   // Rz*Ry*Rx
   return [ cy*ct, cy*st*sr - sy*cr, cy*st*cr + sy*sr,
@@ -156,9 +178,10 @@ function worldXYZ(R, tip, x,y,z){ const dx=x-tipB[0], dy=y-tipB[1], dz=z-tipB[2]
   return [tip[0]+R[0]*dx+R[1]*dy+R[2]*dz, tip[1]+R[3]*dx+R[4]*dy+R[5]*dz, tip[2]+R[6]*dx+R[7]*dy+R[8]*dz]; }
 
 const NB=512, hist=new Float64Array(NB);
+let NRM=[0,0,1], GEFF=G;   // free-surface normal and effective gravity (level 1), set by kinematics()
 function freeSurface(R, tip, V){
   let zmin=Infinity, zmax=-Infinity; const zw=new Float32Array(NP);
-  for(let i=0;i<NP;i++){ const z=worldZ(R,tip,P[4*i],P[4*i+1],P[4*i+2]); zw[i]=z; if(z<zmin)zmin=z; if(z>zmax)zmax=z; }
+  for(let i=0;i<NP;i++){ const p=worldXYZ(R,tip,P[4*i],P[4*i+1],P[4*i+2]); const z=p[0]*NRM[0]+p[1]*NRM[1]+p[2]*NRM[2]; zw[i]=z; if(z<zmin)zmin=z; if(z>zmax)zmax=z; }
   hist.fill(0); const w=(zmax-zmin)/NB || 1e-9;
   for(let i=0;i<NP;i++){ let b=Math.floor((zw[i]-zmin)/w); if(b>=NB)b=NB-1; hist[b]+=P[4*i+3]; }
   if(V>=capacity) return {c:zmax, overflow:V-capacity};
@@ -167,18 +190,22 @@ function freeSurface(R, tip, V){
 }
 function weir(R, tip, c, Cd, hk){
   const W=new Array(NRIM); for(let k=0;k<NRIM;k++) W[k]=worldXYZ(R,tip,RIM[3*k],RIM[3*k+1],RIM[3*k+2]);
-  let S32=0,S52=0,ox=0,oy=0,oz=0,hmax=-Infinity, lowest=W[0];
-  for(let k=0;k<NRIM;k++){ const a=W[k], b=W[(k+1)%NRIM]; const mz=.5*(a[2]+b[2]); const h=c-mz; if(h>hmax)hmax=h; if(a[2]<lowest[2])lowest=a;
-    const he=Math.max(h-hk,0); if(he<=0) continue; const dl=Math.hypot(b[0]-a[0],b[1]-a[1]); const w=Math.pow(he,1.5)*dl; S32+=w; S52+=Math.pow(he,2.5)*dl;
-    ox+=w*.5*(a[0]+b[0]); oy+=w*.5*(a[1]+b[1]); oz+=w*mz; }
-  const Q=Cd*(2/3)*Math.sqrt(2*G)*S32;
+  let S32=0,S52=0,ox=0,oy=0,oz=0,hmax=-Infinity, lowest=W[0], lowz=Infinity;
+  const dotn=p=>p[0]*NRM[0]+p[1]*NRM[1]+p[2]*NRM[2];
+  for(let k=0;k<NRIM;k++){ const a=W[k], b=W[(k+1)%NRIM]; const mz=.5*(dotn(a)+dotn(b)); const h=c-mz; if(h>hmax)hmax=h; const az=dotn(a); if(az<lowz){lowz=az;lowest=a;}
+    const he=Math.max(h-hk,0); if(he<=0) continue;
+    const sx=b[0]-a[0], sy=b[1]-a[1], sz=b[2]-a[2], sn=sx*NRM[0]+sy*NRM[1]+sz*NRM[2];
+    const dl=Math.hypot(sx-sn*NRM[0], sy-sn*NRM[1], sz-sn*NRM[2]);     // rim element in the surface plane
+    const w=Math.pow(he,1.5)*dl; S32+=w; S52+=Math.pow(he,2.5)*dl;
+    ox+=w*.5*(a[0]+b[0]); oy+=w*.5*(a[1]+b[1]); oz+=w*.5*(a[2]+b[2]); }
+  const Q=Cd*(2/3)*Math.sqrt(2*GEFF)*S32;
   return {Q_ss:Q, h_max:hmax, h_bar:S32>0?S52/S32:0, origin:S32>0?[ox/S32,oy/S32,oz/S32]:lowest};
 }
 function jet(R, Q, h_bar, origin, hk){
   if(Q<=0||h_bar<=0) return null;
-  const u0=Math.sqrt(2*G*Math.max(h_bar,hk)), A0=Q/u0, d0=2*Math.sqrt(A0/PI);
+  const u0=Math.sqrt(2*GEFF*Math.max(h_bar,hk)), A0=Q/u0, d0=2*Math.sqrt(A0/PI);
   const ca=Math.cos(geom.lip), sa=-Math.sin(geom.lip);
-  const v0=[u0*(R[0]*ca+R[2]*sa), u0*(R[3]*ca+R[5]*sa), u0*(R[6]*ca+R[8]*sa)];
+  const v0=[u0*(R[0]*ca+R[2]*sa)+kin.vel[0], u0*(R[3]*ca+R[5]*sa)+kin.vel[1], u0*(R[6]*ca+R[8]*sa)+kin.vel[2]];   // carries the pitcher velocity
   const z0=origin[2]; const t=z0<=0?0:(v0[2]+Math.sqrt(v0[2]*v0[2]+2*G*z0))/G;
   const vz=v0[2]-G*t, speed=Math.hypot(v0[0],v0[1],vz);
   const We=1030*u0*u0*d0/0.045, Lb=19.5*d0*Math.pow(We,0.325);
@@ -188,14 +215,29 @@ function jet(R, Q, h_bar, origin, hk){
 }
 function clearance(R, tip, cupR){
   let zmin=Infinity;
-  for(let i=0;i<40;i++){ const z=i/39*geom.H, Rb=rBody(z); for(let k=0;k<36;k++){ const ph=k/36*2*PI; const w=worldXYZ(R,tip,Rb*Math.cos(ph),Rb*Math.sin(ph),z);
+  for(let i=0;i<40;i++){ const z=i/39*geom.H; for(let k=0;k<36;k++){ const ph=k/36*2*PI; const Rb=rOut(z,ph); const w=worldXYZ(R,tip,Rb*Math.cos(ph),Rb*Math.sin(ph),z);
     if(Math.hypot(w[0],w[1])<cupR && w[2]<zmin) zmin=w[2]; } }
   return zmin;
 }
-const law={Cd:0.60, hk:0.0008, h_on:0.0025, h_off:0.0005, tau:0.08, tau_stop:0.15};
+const law={Cd:0.60, hk:0.0008, h_on:0.0025, h_off:0.0005, tau:0.08, tau_stop:0.15, slosh:true, zeta:0.08, accTau:0.02};
 const st={V:200e-6, Q:0, flowing:false, t:0};
+// level 1: pitcher acceleration -> effective gravity g - a -> free-surface slope through the first sloshing mode
+const kin={tipPrev:null, vel:[0,0,0], acc:[0,0,0], slope:[0,0], slopeRate:[0,0], omega:0};
+function kinematics(tip, dt){
+  let vNew=[0,0,0], aRaw=[0,0,0];
+  if(kin.tipPrev){ for(let i=0;i<3;i++){ vNew[i]=(tip[i]-kin.tipPrev[i])/dt; aRaw[i]=(vNew[i]-kin.vel[i])/dt; } }
+  const f=1-Math.exp(-dt/law.accTau); for(let i=0;i<3;i++) kin.acc[i]+=(aRaw[i]-kin.acc[i])*f;
+  kin.tipPrev=[tip[0],tip[1],tip[2]]; kin.vel=vNew;
+  const gz=Math.max(G+kin.acc[2],0.2*G); const sqs=[-kin.acc[0]/gz, -kin.acc[1]/gz];
+  if(law.slosh){ const Rb=geom.rbelly, depth=Math.max(st.V/(PI*Rb*Rb),0.005), k=1.841/Rb, om=Math.sqrt(G*k*Math.tanh(k*depth)); kin.omega=om;
+    for(let i=0;i<2;i++){ kin.slopeRate[i]+=dt*(om*om*(sqs[i]-kin.slope[i])-2*law.zeta*om*kin.slopeRate[i]); kin.slope[i]+=dt*kin.slopeRate[i]; } }
+  else { kin.slope=[sqs[0],sqs[1]]; kin.slopeRate=[0,0]; }
+  const nn=Math.hypot(kin.slope[0],kin.slope[1],1); NRM=[-kin.slope[0]/nn,-kin.slope[1]/nn,1/nn];
+  GEFF=Math.hypot(kin.acc[0],kin.acc[1],G+kin.acc[2]);
+}
 function stepPitcher(pose, dt){
   const R=rot(pose.yaw,pose.tilt,0), tip=pose.tip;
+  kinematics(tip, dt);
   const fs=freeSurface(R,tip,st.V); const W=weir(R,tip,fs.c,law.Cd,law.hk);
   if(!st.flowing && W.h_max>law.h_on) st.flowing=true;
   if(st.flowing && W.h_max<law.h_off) st.flowing=false;
@@ -203,7 +245,7 @@ function stepPitcher(pose, dt){
   const tau=Qt>=st.Q?law.tau:law.tau_stop; st.Q+=(Qt-st.Q)*(1-Math.exp(-dt/tau));
   const dV=Math.min(st.Q*dt, st.V); st.V-=dV; st.t+=dt; const Qe=dV/dt;
   const J=Qe>0?jet(R,Qe,W.h_bar,W.origin,law.hk):null;
-  return {R, c:fs.c, Q:Qe, h_max:W.h_max, h_bar:W.h_bar, jet:J, clearance:clearance(R,tip,0.043)};
+  return {R, c:fs.c, Q:Qe, h_max:W.h_max, h_bar:W.h_bar, jet:J, clearance:clearance(R,tip,0.043), slope:[kin.slope[0],kin.slope[1]], acc:[kin.acc[0],kin.acc[1],kin.acc[2]]};
 }
 
 /* ---------------------------------------------------------------- scene (three.js; world z -> three y, world y -> three -z) */
@@ -247,23 +289,25 @@ function paintField(){ if(!solver) return; const N=solN; solver.concentration(cF
   const px=512*(D_L/(2*CUP_R)); pctx.fillStyle='#5a3a1e'; pctx.fillRect(0,0,512,512); pctx.imageSmoothingEnabled=true;
   pctx.drawImage(fieldCanvas,256-px/2,256-px/2,px,px); tex.needsUpdate=true; }
 newSolver(96);
-// pitcher mesh: lathe of the profile + rim notch handled by clipping the top (approximation: lathe to H, notch cut with a wedge plane)
-const prof=[]; for(let i=0;i<=24;i++){ const z=i/24*geom.H; prof.push(new THREE.Vector2(rBody(z),z)); }
+// pitcher mesh from the (z, phi) grid: outer wall, inner (liquid) wall, bottom, rim band.  three local coords = (x, z, -y) of the body frame
 const pitcherGroup=new THREE.Group(); scene.add(pitcherGroup);
 const steel=new THREE.MeshStandardMaterial({color:0xcfd4da,metalness:0.85,roughness:0.35,side:THREE.DoubleSide});
-const body=new THREE.Mesh(new THREE.LatheGeometry(prof,48), steel); pitcherGroup.add(body);
-const bottom=new THREE.Mesh(new THREE.CircleGeometry(geom.rb,48), steel); bottom.rotation.x=PI/2; pitcherGroup.add(bottom);
-// spout: a small wedge (beak) at +X
-const spoutGeo=new THREE.BufferGeometry();
-{ const v=[]; const n=12; for(let k=0;k<n;k++){ const a=-geom.phiw+(k/(n-1))*2*geom.phiw, w=Math.max(0,1-Math.abs(a)/geom.phiw);
-    v.push(rRim(a)*Math.cos(a), zRim(a), -rRim(a)*Math.sin(a)); v.push(geom.rt*Math.cos(a)*0.98, geom.H-geom.depth*w-0.002, -geom.rt*Math.sin(a)*0.98); }
-  const idx=[]; for(let k=0;k<n-1;k++){ const b=2*k; idx.push(b,b+1,b+2, b+1,b+3,b+2); }
-  spoutGeo.setAttribute('position',new THREE.Float32BufferAttribute(v,3)); spoutGeo.setIndex(idx); spoutGeo.computeVertexNormals(); }
-pitcherGroup.add(new THREE.Mesh(spoutGeo, steel));
-// liquid inside: same lathe slightly inset, clipped by the horizontal free surface (world plane) — set per frame
 const milkMat=new THREE.MeshLambertMaterial({color:0xf4efe6,side:THREE.DoubleSide,clippingPlanes:[new THREE.Plane(new THREE.Vector3(0,-1,0),0)]});
-const liquid=new THREE.Mesh(new THREE.LatheGeometry(prof.map(p=>new THREE.Vector2(p.x*0.985,p.y)),48), milkMat); pitcherGroup.add(liquid);
-const liquidBottom=new THREE.Mesh(new THREE.CircleGeometry(geom.rb*0.985,48), milkMat); liquidBottom.rotation.x=PI/2; liquidBottom.position.y=0.0005; pitcherGroup.add(liquidBottom);
+let meshes=[];
+function surfaceFromGrid(rfun, zTop, scale){ const nz=48, nphi=72, pos=[], idx=[];
+  for(let i=0;i<=nz;i++){ for(let k=0;k<=nphi;k++){ const ph=-PI+k/nphi*2*PI; const zt=zTop(ph); const z=i/nz*zt; const r=rfun(Math.min(z,geom.H-1e-6),ph)*scale; pos.push(r*Math.cos(ph), z, -r*Math.sin(ph)); } }
+  for(let i=0;i<nz;i++) for(let k=0;k<nphi;k++){ const a=i*(nphi+1)+k, b=a+1, c=a+nphi+1, d=c+1; idx.push(a,c,b, b,c,d); }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setIndex(idx); g.computeVertexNormals(); return g; }
+function rimBand(){ const nphi=144, pos=[], idx=[]; for(let k=0;k<=nphi;k++){ const ph=-PI+k/nphi*2*PI; const z=zRim(ph); const ri=rIn(Math.min(z,geom.H-1e-6),ph), ro=rOut(Math.min(z,geom.H-1e-6),ph);
+    pos.push(ri*Math.cos(ph), z, -ri*Math.sin(ph)); pos.push(ro*Math.cos(ph), z, -ro*Math.sin(ph)); }
+  for(let k=0;k<nphi;k++){ const a=2*k; idx.push(a,a+1,a+2, a+1,a+3,a+2); }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setIndex(idx); g.computeVertexNormals(); return g; }
+function buildMeshes(){ for(const m of meshes){ pitcherGroup.remove(m); m.geometry.dispose(); } meshes=[];
+  const add=(g,mat,y)=>{ const m=new THREE.Mesh(g,mat); if(y!==undefined){ m.rotation.x=PI/2; m.position.y=y; } pitcherGroup.add(m); meshes.push(m); return m; };
+  add(surfaceFromGrid(rOut, zRim, 1.0), steel); add(rimBand(), steel);
+  add(new THREE.CircleGeometry(rOut(0.001,0),48), steel, 0);
+  add(surfaceFromGrid(rIn, zRim, 0.985), milkMat); add(new THREE.CircleGeometry(rIn(0.001,0)*0.985,48), milkMat, 0.0005); }
+buildMeshes();
 // jet tube: rebuilt each frame
 const jetMat=new THREE.MeshLambertMaterial({color:0xf4efe6});
 let jetMesh=null;
@@ -319,6 +363,13 @@ ui.cd.addEventListener('input',()=>{ law.Cd=+ui.cd.value; out('cdv').textContent
 document.getElementById('refill').addEventListener('click',()=>{ st.V=+ui.fill.value*1e-6; st.Q=0; st.flowing=false; });
 document.getElementById('clear').addEventListener('click',()=>{ solver.reset(); hits.length=0; paintField(); });
 document.getElementById('grid').addEventListener('change',ev=>{ newSolver(+ev.target.value); });
+let nxGrid=null;
+function usePitcher(which){ const g=(which==='nx'&&nxGrid)?nxGrid:parametricGrid(); buildGeometry(g); buildMeshes(); st.Q=0; st.flowing=false; kin.tipPrev=null; kin.slope=[0,0]; kin.slopeRate=[0,0];
+  out('pitcherv').textContent=(capacity*1e6).toFixed(0)+' mL'; }
+document.getElementById('pitchersel').addEventListener('change',ev=>usePitcher(ev.target.value));
+fetch('pitcher_nx.json').then(r=>r.json()).then(j=>{ nxGrid=gridFromJSON(j); if(document.getElementById('pitchersel').value==='nx') usePitcher('nx'); })
+  .catch(e=>{ console.warn('pitcher_nx.json not available, using the parametric pitcher', e); document.getElementById('pitchersel').value='param'; usePitcher('param'); });
+usePitcher('param');
 const overlay=document.getElementById('overlay'), top2d=document.getElementById('top2d'), tctx=top2d.getContext('2d');
 function drawTop(){ const N=solN, W=top2d.width; tctx.imageSmoothingEnabled=true; tctx.clearRect(0,0,W,W);
   tctx.save(); tctx.beginPath(); tctx.arc(W/2,W/2,W/2,0,2*PI); tctx.clip(); tctx.drawImage(fieldCanvas,0,0,W,W); tctx.restore();
@@ -336,16 +387,26 @@ document.getElementById('closeTop').addEventListener('click',()=>toggleTop(false
 document.getElementById('show2d').addEventListener('click',()=>toggleTop());
 
 /* ---------------------------------------------------------------- scripted barista (heart) */
-const MOVES=[ {dur:4.0,p0:[0,.20],p1:[0,.16],z0:.015,z1:.015,Q0:15e-6,Q1:15e-6,name:'低位圆盘 15 mL/s'},
+const MOVES_LAYERED=[ {dur:3.2,p0:[0,.08],p1:[0,.14],z0:.015,z1:.015,Q0:6e-6,Q1:13.5e-6,wob:.008,wob1:.025,wf:2.5,name:'抖壶铺底 6→13.5 mL/s'},
+  {dur:3.2,p0:[0,.14],p1:[0,.14],z0:.015,z1:.015,Q0:13.5e-6,Q1:13.5e-6,wob:.045,wob1:.045,wf:2.5,name:'定点抖壶 13.5 mL/s'},
+  {dur:.3,p0:[0,.14],p1:[0,.14],z0:.015,z1:.07,Q0:5e-6,Q1:4e-6,name:'抬壶'},
+  {dur:1.0,p0:[0,.14],p1:[0,-.32],z0:.07,z1:.07,Q0:4e-6,Q1:1e-6,name:'高位切过 4→1 mL/s'},
+  {dur:.7,p0:[0,-.32],p1:[0,-.32],z0:.07,z1:.10,Q0:0,Q1:0,name:'停'} ];
+let MOVES=null;
+const MOVES_HEART=[ {dur:4.0,p0:[0,.20],p1:[0,.16],z0:.015,z1:.015,Q0:15e-6,Q1:15e-6,name:'低位圆盘 15 mL/s'},
   {dur:1.6,p0:[0,.16],p1:[0,0],z0:.015,z1:.02,Q0:9e-6,Q1:9e-6,name:'回到中心 9 mL/s'},
   {dur:.35,p0:[0,0],p1:[0,0],z0:.02,z1:.07,Q0:5e-6,Q1:4e-6,name:'抬壶'},
   {dur:.8,p0:[0,0],p1:[0,-.27],z0:.07,z1:.07,Q0:4e-6,Q1:1e-6,name:'高位切过 4→1 mL/s'},
   {dur:.5,p0:[0,-.27],p1:[0,-.27],z0:.07,z1:.10,Q0:0,Q1:0,name:'停'} ];
 function intent(t){ let acc=0; for(const m of MOVES){ if(t<acc+m.dur){ const f=(t-acc)/m.dur, e=.5-.5*Math.cos(PI*f);
-  return {x:m.p0[0]+(m.p1[0]-m.p0[0])*e, y:m.p0[1]+(m.p1[1]-m.p0[1])*e, z:m.z0+(m.z1-m.z0)*e, Q:m.Q0+(m.Q1-m.Q0)*f, name:m.name}; } acc+=m.dur; }
-  return {x:0,y:-.27,z:.10,Q:0,name:'结束'}; }
-document.getElementById('auto').addEventListener('click',()=>{ st.V=200e-6; st.Q=0; st.flowing=false; solver.reset(); hits.length=0; pose.yaw=rad(-90); ui.yaw.value=-90; pose.tilt=0; manualTilt=null; pouring=false;
-  auto={t:0, ierr:0, off:[0,0]}; });
+  let amp=(m.wob||0)+((m.wob1===undefined?m.wob||0:m.wob1)-(m.wob||0))*f; amp*=Math.min(1,(t-acc)/0.25,(acc+m.dur-t)/0.25);
+  const wob=m.wf?amp*Math.sin(2*PI*m.wf*(t-acc)):0;
+  return {x:m.p0[0]+(m.p1[0]-m.p0[0])*e+wob, y:m.p0[1]+(m.p1[1]-m.p0[1])*e, z:m.z0+(m.z1-m.z0)*e, Q:m.Q0+(m.Q1-m.Q0)*f, name:m.name}; } acc+=m.dur; }
+  const last=MOVES[MOVES.length-1]; return {x:last.p1[0],y:last.p1[1],z:last.z1,Q:0,name:'结束'}; }
+function startScript(moves){ MOVES=moves; st.V=200e-6; st.Q=0; st.flowing=false; solver.reset(); hits.length=0; pose.yaw=rad(-90); ui.yaw.value=-90; pose.tilt=0; manualTilt=null; pouring=false;
+  kin.slope=[0,0]; kin.slopeRate=[0,0]; auto={t:0, ierr:0, off:[0,0], Qseen:0}; }
+document.getElementById('auto').addEventListener('click',()=>startScript(MOVES_HEART));
+document.getElementById('auto2').addEventListener('click',()=>startScript(MOVES_LAYERED));
 
 /* ---------------------------------------------------------------- strip chart */
 const strip=document.getElementById('strip'), sctx=strip.getContext('2d'); const hist2=[];
@@ -364,12 +425,13 @@ function frame(now){ requestAnimationFrame(frame); let el=Math.min(0.1,(now-last
     if(performance.now()>budget){ acc=Math.min(acc,DT); break; }   // solver slower than real time: the model clock slows down
     // barista intent (script) or user inputs
     if(auto){ const it=intent(auto.t); auto.t+=DT; pose.tip[0]=it.x*D_L-auto.off[0]; pose.tip[1]=it.y*D_L-auto.off[1]; pose.tip[2]=it.z; ui.height.value=(it.z*100).toFixed(1);
-      let rate; if(it.Q<=0){rate=-rad(60); auto.ierr=0;} else if(!st.flowing&&st.Q<=0) rate=rad(60); else { const err=it.Q-st.Q; auto.ierr=Math.max(-2e-6,Math.min(2e-6,auto.ierr+err*DT)); rate=Math.max(-rad(60),Math.min(rad(60), rad(0.8)/1e-6*err + rad(1.5)/1e-6*auto.ierr)); }
+      auto.Qseen+=(st.Q-auto.Qseen)*(1-Math.exp(-DT/0.25));
+      let rate; if(it.Q<=0){rate=-rad(60); auto.ierr=0;} else if(!st.flowing&&st.Q<=0) rate=rad(60); else { const err=it.Q-auto.Qseen; auto.ierr=Math.max(-2e-6,Math.min(2e-6,auto.ierr+err*DT)); rate=Math.max(-rad(60),Math.min(rad(60), rad(0.8)/1e-6*err + rad(1.5)/1e-6*auto.ierr)); }
       pose.tilt=Math.max(0,Math.min(rad(150),pose.tilt+rate*DT)); if(auto.t>MOVES.reduce((s,m)=>s+m.dur,0)+1.5) auto=null; out('hud').textContent='脚本：'+it.name; }
     else if(manualTilt!==null){ pose.tilt=manualTilt; }
     else { let rate=0; if(pouring) rate=rad(45); else rate=-rad(60); if(keyTilt) rate=keyTilt*rad(45); pose.tilt=Math.max(0,Math.min(rad(150),pose.tilt+rate*DT)); }
     rec=stepPitcher(pose,DT);
-    if(rec.jet&&auto) auto.off=[rec.jet.x_hit[0]-pose.tip[0],rec.jet.x_hit[1]-pose.tip[1]];
+    if(rec.jet&&auto){ const f=1-Math.exp(-DT/0.3); auto.off[0]+=(rec.jet.x_hit[0]-pose.tip[0]-auto.off[0])*f; auto.off[1]+=(rec.jet.x_hit[1]-pose.tip[1]-auto.off[1])*f; }
     // 2-D solver: one control frame with the coupled inlet record
     const scan=Math.hypot(pose.tip[0]-prevTip[0],pose.tip[1]-prevTip[1])/D_L/DT; prevTip=[pose.tip[0],pose.tip[1]];
     const inl=Latte2D.coupleInlet(rec, scan);
@@ -392,7 +454,7 @@ function frame(now){ requestAnimationFrame(frame); let el=Math.min(0.1,(now-last
   const toThree=new THREE.Matrix4().set(1,0,0,0, 0,0,1,0, 0,-1,0,0, 0,0,0,1);
   m.copy(new THREE.Matrix4().makeTranslation(pose.tip[0],pose.tip[2],-pose.tip[1])).multiply(toThree).multiply(Rt).multiply(tr).multiply(swap);
   pitcherGroup.matrixAutoUpdate=false; pitcherGroup.matrix.copy(m);
-  milkMat.clippingPlanes[0].set(new THREE.Vector3(0,-1,0), rec.c);  // keep points with three-y < c
+  milkMat.clippingPlanes[0].set(new THREE.Vector3(-NRM[0],-NRM[2],NRM[1]), rec.c);  // keep points with p.n < c (surface tilted by the sloshing mode)
   buildJet(rec.jet);
   if(rec.jet){ marker.visible=true; marker.position.set(rec.jet.x_hit[0],0.0006,-rec.jet.x_hit[1]); } else marker.visible=false;
   // readouts
@@ -402,6 +464,7 @@ function frame(now){ requestAnimationFrame(frame); let el=Math.min(0.1,(now-last
   out('rU').textContent=J?fmt(J.U_perp,2)+' / '+fmt(J.u_h,2)+' m/s':'—'; out('rd').textContent=J?fmt(J.d_hit*1e3,1)+' mm':'—';
   out('rhit').textContent=J?'('+fmt(J.x_hit[0]/D_L,2)+', '+fmt(J.x_hit[1]/D_L,2)+')':'—';
   const coh=out('rcoh'); coh.textContent=J?(J.coherent?'成束 (We '+Math.round(J.We)+')':'可能破碎'):'—'; coh.className=J&&!J.coherent?'warn':'ok';
+  out('rslope').textContent=fmt(deg(Math.atan(Math.hypot(rec.slope[0],rec.slope[1]))),1)+'° / '+fmt(Math.hypot(rec.acc[0],rec.acc[1]),1)+' m/s²';
   const cl=out('rcl'); if(isFinite(rec.clearance)){ cl.textContent=(rec.clearance>=0?'+':'')+fmt(rec.clearance*100,1)+' cm'; cl.className=rec.clearance<0?'warn':''; } else { cl.textContent='不在杯口上方'; cl.className=''; }
   if(!auto) out('hud').textContent='t '+fmt(st.t,1)+' s   倾角 '+fmt(deg(pose.tilt),0)+'°   Q '+fmt(rec.Q*1e6,1)+' mL/s';
   renderer.render(scene,camera); drawStrip(); }
