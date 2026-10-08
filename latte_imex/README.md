@@ -100,6 +100,8 @@ python -m latte_imex.run --pattern heart --control pitcher --N 256 --out runs/pi
 python -m latte_imex.pitcher_demo --out results/pitcher_demo    # inputs.png, side_view.png, tilt_flow.png, records.csv
 ```
 
-`web/pitcher_playground.html` is the same model ported to JavaScript with a three.js scene: drag the spout,
-hold to pour, replay the heart script; the coffee surface only shows where the stream lands (no PDE in the
-browser).  The physics port was checked against the Python model (same Q within 0.3 % at 60–70° tilt).
+`web/pitcher_playground.html` is the same pitcher model ported to JavaScript with a three.js scene (drag the
+spout, hold to pour, replay the heart script), feeding `web/latte2d.js`, a port of the 2-D solver (same sub-steps;
+explicit viscosity/mixing only).  The coffee surface shows its milk fraction and a double-click on the cup opens
+the 2-D field.  Both ports were checked against Python: same Q within 0.3 % at 60–70° tilt, and the heart at
+N=96 agrees to 3e-8 in c frame by frame (Node: about 2x real time at 96², 1x at 128²).
