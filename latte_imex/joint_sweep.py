@@ -122,9 +122,30 @@ def evaluate(args):
     return out
 
 
-def design(n, seed):
+def design(n, seed, around=None, spread=0.25):
+    """Latin hypercube over the unit cube; with `around` (a list of results) the cube is replaced by boxes of
+    half-width `spread` (in unit coordinates) centred on those samples, each box getting n/len(around) points."""
     rng = np.random.default_rng(seed)
     U = lhs(n, len(PHYS) + sum(len(v) for v in ACT.values()), rng)
+    if around:
+        def to_unit(space, vals):
+            out = []
+            for k, (lo, hi, sc) in space.items():
+                v = vals[k]
+                out.append(math.log(v / lo) / math.log(hi / lo) if sc == "log" else (v - lo) / (hi - lo))
+            return out
+        centres = []
+        for r in around:
+            c = to_unit(PHYS, r["physics"])
+            for name, space in ACT.items():
+                c += to_unit(space, r["actions"][name])
+            centres.append(np.array(c))
+        per = int(math.ceil(n / len(centres)))
+        rows = []
+        for ci, c in enumerate(centres):
+            Uc = lhs(per, U.shape[1], np.random.default_rng(seed + 1 + ci))
+            rows.append(np.clip(c[None, :] + (Uc - 0.5) * 2 * spread, 0.0, 1.0))
+        U = np.vstack(rows)[:n]
     jobs = []
     for i in range(n):
         u = U[i]; k = len(PHYS)
@@ -144,9 +165,16 @@ def main():
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--idx", type=int, default=None, help="evaluate one sample of the design (one process per sample)")
     ap.add_argument("--collect", action="store_true", help="merge sample_*.json into results.json / fields.npz")
+    ap.add_argument("--around", default=None, help="results.json of a previous sweep: sample around its best samples")
+    ap.add_argument("--top", type=int, default=3, help="how many best (joint loss) samples of --around to centre on")
+    ap.add_argument("--spread", type=float, default=0.25)
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
-    jobs = design(a.n, a.seed)
+    around = None
+    if a.around:
+        R = json.load(open(a.around)); R = [r for r in R if r["patterns"]["tulip"].get("ok") and r["patterns"]["heart"].get("ok")]
+        R.sort(key=lambda r: r["patterns"]["tulip"]["loss"] + r["patterns"]["heart"]["loss"]); around = R[:a.top]
+    jobs = design(a.n, a.seed, around=around, spread=a.spread)
     if a.idx is not None:
         i, physics, actions = jobs[a.idx]
         r = evaluate((i, physics, actions, a.N))
