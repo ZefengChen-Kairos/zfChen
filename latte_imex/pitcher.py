@@ -166,6 +166,7 @@ class Pose:
 class Milk:
     rho: float = 1030.0
     sigma: float = 0.045
+    r_min: float = 0.0005   # smallest footprint radius [m]: a thinner dribble breaks into drops (capillary limit)
 
 
 @dataclass
@@ -310,7 +311,7 @@ class Pitcher:
         x_hit = origin[:2] + v0[:2] * t_hit
         vz = v0[2] - G * t_hit
         speed = math.sqrt(v0[0] ** 2 + v0[1] ** 2 + vz ** 2)
-        d_hit = d0 * math.sqrt(u0 / speed)
+        d_hit = max(d0 * math.sqrt(u0 / speed), 2 * self.milk.r_min)
         # exit sheet: wetted lip width L and thickness A0/L; surface tension rounds it up on the capillary time
         # t_cap = sqrt(rho t^3 / sigma); what remains at impact is an ellipse of the continuity area A0*u0/|v|
         L = max(float(width), d0)
@@ -320,7 +321,7 @@ class Pitcher:
         rounding = 1.0 - math.exp(-t_hit / max(t_cap, 1e-6))
         aspect = aspect0 ** (1.0 - rounding)
         A_hit = A0 * u0 / speed
-        r1 = math.sqrt(A_hit * aspect / math.pi); r2 = math.sqrt(A_hit / aspect / math.pi)
+        r1 = max(math.sqrt(A_hit * aspect / math.pi), self.milk.r_min); r2 = max(math.sqrt(A_hit / aspect / math.pi), self.milk.r_min)
         phi_lip = math.atan2(float(tangent[1]), float(tangent[0]))
         We = self.milk.rho * u0 ** 2 * d0 / self.milk.sigma
         L_break = 19.5 * d0 * We ** 0.325 if We > 0 else 0.0       # Grant & Middleman, laminar jet

@@ -232,9 +232,9 @@ function jet(R, Q, h_bar, origin, hk, width, tangent){
   const We=1030*u0*u0*d0/0.045, Lb=19.5*d0*Math.pow(We,0.325);
   const path=Math.abs(v0[2])*t+.5*G*t*t+Math.hypot(v0[0]*t,v0[1]*t);
   const L=Math.max(width,d0), thick=A0/L, aspect0=L/thick, tcap=Math.sqrt(1030*thick*thick*thick/0.045), rounding=1-Math.exp(-t/Math.max(tcap,1e-6));
-  const aspect=Math.pow(aspect0,1-rounding), Ahit=A0*u0/speed, r1=Math.sqrt(Ahit*aspect/PI), r2=Math.sqrt(Ahit/aspect/PI), phi=Math.atan2(tangent[1],tangent[0]);
+  const aspect=Math.pow(aspect0,1-rounding), Ahit=A0*u0/speed, r1=Math.max(Math.sqrt(Ahit*aspect/PI),5e-4), r2=Math.max(Math.sqrt(Ahit/aspect/PI),5e-4), phi=Math.atan2(tangent[1],tangent[0]);
   return {u0,d0,v0,origin,t_hit:t,x_hit:[origin[0]+v0[0]*t, origin[1]+v0[1]*t],U_perp:Math.max(-vz,0),u_h:Math.hypot(v0[0],v0[1]),speed,
-          d_hit:d0*Math.sqrt(u0/speed),We,L_break:Lb,coherent:path<Lb,drop:z0, r1, r2, phi, aspect, rounding};
+          d_hit:Math.max(d0*Math.sqrt(u0/speed),1e-3),We,L_break:Lb,coherent:path<Lb,drop:z0, r1, r2, phi, aspect, rounding};
 }
 function clearance(R, tip, cupR){
   let zmin=Infinity;
