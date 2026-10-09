@@ -620,19 +620,36 @@ class Barista:
 
     def __init__(self, pitcher, moves, coupling, yaw=-math.pi / 2, gain=math.radians(0.8) / 1e-6,
                  gain_i=math.radians(1.5) / 1e-6, max_rate=math.radians(60.0), swing_rate=math.radians(60.0),
-                 tail=1.0, cup=None, tilt0=math.radians(40.0), hold_rate=math.radians(4.0)):
+                 tail=1.0, cup=None, tilt0=math.radians(40.0), hold_rate=math.radians(4.0), feedforward=True,
+                 tau_ff=0.1):
         self.pitcher, self.moves, self.cp = pitcher, moves, coupling
         self.cup = Cup() if cup is None else cup           # None-safe: pass cup=False to disable the collision lift
         self.lift = 0.0
         self.tilt0 = tilt0                                 # the barista arrives already tilted, just below the flow onset
         self.yaw, self.gain, self.gain_i, self.max_rate, self.swing_rate = yaw, gain, gain_i, max_rate, swing_rate
         self.hold_rate = hold_rate      # slow tilt-back once the stream has stopped (stays just below the onset head)
+        self.feedforward, self.tau_ff = feedforward, tau_ff
+        self.z_cmd, self.z_rate, self.tau_z = None, 0.25, 0.04   # smoothed spout-height command [m], [m/s], [s]
+        self._ff = (None, None, 0.0)    # cache: (Q_want, V, tilt) of the last feed-forward solve
+
         self.T = sum(m.dur for m in moves) + tail
         self.tilt = tilt0
         self.ierr = 0.0                 # integrated flow error [m^3]
         self.offset = np.zeros(2)       # world xy: hit point - tip, low-passed (the barista corrects the drift, not the wiggle)
         self.Q_seen = 0.0               # low-passed flow the barista reacts to
         self.tau_see = 0.25             # [s]
+
+    def _tilt_ff(self, pose, Q_want):
+        """Steady tilt for Q_want at the current fill (bisection on the weir law in a bracket around the current
+        tilt); recomputed only when the wanted flow or the fill changed by more than 3 %."""
+        q0, v0, t0 = self._ff
+        V = self.pitcher.state.V
+        if q0 is not None and abs(Q_want - q0) <= 0.03 * q0 and abs(V - v0) <= 0.03 * v0:
+            return t0
+        lo, hi = max(0.0, self.tilt - math.radians(12)), min(math.radians(150), self.tilt + math.radians(12))
+        t = self.pitcher.tilt_for_flow(pose, Q_want, V=V, lo=lo, hi=hi, iters=10)
+        self._ff = (Q_want, V, t)
+        return t
 
     def intent(self, t):
         acc = 0.0
@@ -662,15 +679,24 @@ class Barista:
         last = self.moves[-1]
         return last.p1, last.z1, 0.0, "settle"
 
-    def pose_at(self, t):
+    def pose_at(self, t, dt=None):
         (x, y), z, Q_want, name = self.intent(t)
+        if dt is not None:
+            # the hand cannot jump: the commanded spout height follows the intent with a rate limit (0.25 m/s, a 5 cm
+            # lift takes ~0.25 s) and a short low-pass.  An instantaneous jump between moves kicked the slosh mode and
+            # produced a 20-30 mL/s burst at the start of every high cut.
+            if self.z_cmd is None:
+                self.z_cmd = z
+            dz = max(-self.z_rate * dt, min(self.z_rate * dt, z - self.z_cmd))
+            self.z_cmd += dz * (1.0 - math.exp(-dt / self.tau_z)) if abs(z - self.z_cmd) < self.z_rate * dt else dz
+            z = self.z_cmd
         tip = (x * self.cp.D_L - self.offset[0], y * self.cp.D_L - self.offset[1], z)
         return Pose(tip=tip, yaw=self.yaw, tilt=self.tilt, roll=0.0), Q_want, name
 
     def step(self, dt):
         """One control frame: update the tilt from the flow error, advance the pitcher.  Returns (record, label)."""
         t = self.pitcher.state.t
-        pose, Q_want, name = self.pose_at(t)
+        pose, Q_want, name = self.pose_at(t, dt)
         st = self.pitcher.state
         self.Q_seen += (st.Q - self.Q_seen) * (1.0 - math.exp(-dt / self.tau_see))
         if Q_want <= 0:
@@ -681,9 +707,18 @@ class Barista:
         elif not st.flowing:
             rate = self.swing_rate                       # milk not at the lip (or just left it): tilt until it is
         else:
+            # feed-forward wrist: the barista knows roughly how far to tilt for the flow they want (the steady weir
+            # law at the current fill) and goes there within ~0.1 s; the PI term only trims what they see.
+            # Without it a 0.25 s head or beak pour never reaches its flow (PI alone moves 6 deg/s).
+            if self.feedforward:
+                ff = self._tilt_ff(pose, Q_want)
+                rate_ff = max(-self.max_rate, min(self.max_rate, (ff - self.tilt) / self.tau_ff))
+            else:
+                rate_ff = 0.0
             err = Q_want - self.Q_seen
+            kp, ki = (self.gain * 0.5, self.gain_i * 0.3) if self.feedforward else (self.gain, self.gain_i)
             self.ierr = max(-2e-6, min(2e-6, self.ierr + err * dt))
-            rate = max(-self.max_rate, min(self.max_rate, self.gain * err + self.gain_i * self.ierr))
+            rate = max(-self.max_rate, min(self.max_rate, rate_ff + kp * err + ki * self.ierr))
         self.tilt = max(0.0, min(math.radians(150), self.tilt + rate * dt))
         pose.tilt = self.tilt
         if self.cup:

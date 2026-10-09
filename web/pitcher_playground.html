@@ -493,6 +493,13 @@ const MOVES_HEART=[ {dur:4.0,p0:[0,.20],p1:[0,.16],z0:.015,z1:.015,Q0:15e-6,Q1:1
   {dur:.8,p0:[0,0],p1:[0,-.27],z0:.07,z1:.07,Q0:4e-6,Q1:1e-6,name:'高位切过 4→1 mL/s'},
   {dur:.5,p0:[0,-.27],p1:[0,-.27],z0:.07,z1:.09,Q0:0,Q1:0,name:'停'},
   {dur:1.0,p0:[0,-.27],p1:[0,-1.8],z0:.09,z1:.14,Q0:0,Q1:0,name:'移开'} ];
+// steady tilt that gives flow Qw at the current fill (bisection on the weir law in a +-12 deg bracket around the current tilt), cached until Qw or V move by 3 %
+let ffCache={q:null,v:null,t:0};
+function tiltForFlow(Qw){ if(ffCache.q!==null && Math.abs(Qw-ffCache.q)<=0.03*ffCache.q && Math.abs(st.V-ffCache.v)<=0.03*ffCache.v) return ffCache.t;
+  const q=tl=>{ const R=rot(pose.yaw,tl,0); const fs=freeSurface(R,pose.tip,st.V); return weir(R,pose.tip,fs.c,law.Cd,law.hk).Q; };
+  let lo=Math.max(0,pose.tilt-rad(12)), hi=Math.min(rad(150),pose.tilt+rad(12)); let t;
+  if(q(hi)<Qw) t=hi; else { for(let i=0;i<10;i++){ const m=.5*(lo+hi); if(q(m)<Qw) lo=m; else hi=m; } t=.5*(lo+hi); }
+  ffCache={q:Qw,v:st.V,t}; return t; }
 function intent(t){ let acc=0; for(const m of MOVES){ if(t<acc+m.dur){ const f=(t-acc)/m.dur, e=.5-.5*Math.cos(PI*f);
   let amp=(m.wob||0)+((m.wob1===undefined?m.wob||0:m.wob1)-(m.wob||0))*f; amp*=Math.min(1,(t-acc)/0.25,(acc+m.dur-t)/0.25);
   const wob=m.wf?amp*Math.sin(2*PI*m.wf*(t-acc)):0; let x,y;
@@ -527,9 +534,15 @@ function frame(now){ requestAnimationFrame(frame); let el=Math.min(0.1,(now-last
     if(solverBusy()||performance.now()>budget){ acc=Math.min(acc,DT); break; }   // solver behind: the model clock waits for it
     acc-=DT;
     // barista intent (script) or user inputs
-    if(auto){ const it=intent(auto.t); auto.t+=DT; pose.tip[0]=it.x*D_L-auto.off[0]; pose.tip[1]=it.y*D_L-auto.off[1]; pose.tip[2]=it.z; ui.height.value=(it.z*100).toFixed(1);
+    if(auto){ const it=intent(auto.t); auto.t+=DT; pose.tip[0]=it.x*D_L-auto.off[0]; pose.tip[1]=it.y*D_L-auto.off[1];
+      // the hand cannot jump: the spout height follows the intent at <= 0.25 m/s with a short low-pass (a jump kicks the slosh mode and bursts the flow)
+      if(auto.z===undefined) auto.z=it.z; { const dz=Math.max(-0.25*DT,Math.min(0.25*DT,it.z-auto.z)); auto.z+= (Math.abs(it.z-auto.z)<0.25*DT)? dz*(1-Math.exp(-DT/0.04)) : dz; }
+      pose.tip[2]=auto.z; ui.height.value=(auto.z*100).toFixed(1);
       auto.Qseen+=(st.Q-auto.Qseen)*(1-Math.exp(-DT/0.25));
-      let rate; if(it.Q<=0){rate=st.flowing?-rad(60):-rad(4); auto.ierr=0;} else if(!st.flowing) rate=rad(60); else { const err=it.Q-auto.Qseen; auto.ierr=Math.max(-2e-6,Math.min(2e-6,auto.ierr+err*DT)); rate=Math.max(-rad(60),Math.min(rad(60), rad(0.8)/1e-6*err + rad(1.5)/1e-6*auto.ierr)); }
+      let rate; if(it.Q<=0){rate=st.flowing?-rad(60):-rad(4); auto.ierr=0;} else if(!st.flowing) rate=rad(60);
+      else { // feed-forward wrist: go to the steady tilt for the wanted flow within ~0.1 s; the PI term only trims
+        const ff=tiltForFlow(it.Q); const rff=Math.max(-rad(60),Math.min(rad(60),(ff-pose.tilt)/0.1));
+        const err=it.Q-auto.Qseen; auto.ierr=Math.max(-2e-6,Math.min(2e-6,auto.ierr+err*DT)); rate=Math.max(-rad(60),Math.min(rad(60), rff + rad(0.4)/1e-6*err + rad(0.45)/1e-6*auto.ierr)); }
       pose.tilt=Math.max(0,Math.min(rad(150),pose.tilt+rate*DT)); if(auto.t>MOVES.reduce((s,m)=>s+m.dur,0)+1.5) auto=null; out('hud').textContent='脚本：'+it.name+'   t '+fmt(st.t,1)+' s   Q '+fmt(st.Q*1e6,1)+' mL/s'; }
     else if(manualTilt!==null){ pose.tilt=manualTilt; }
     else { let rate=0; if(pouring) rate=rad(45); else rate=-rad(60); if(keyTilt) rate=keyTilt*rad(45); pose.tilt=Math.max(0,Math.min(rad(150),pose.tilt+rate*DT)); }
