@@ -42,9 +42,11 @@ class Params:
     Fr_c2: float = 23.0     # critical densimetric Froude number^2 of foam survival: chi = 1/(1+(U^2/(g' d Fr_c^2))^p_dep)
     phi_foam: float = 0.5   # foam volume fraction of the poured milk
     m_opaque: float = 0.02  # surface-foam thickness (liquid-depth units) that looks fully white
-    ent_coef: float = 0.74  # entrained coffee that wells up around the plume: E/Q = ent_coef * Fr
+    ent_coef: float = 0.74  # coffee entrained by the plunging jet, E/Q = ent_coef * Fr; it is pulled down at the jet and
+                            # wells up again within the cell (two-layer: surface flow towards the jet, brown surface created
+                            # where it wells up, only brown liquid subducted at the jet)
                             # (Ricou-Spalding jet entrainment 0.32 z/d  x  Turner fountain depth z/d = 2.32 Fr)
-    cell_frac: float = 1.0  # radius of the entrainment cell (where the entrained coffee sinks again) / fountain depth
+    cell_frac: float = 1.0  # radius of the entrainment cell (where the entrained coffee wells up again) / fountain depth
     tau_d: float = 0.0      # surfacing time constant [s]; 0 = instantaneous closure.  Tested variants that did not
                             # help were removed: a delay growing with U_perp (over-pushed the high cut) and a
                             # sub-surface spreading D_sub (smeared the layers).
@@ -328,6 +330,8 @@ class Solver:
 
         # ---- delay closure: impact momentum now, white later --------------------
         s_mom = s
+        s_l = None             # film mass source when it differs from the milk source (two-layer surface cell)
+        brown_rate = 0.0
         msub_new = None
         if P.tau_d > 0 and (self.tau_cur is not None):
             tau = self.tau_cur
@@ -346,11 +350,11 @@ class Solver:
         tl_new = None
         if P.closure == "twolayer":
             # submerged foam moves with the coffee layer (upwind), surfaces after its rise time and feeds the film
-            Ub = getattr(self, "Ub", None)
+            Ub, Ud = getattr(self, "Ub", None), getattr(self, "Ud", None)
             f1, t1 = self.f, self.ft
-            if Ub is not None:
-                ufx = 0.5 * (Ub[0][:, 1:] + Ub[0][:, :-1]) * g.fx
-                ufy = 0.5 * (Ub[1][1:, :] + Ub[1][:-1, :]) * g.fy
+            if Ud is not None:
+                ufx = 0.5 * (Ud[0][:, 1:] + Ud[0][:, :-1]) * g.fx
+                ufy = 0.5 * (Ud[1][1:, :] + Ud[1][:-1, :]) * g.fy
                 def upw(a):
                     Fx = ufx * np.where(ufx > 0, a[:, :-1], a[:, 1:]); Fy = ufy * np.where(ufy > 0, a[:-1, :], a[1:, :])
                     return g.div(Fx, Fy)
@@ -370,6 +374,14 @@ class Solver:
             wsum = np.maximum(s + Lam, 1e-300)
             vsx = np.where(s + Lam > 0, (s * ubx + Lam * jx) / wsum, 0.0)
             vsy = np.where(s + Lam > 0, (s * uby + Lam * jy) / wsum, 0.0)
+            Ds = getattr(self, "Ds", None)
+            if Ds is not None:
+                # surface created / destroyed by the entrainment cell: coffee welling up brings brown surface; where it is
+                # pulled down only the brown liquid goes (the buoyant foam stays and piles up)
+                s_up = np.maximum(Ds, 0.0)
+                s_dn = np.minimum(np.maximum(-Ds, 0.0), 0.9 * np.maximum(l - m, 0.0) / dt)
+                s_l = s + np.where(mask, s_up - s_dn, 0.0)
+                brown_rate = float((s_l - s)[mask].sum()) * g.area
 
         # ---- A: explicit Rusanov momentum advection (l frozen) --------------
         N = g.N
@@ -395,7 +407,9 @@ class Solver:
         K.mass_fluxes(a_x, a_y, l, lsafe, g.fx, g.fy, Gex, Gey, None, None)
         kx = np.empty((N, N - 1)); ky = np.empty((N - 1, N)); diag = np.empty((N, N))
         K.face_coef_and_diag(coef, g.fx, g.fy, dt, 1.0 / (h * h), kx, ky, diag)   # k_f = dt avg(c_p^2 l^n/theta)
-        rhs = l + dt * s - dt * g.div(Gex, Gey)
+        if s_l is None:
+            s_l = s
+        rhs = l + dt * s_l - dt * g.div(Gex, Gey)
 
         def A_mass(phi):
             return g.mass_operator(kx, ky, dt, phi)
@@ -404,7 +418,7 @@ class Solver:
         self.stats["cg_mass"] += it
         Gx = np.empty((N, N - 1)); Gy = np.empty((N - 1, N))
         K.finish_B(Gex, Gey, kx, ky, l_new, g.fx, g.fy, 1.0 / h, Gx, Gy)   # k_f (l_R - l_L)/h added to Ge
-        l_new = l + dt * s - dt * g.div(Gx, Gy)          # conservative update with the final flux
+        l_new = l + dt * s_l - dt * g.div(Gx, Gy)        # conservative update with the final flux
         qx_new = np.empty((N, N)); qy_new = np.empty((N, N))
         K.q_from_gradient(a_x, a_y, coef, l_new, g.fx, g.fy, g.nfx, g.nfy, dt, 1.0 / h, qx_new, qy_new)
         if msub_new is not None:
@@ -512,30 +526,44 @@ class Solver:
         if msub_new is not None:
             self.msub = msub_new
         self.deposited += float(s[mask].sum()) * g.area * dt
+        self.brown_net = getattr(self, "brown_net", 0.0) + brown_rate * dt
         self.stats["steps"] += 1
         return True
 
     def _bulk_flow(self):
-        """Velocity of the coffee layer under the film (quasi-steady potential flow, depth-averaged, depth = 1):
-        div U_b = S K + S_E (K - K_cell) - <S K>; the poured volume spreads over the whole cup, the entrained coffee
-        rises at the plume and sinks again within the entrainment cell (radius ~ fountain depth)."""
+        """Coffee under the film (quasi-steady potential flows, depth = 1).
+        Spreading of the poured volume (depth-averaged, the same at the surface and below): div U_v = S K - <S K>.
+        Entrainment cell of the plunging jet: the jet drags coffee down and it rises again within the cell (radius R_c);
+        a vertical circulation has no depth average, so it enters as a surface flow U_c, div U_c = S_E (K_cell - K)
+        (surface converging to the jet), with the opposite return flow at depth.
+        Surface velocity U_b = U_v + U_c drags the film; deep velocity U_d = U_v - U_c carries the submerged foam;
+        the surface divergence D_s = S_E (K_cell - K) creates brown surface where coffee wells up and removes it where
+        coffee is pulled down (the buoyant foam is not subducted, see substep)."""
         g, h = self.g, self.g.h
         S, SE = getattr(self, "_S", 0.0), getattr(self, "_SE", 0.0)
         if S <= 0:
-            self.Ub = None
+            self.Ub = None; self.Ud = None; self.Ds = None
             return
-        x0, y0 = self._hit
-        cell = (np.hypot(g.x - x0, g.y - y0) < max(self._Rc, 2 * h)) & g.mask
-        Kc = cell / max(cell.sum() * g.area, 1e-12)
-        rhs = S * self._K + SE * (self._K - Kc)
-        rhs = np.where(g.mask, rhs - rhs[g.mask].mean(), 0.0)
         kx, ky = g.fx.astype(float), g.fy.astype(float)
         eps = 1e-6
         if getattr(self, "_bulk_lu", None) is None:
             self._bulk_lu = self._factor_bulk(kx, ky, eps)
-        self.phi_b = self._bulk_lu(-rhs.ravel()).reshape(rhs.shape)
-        gx, gy = g.cell_grad(self.phi_b)
-        self.Ub = (np.where(g.mask, gx, 0.0), np.where(g.mask, gy, 0.0))
+
+        def potential_velocity(div):
+            div = np.where(g.mask, div - div[g.mask].mean(), 0.0)
+            phi = self._bulk_lu(-div.ravel()).reshape(div.shape)
+            gx, gy = g.cell_grad(phi)
+            return np.where(g.mask, gx, 0.0), np.where(g.mask, gy, 0.0), div
+
+        vx, vy, _ = potential_velocity(S * self._K)
+        if SE > 0:
+            x0, y0 = self._hit
+            cell = (np.hypot(g.x - x0, g.y - y0) < max(self._Rc, 2 * h)) & g.mask
+            Kc = cell / max(cell.sum() * g.area, 1e-12)
+            cx, cy, self.Ds = potential_velocity(SE * (Kc - self._K))
+            self.Ub = (vx + cx, vy + cy); self.Ud = (vx - cx, vy - cy)
+        else:
+            self.Ub = self.Ud = (vx, vy); self.Ds = None
 
     def _factor_bulk(self, kx, ky, eps):
         """Sparse LU of the constant coffee-layer operator eps*phi - div(k grad phi) (k = open faces): the matrix never
@@ -599,13 +627,13 @@ class Solver:
         if self.Ge is not None:
             umax = max(umax, float(max(np.abs(self.Ge[0]).max(), np.abs(self.Ge[1]).max())))
         if getattr(self, "Ub", None) is not None:
-            umax = max(umax, float(np.hypot(*self.Ub).max()))
+            umax = max(umax, float(np.hypot(*self.Ub).max()), float(np.hypot(*self.Ud).max()))
         self.stats["max_u"] = max(self.stats["max_u"], umax)
         dt_cfl = self.num.cfl * g.h / (2.0 * max(umax, 1e-9))
         nsub = int(math.ceil(frame_dt / dt_cfl))
         nsub = max(1, min(nsub, self.num.max_substeps))
         saved = (self.l.copy(), self.qx.copy(), self.qy.copy(), self.m.copy(), self.deposited, self.msub.copy(),
-                 self.f.copy(), self.ft.copy())
+                 self.f.copy(), self.ft.copy(), getattr(self, "brown_net", 0.0))
         for attempt in range(8):
             dt = frame_dt / nsub
             ok = True
@@ -620,6 +648,7 @@ class Solver:
             self.deposited = saved[4]
             self.msub = saved[5].copy()
             self.f, self.ft = saved[6].copy(), saved[7].copy()
+            self.brown_net = saved[8]
             self.stats["retries"] += 1
             nsub *= 2
         else:
@@ -639,7 +668,8 @@ class Solver:
         M = float(self.m[g.mask].sum() * g.area)
         R = float(self.msub[g.mask].sum() * g.area)
         return dict(t=self.t, layer=L, milk=M, brown=L - M, deposited=self.deposited, reservoir=R,
-                    layer_error=L - (g.n_cells * g.area + self.deposited),
+                    brown_net=getattr(self, "brown_net", 0.0),
+                    layer_error=L - (g.n_cells * g.area + self.deposited + getattr(self, "brown_net", 0.0)),
                     milk_error=M - self.deposited)
 
     def concentration(self):
