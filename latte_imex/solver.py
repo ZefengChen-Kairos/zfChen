@@ -40,6 +40,8 @@ class Params:
     Fr_c2: float = 23.0     # critical densimetric Froude number^2 of foam survival: chi = 1/(1+(U^2/(g' d Fr_c^2))^p_dep)
     phi_foam: float = 0.5   # foam volume fraction of the poured milk
     m_opaque: float = 0.02  # surface-foam thickness (liquid-depth units) that looks fully white
+    ent_coef: float = 0.74  # entrained coffee that wells up around the plume: E/Q = ent_coef * Fr
+                            # (Ricou-Spalding jet entrainment 0.32 z/d  x  Turner fountain depth z/d = 2.32 Fr)
     tau_d: float = 0.0      # surfacing time constant [s]; 0 = instantaneous closure.  Tested variants that did not
                             # help were removed: a delay growing with U_perp (over-pushed the high cut) and a
                             # sub-surface spreading D_sub (smeared the layers).
@@ -217,6 +219,7 @@ class Solver:
         self.f = np.zeros((g.N, g.N))      # skin closure: submerged foam (liquid-depth units)
         self.ft = np.zeros((g.N, g.N))     # skin closure: f * (mean remaining rise time) to carry tau with the foam
         self.foam_src = None; self.tau_new = 0.0
+        self.Ge = None; self.phi_e = np.zeros((g.N, g.N))   # surface upwelling flow of the entrained coffee (face fluxes)
         self.stats = dict(steps=0, frames=0, cg_mass=0, cg_visc=0, cg_mix=0,
                           clip_mass=0.0, max_substeps=0, max_u=0.0, retries=0)
         self.l_floor = 1e-3
@@ -260,7 +263,7 @@ class Solver:
         g = self.g
         if not inlet.active or inlet.S_eff <= 0:
             z = np.zeros((g.N, g.N))
-            self.foam_src = None
+            self.foam_src = None; self._SE = 0.0
             return z, z, z, z, 0.0
         K, _ = self.kernel(inlet)
         d = max(inlet.d_jet, 1e-6)
@@ -273,6 +276,7 @@ class Solver:
             Lam = P.kappa_c * inlet.S_eff * K
             self.foam_src = chi * P.phi_foam * s
             self.tau_new = max(2.0 * inlet.U_perp / P.g_red, 1e-3)
+            self._K = K; self._SE = P.ent_coef * math.sqrt(Fr2) * inlet.S_eff
             vsx = P.kappa_t * inlet.u_in[0] * np.ones_like(K)
             vsy = P.kappa_t * inlet.u_in[1] * np.ones_like(K)
             return s, Lam, vsx, vsy, chi
@@ -381,9 +385,18 @@ class Solver:
             f_new = f1 - surf
             ft_new = tau_f * f_new
             s_m = surf / dt
+            if self.Ge is not None:
+                # the surface foam moves with the bulk plus the entrainment upwelling
+                Gmx, Gmy = Gx + self.Ge[0], Gy + self.Ge[1]
+                cfx = K.limited_face_x(c, Gmx, g.fx, np.empty((N, N - 1)))
+                cfy = K.limited_face_y(c, Gmy, g.fy, np.empty((N - 1, N)))
+                Gx_m, Gy_m = Gmx, Gmy
+            else:
+                Gx_m, Gy_m = Gx, Gy
         else:
             s_m = s
-        m_new = m + dt * s_m - dt * g.div(Gx * cfx, Gy * cfy)
+            Gx_m, Gy_m = Gx, Gy
+        m_new = m + dt * s_m - dt * g.div(Gx_m * cfx, Gy_m * cfy)
         # boundedness guard (should be inactive under the material CFL)
         over = np.maximum(m_new - l_new, 0.0) + np.maximum(-m_new, 0.0)
         self.stats["clip_mass"] += float(over[mask].sum() * g.area)
@@ -453,6 +466,32 @@ class Solver:
         self.stats["steps"] += 1
         return True
 
+    def _entrainment_flow(self):
+        """Surface upwelling of the coffee entrained by the plunging jet: div(l grad phi) = S_E K - <S_E K>, u_e = grad phi.
+        It moves the surface (foam), not the bulk volume: the entrained coffee goes up at the plume and down elsewhere."""
+        g, h = self.g, self.g.h
+        SE = getattr(self, "_SE", 0.0)
+        if SE <= 0:
+            self.Ge = None
+            return
+        rhs = SE * self._K
+        rhs = np.where(g.mask, rhs - rhs[g.mask].mean(), 0.0)
+        lsn = np.where(g.mask, self.l, 1.0)
+        lfx, lfy = g.face_avg(lsn)
+        kx, ky = lfx * g.fx, lfy * g.fy
+        eps = 1e-6
+        diag = eps + (np.pad(kx, ((0, 0), (1, 0))) + np.pad(kx, ((0, 0), (0, 1)))
+                      + np.pad(ky, ((1, 0), (0, 0))) + np.pad(ky, ((0, 1), (0, 0)))) / (h * h)
+
+        def A(phi):
+            return eps * phi - g.diffusion(kx, ky, phi)
+
+        self.phi_e, it = pcg(A, -rhs, diag, self.phi_e, 1e-8, self.num.cg_maxiter)
+        self.stats["cg_ent"] = self.stats.get("cg_ent", 0) + it
+        Gxe = kx * (self.phi_e[:, 1:] - self.phi_e[:, :-1]) / h
+        Gye = ky * (self.phi_e[1:, :] - self.phi_e[:-1, :]) / h
+        self.Ge = (Gxe, Gye)
+
     # ----- one control frame ---------------------------------------------------
     def advance_frame(self, inlet: Inlet, frame_dt=None):
         frame_dt = frame_dt or self.num.frame_dt
@@ -461,11 +500,15 @@ class Solver:
             frame_dt = min(frame_dt, max(lim, 1e-4))
         s, Lam, vsx, vsy, chi = self.inlet_fields(inlet)
         g = self.g
+        if self.P.closure == "skin":
+            self._entrainment_flow()
         lsafe = np.where(g.mask, self.l, 1.0)
         umax = float(np.max(np.hypot(self.qx, self.qy) / lsafe))
         # include the inlet target speed in the material-speed bound (it is reached quickly)
         if inlet.active and inlet.S_eff > 0:
             umax = max(umax, float(np.max(np.hypot(vsx, vsy) * (s + Lam > 0))))
+        if self.Ge is not None:
+            umax = max(umax, float(max(np.abs(self.Ge[0]).max(), np.abs(self.Ge[1]).max())))
         self.stats["max_u"] = max(self.stats["max_u"], umax)
         dt_cfl = self.num.cfl * g.h / (2.0 * max(umax, 1e-9))
         nsub = int(math.ceil(frame_dt / dt_cfl))
