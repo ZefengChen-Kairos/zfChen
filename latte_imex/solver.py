@@ -45,6 +45,8 @@ class Params:
     ent_coef: float = 0.74  # entrained coffee that wells up around the plume: E/Q = ent_coef * Fr
                             # (Ricou-Spalding jet entrainment 0.32 z/d  x  Turner fountain depth z/d = 2.32 Fr)
     cell_frac: float = 1.0  # radius of the entrainment cell (where the entrained coffee sinks again) / fountain depth
+    bulk_tol: float = 1e-8  # PCG tolerance of the coffee-layer solve (two-layer closure)
+    bulk_rtol: float = 0.0  # quasi-steady coffee layer: reuse U_b while the source moved < h/2 and S, S_E changed < bulk_rtol
     tau_d: float = 0.0      # surfacing time constant [s]; 0 = instantaneous closure.  Tested variants that did not
                             # help were removed: a delay growing with U_perp (over-pushed the high cut) and a
                             # sub-surface spreading D_sub (smeared the layers).
@@ -522,9 +524,14 @@ class Solver:
         g, h = self.g, self.g.h
         S, SE = getattr(self, "_S", 0.0), getattr(self, "_SE", 0.0)
         if S <= 0:
-            self.Ub = None
+            self.Ub = None; self._ub_key = None
             return
         x0, y0 = self._hit
+        key, rt = getattr(self, "_ub_key", None), self.P.bulk_rtol
+        if (getattr(self, "Ub", None) is not None and key is not None and rt > 0 and math.hypot(x0 - key[0], y0 - key[1]) < 0.5 * h
+                and abs(S - key[2]) <= rt * key[2] and abs(SE - key[3]) <= rt * max(key[3], 1e-12) and abs(self._Rc - key[4]) < 0.5 * h):
+            return
+        self._ub_key = (x0, y0, S, SE, self._Rc)
         cell = (np.hypot(g.x - x0, g.y - y0) < max(self._Rc, 2 * h)) & g.mask
         Kc = cell / max(cell.sum() * g.area, 1e-12)
         rhs = S * self._K + SE * (self._K - Kc)
@@ -537,7 +544,7 @@ class Solver:
         def A(phi):
             return eps * phi - g.diffusion(kx, ky, phi)
 
-        self.phi_b, it = pcg(A, -rhs, diag, getattr(self, "phi_b", np.zeros_like(rhs)), 1e-8, self.num.cg_maxiter)
+        self.phi_b, it = pcg(A, -rhs, diag, getattr(self, "phi_b", np.zeros_like(rhs)), self.P.bulk_tol, self.num.cg_maxiter)
         self.stats["cg_bulk"] = self.stats.get("cg_bulk", 0) + it
         gx, gy = g.cell_grad(self.phi_b)
         self.Ub = (np.where(g.mask, gx, 0.0), np.where(g.mask, gy, 0.0))

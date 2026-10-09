@@ -14,7 +14,8 @@
     tau_d: 0, sub_advect: 0.3, sub_pressure: 0.5,
     // closure 'twolayer' (port of solver.Params): the layer is the floating foam/crema film, dragged (beta) by a coffee layer
     // driven by the poured volume; the foam that survives the impact, chi(Fr), surfaces after the fountain rise time 2U/g'
-    closure: 'chi', g_red: 75.0, Fr_c2: 23.0, phi_foam: 0.5, ent_coef: 0.74, cell_frac: 1.0 };
+    closure: 'chi', g_red: 75.0, Fr_c2: 23.0, phi_foam: 0.5, ent_coef: 0.74, cell_frac: 1.0,
+    bulk_tol: 1e-8, bulk_rtol: 0.0 };   // coffee-layer solve: PCG tolerance; reuse U_b while the source changes < bulk_rtol (0 = every frame)
   const DEFAULT_NUM = { cup_radius: 0.49, cfl: 0.5, frame_dt: 1 / 120, max_substeps: 64, cg_tol: 1e-10, cg_maxiter: 500,
     kernel_quadrature: 3, scan_safety: 0.5, explicit_mixing_limit: 0.05, explicit_visc_limit: 0.2, visc_tol: 1e-8, l_floor: 1e-3 };
 
@@ -50,7 +51,7 @@
         f1: A(), t1: A(), sf: A(), sft: A(), tvx: A(), tvy: A(), Kn: A(), fsrc: A(), brhs: A(), bdiag: A() };
       this.msub = A(); this.tauCur = null;      // sub-surface milk waiting to surface (delay closure)
       // two-layer closure: submerged foam f and its rise-time moment ft, coffee-layer potential and velocity
-      this.f = A(); this.ft = A(); this.phib = A(); this.ubx = A(); this.uby = A(); this.hasUb = false; this.tl = { active: false };
+      this.f = A(); this.ft = A(); this.phib = A(); this.ubx = A(); this.uby = A(); this.hasUb = false; this.ubKey = null; this.tl = { active: false };
       this.fxf = new Float64Array(nfx); this.fyf = new Float64Array(nfx);
       for (let k = 0; k < nfx; k++) { this.fxf[k] = this.fx[k]; this.fyf[k] = this.fy[k]; }
     }
@@ -198,7 +199,12 @@
     // coffee layer under the film (quasi-steady potential flow): div U_b = S K + S_E (K - K_cell) - <.>, U_b = grad phi_b
     bulkFlow() {
       const N = this.N, n = N * N, h = this.h, w = this.w, tl = this.tl, mask = this.mask;
-      if (!tl.active || !(tl.S > 0)) { this.hasUb = false; return; }
+      if (!tl.active || !(tl.S > 0)) { this.hasUb = false; this.ubKey = null; return; }
+      // quasi-steady: keep U_b while the source has not moved by half a cell and its strengths changed < bulk_rtol
+      const key = this.ubKey, rt = this.P.bulk_rtol;
+      if (this.hasUb && key && rt > 0 && Math.hypot(tl.x0 - key.x0, tl.y0 - key.y0) < 0.5 * h && Math.abs(tl.S - key.S) <= rt * key.S
+          && Math.abs(tl.SE - key.SE) <= rt * Math.max(key.SE, 1e-12) && Math.abs(tl.Rc - key.Rc) < 0.5 * h) return;
+      this.ubKey = { x0: tl.x0, y0: tl.y0, S: tl.S, SE: tl.SE, Rc: tl.Rc };
       const R = Math.max(tl.Rc, 2 * h); let nc = 0;
       for (let k = 0; k < n; k++) if (mask[k] && Math.hypot(this.x[k] - tl.x0, this.y[k] - tl.y0) < R) nc++;
       const kc = 1 / Math.max(nc * this.area, 1e-12); let mean = 0, nm = 0;
@@ -214,7 +220,7 @@
         if (j < N - 1) v += fyf[k]; if (j > 0) v += fyf[k - N];
         w.bdiag[k] = eps + v * ih2;
       }
-      this.stats.cg_bulk = (this.stats.cg_bulk || 0) + this.pcg(fxf, fyf, null, eps, 1, w.brhs, w.bdiag, this.phib, 1e-8);
+      this.stats.cg_bulk = (this.stats.cg_bulk || 0) + this.pcg(fxf, fyf, null, eps, 1, w.brhs, w.bdiag, this.phib, this.P.bulk_tol);
       const ih = 1 / h, fx = this.fx, fy = this.fy, p = this.phib;
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
         const k = j * N + i; let gx = 0, gy = 0;
@@ -436,7 +442,7 @@
       return out;
     }
     reset() { this.l.fill(1); this.qx.fill(0); this.qy.fill(0); this.m.fill(0); this.msub.fill(0); this.tauCur = null; this.t = 0; this.deposited = 0;
-      this.f.fill(0); this.ft.fill(0); this.phib.fill(0); this.ubx.fill(0); this.uby.fill(0); this.hasUb = false; this.tl = { active: false };
+      this.f.fill(0); this.ft.fill(0); this.phib.fill(0); this.ubx.fill(0); this.uby.fill(0); this.hasUb = false; this.ubKey = null; this.tl = { active: false };
       this.stats = { steps: 0, frames: 0, cg_mass: 0, max_u: 0, retries: 0, max_substeps: 0, clip_mass: 0 }; }
   }
 
