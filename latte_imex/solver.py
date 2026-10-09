@@ -38,6 +38,8 @@ class Params:
     tau_d_ref: float = 8.75 # 0.70 m/s in cup diameters per second    [D_L/s]
     tau_d_exp: float = 1.0  # tau = tau_d (U_perp/tau_d_ref)^tau_d_exp
     D_sub: float = 0.0      # spreading of the sub-surface plume        [D_L^2/s]
+    sub_advect: float = 1.0     # fraction of the surface velocity that carries the submerged plume (0 = it stays
+                                # where it was poured; the plume sits below the thin surface layer, so < 1 is plausible)
     sub_pressure: float = 1.0   # the submerged milk is a mound under the surface: it enters the pressure as
                                 # c_p^2 l grad(l + sub_pressure*m_sub) and pushes the old layer outward before it surfaces
 
@@ -294,11 +296,12 @@ class Solver:
             s = (tot - msub_new) / dt                      # surfacing rate = mass source of the layer
             # the submerged plume is carried by the flow (first-order upwind with the surface velocity); without this
             # the reservoir stays where it was poured and surfaces as a straight bar along the path
-            ufx = 0.5 * (ux[:, 1:] + ux[:, :-1]) * g.fx
-            ufy = 0.5 * (uy[1:, :] + uy[:-1, :]) * g.fy
-            Fx = ufx * np.where(ufx > 0, msub_new[:, :-1], msub_new[:, 1:])
-            Fy = ufy * np.where(ufy > 0, msub_new[:-1, :], msub_new[1:, :])
-            msub_new = np.where(mask, np.maximum(msub_new - dt * g.div(Fx, Fy), 0.0), 0.0)
+            if P.sub_advect > 0:
+                ufx = P.sub_advect * 0.5 * (ux[:, 1:] + ux[:, :-1]) * g.fx
+                ufy = P.sub_advect * 0.5 * (uy[1:, :] + uy[:-1, :]) * g.fy
+                Fx = ufx * np.where(ufx > 0, msub_new[:, :-1], msub_new[:, 1:])
+                Fy = ufy * np.where(ufy > 0, msub_new[:-1, :], msub_new[1:, :])
+                msub_new = np.where(mask, np.maximum(msub_new - dt * g.div(Fx, Fy), 0.0), 0.0)
             if P.D_sub > 0:                                # plume spreading (explicit, sub-cycled)
                 kx = P.D_sub * g.fx.astype(float); ky = P.D_sub * g.fy.astype(float)
                 nd = max(1, int(math.ceil(4.0 * P.D_sub * dt / (h * h) / 0.2)))
