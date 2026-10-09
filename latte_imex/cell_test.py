@@ -80,6 +80,27 @@ def fit_main():
               {k: v["gap_frac"] for k, v in r["per"].items() if "gap_frac" in v})
 
 
+
+def actions_main():
+    """Action search (round 1 + 2) with the refitted constants, same gap-aware objective."""
+    from . import action_opt as ao
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--actions", action="store_true")
+    ap.add_argument("--N", type=int, default=96)
+    ap.add_argument("--out", default="runs/action_opt")
+    a = ap.parse_args()
+    ao.MODELS["cellfit"] = json.load(open(os.path.join(a.out, f"cell_fit_N{a.N}.json")))["best"]["over"]   # before the fork
+    key = lambda r: objective(dict(r, out=a.out), a.N)[0]
+    with Pool(4, maxtasksperchild=4) as pool:
+        best = ao.search(pool, a.N, a.out, ["cellfit"], PATTERNS, key=key)
+        json.dump(best, open(os.path.join(a.out, f"cellfit_search_N{a.N}.json"), "w"), indent=1)
+        best = ao.refine(pool, a.N, a.out, best, key=key)
+        json.dump(best, open(os.path.join(a.out, f"cellfit_refine_N{a.N}.json"), "w"), indent=1)
+    for k, v in best.items():
+        b, z = v["best"], v["base"]
+        print(f"{k:22s} base J {key(z):.3f} loss {z['loss']:.3f} -> J {key(b):.3f} loss {b['loss']:.3f}  h {b['h']} q {b['q']} s {b['s']}")
+
+
 if __name__ == "__main__":
     import sys
-    fit_main() if "--fit" in sys.argv else main()
+    fit_main() if "--fit" in sys.argv else (actions_main() if "--actions" in sys.argv else main())

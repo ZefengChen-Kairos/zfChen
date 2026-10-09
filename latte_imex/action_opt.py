@@ -92,11 +92,12 @@ def run_one(job):
     return res
 
 
-def search(pool, N, out, models, patterns):
+def search(pool, N, out, models, patterns, key=None):
+    """key(r) -> objective of one run (default: the loss)."""
     best = {}
     def batch(jobs):
         return pool.map(run_one, jobs)
-    key = lambda r: r["loss"]
+    key = key or (lambda r: r["loss"])
     combos = [(m, n) for m in models for n in patterns]
     # stage 1: pour height line
     H = [0.6, 0.8, 1.0, 1.3, 1.6]
@@ -118,7 +119,7 @@ def search(pool, N, out, models, patterns):
     return best
 
 
-def refine(pool, N, out, prev):
+def refine(pool, N, out, prev, key=None):
     """Second round around the first-round optimum (many optima sat on the edge of the first grid):
     h x {0.8, 1}, q x {1, 1.2}, s x {0.93, 1, 1.07}."""
     jobs, keys = [], []
@@ -133,7 +134,7 @@ def refine(pool, N, out, prev):
     best = {}
     for k, v in prev.items():
         rs = [r for r, kk in zip(R, keys) if kk == k] + [v["best"]]
-        best[k] = dict(best=min(rs, key=lambda r: r["loss"]), base=v["base"], n=v["n"] + len(rs) - 1)
+        best[k] = dict(best=min(rs, key=key or (lambda r: r["loss"])), base=v["base"], n=v["n"] + len(rs) - 1)
     return best
 
 
