@@ -35,7 +35,9 @@ class Params:
     # "push first, whiten later": the deposited milk enters a sub-surface reservoir and surfaces after tau_d
     # (its impact momentum acts immediately); tau_d = 0 reproduces the instantaneous closure
     # ---- closure "skin" (bulk + submerged foam + surface foam), replaces chi-splitting, kappa_r, return law and delay
-    closure: str = "chi"    # "chi": original single-layer closure ; "skin": see SkinNotes in PITCHER_MODEL.md section 15
+    closure: str = "chi"    # "chi": original single-layer closure ; "skin" ; "twolayer": the layer (l, q, m) is the floating
+                            # foam/crema film, dragged (beta) by a coffee layer below that is driven by the poured volume and
+                            # by the entrainment cell of the plunging jet; foam reaches the film after the fountain rise time
     g_red: float = 75.0     # reduced gravity of the milk foam g(1 - rho_f/rho)   [D_L/s^2]  (6 m/s^2 for rho_f/rho = 0.4)
     Fr_c2: float = 23.0     # critical densimetric Froude number^2 of foam survival: chi = 1/(1+(U^2/(g' d Fr_c^2))^p_dep)
     phi_foam: float = 0.5   # foam volume fraction of the poured milk
@@ -263,10 +265,19 @@ class Solver:
         g = self.g
         if not inlet.active or inlet.S_eff <= 0:
             z = np.zeros((g.N, g.N))
-            self.foam_src = None; self._SE = 0.0
+            self.foam_src = None; self._SE = 0.0; self._S = 0.0
             return z, z, z, z, 0.0
         K, _ = self.kernel(inlet)
         d = max(inlet.d_jet, 1e-6)
+        if P.closure == "twolayer":
+            Fr2 = inlet.U_perp ** 2 / (P.g_red * d)
+            chi = 1.0 / (1.0 + (Fr2 / P.Fr_c2) ** P.p_dep)
+            self.foam_src = chi * P.phi_foam * inlet.S_eff * K
+            self.tau_new = max(2.0 * inlet.U_perp / P.g_red, 1e-3)
+            self._K = K; self._S = inlet.S_eff; self._SE = P.ent_coef * math.sqrt(Fr2) * inlet.S_eff
+            self._hit = inlet.x_hit; self._Rc = min(2.32 * math.sqrt(Fr2) * d, 0.45)   # entrainment cell ~ fountain depth
+            z = np.zeros((g.N, g.N))
+            return z, z, z, z, chi
         if P.closure == "skin":
             # the whole poured volume enters the bulk at once (it drives the push through the pressure); the foam part that
             # survives the impact, chi(Fr), is submerged and surfaces after the fountain rise time 2 U_perp / g'
@@ -328,12 +339,42 @@ class Solver:
                 Fy = ufy * np.where(ufy > 0, msub_new[:-1, :], msub_new[1:, :])
                 msub_new = np.where(mask, np.maximum(msub_new - dt * g.div(Fx, Fy), 0.0), 0.0)
 
+        tl_new = None
+        if P.closure == "twolayer":
+            # submerged foam moves with the coffee layer (upwind), surfaces after its rise time and feeds the film
+            Ub = getattr(self, "Ub", None)
+            f1, t1 = self.f, self.ft
+            if Ub is not None:
+                ufx = 0.5 * (Ub[0][:, 1:] + Ub[0][:, :-1]) * g.fx
+                ufy = 0.5 * (Ub[1][1:, :] + Ub[1][:-1, :]) * g.fy
+                def upw(a):
+                    Fx = ufx * np.where(ufx > 0, a[:, :-1], a[:, 1:]); Fy = ufy * np.where(ufy > 0, a[:-1, :], a[1:, :])
+                    return g.div(Fx, Fy)
+                f1 = f1 - dt * upw(f1); t1 = t1 - dt * upw(t1)
+            if self.foam_src is not None:
+                f1 = f1 + dt * self.foam_src; t1 = t1 + dt * self.foam_src * self.tau_new
+            f1 = np.where(mask, np.maximum(f1, 0.0), 0.0); t1 = np.where(mask, np.maximum(t1, 0.0), 0.0)
+            tau_f = np.maximum(np.where(f1 > 1e-14, t1 / np.maximum(f1, 1e-300), 1.0), 1e-3)
+            surf = f1 * (1.0 - np.exp(-dt / tau_f))
+            f_tl = f1 - surf
+            tl_new = (f_tl, tau_f * f_tl)
+            s = surf / dt                                     # foam arriving at the film (white, mass and milk)
+            Lam = np.zeros_like(s)
+            if Ub is not None:
+                vsx, vsy = Ub                                 # it arrives with the coffee velocity
+            else:
+                vsx = vsy = np.zeros_like(s)
+
         # ---- A: explicit Rusanov momentum advection (l frozen) --------------
         N = g.N
         Fx_qx = np.empty((N, N - 1)); Fx_qy = np.empty((N, N - 1)); Fy_qx = np.empty((N - 1, N)); Fy_qy = np.empty((N - 1, N))
         K.rusanov_fluxes(qx, qy, ux, uy, g.fx, g.fy, Fx_qx, Fx_qy, Fy_qx, Fy_qy)
         qx_s = qx - dt * g.div(Fx_qx, Fy_qx)
         qy_s = qy - dt * g.div(Fx_qy, Fy_qy)
+        if P.closure == "twolayer" and getattr(self, "Ub", None) is not None:
+            # drag towards the moving coffee layer: -beta (q - l U_b); the -beta q part is implicit in step B
+            qx_s = qx_s + dt * P.beta * lsafe * self.Ub[0]
+            qy_s = qy_s + dt * P.beta * lsafe * self.Ub[1]
 
         # ---- B: implicit mass + pressure + drag/traction --------------------
         a_x = np.empty((N, N)); a_y = np.empty((N, N)); coef = np.empty((N, N))
@@ -460,11 +501,40 @@ class Solver:
         self.l, self.qx, self.qy, self.m = l_new, qx_new, qy_new, m_new
         if P.closure == "skin":
             self.f, self.ft = f_new, ft_new
+        if tl_new is not None:
+            self.f, self.ft = tl_new
         if msub_new is not None:
             self.msub = msub_new
         self.deposited += float(s[mask].sum()) * g.area * dt
         self.stats["steps"] += 1
         return True
+
+    def _bulk_flow(self):
+        """Velocity of the coffee layer under the film (quasi-steady potential flow, depth-averaged, depth = 1):
+        div U_b = S K + S_E (K - K_cell) - <S K>; the poured volume spreads over the whole cup, the entrained coffee
+        rises at the plume and sinks again within the entrainment cell (radius ~ fountain depth)."""
+        g, h = self.g, self.g.h
+        S, SE = getattr(self, "_S", 0.0), getattr(self, "_SE", 0.0)
+        if S <= 0:
+            self.Ub = None
+            return
+        x0, y0 = self._hit
+        cell = (np.hypot(g.x - x0, g.y - y0) < max(self._Rc, 2 * h)) & g.mask
+        Kc = cell / max(cell.sum() * g.area, 1e-12)
+        rhs = S * self._K + SE * (self._K - Kc)
+        rhs = np.where(g.mask, rhs - rhs[g.mask].mean(), 0.0)
+        kx, ky = g.fx.astype(float), g.fy.astype(float)
+        eps = 1e-6
+        diag = eps + (np.pad(kx, ((0, 0), (1, 0))) + np.pad(kx, ((0, 0), (0, 1)))
+                      + np.pad(ky, ((1, 0), (0, 0))) + np.pad(ky, ((0, 1), (0, 0)))) / (h * h)
+
+        def A(phi):
+            return eps * phi - g.diffusion(kx, ky, phi)
+
+        self.phi_b, it = pcg(A, -rhs, diag, getattr(self, "phi_b", np.zeros_like(rhs)), 1e-8, self.num.cg_maxiter)
+        self.stats["cg_bulk"] = self.stats.get("cg_bulk", 0) + it
+        gx, gy = g.cell_grad(self.phi_b)
+        self.Ub = (np.where(g.mask, gx, 0.0), np.where(g.mask, gy, 0.0))
 
     def _entrainment_flow(self):
         """Surface upwelling of the coffee entrained by the plunging jet: div(l grad phi) = S_E K - <S_E K>, u_e = grad phi.
@@ -502,6 +572,8 @@ class Solver:
         g = self.g
         if self.P.closure == "skin":
             self._entrainment_flow()
+        if self.P.closure == "twolayer":
+            self._bulk_flow()
         lsafe = np.where(g.mask, self.l, 1.0)
         umax = float(np.max(np.hypot(self.qx, self.qy) / lsafe))
         # include the inlet target speed in the material-speed bound (it is reached quickly)
@@ -509,6 +581,8 @@ class Solver:
             umax = max(umax, float(np.max(np.hypot(vsx, vsy) * (s + Lam > 0))))
         if self.Ge is not None:
             umax = max(umax, float(max(np.abs(self.Ge[0]).max(), np.abs(self.Ge[1]).max())))
+        if getattr(self, "Ub", None) is not None:
+            umax = max(umax, float(np.hypot(*self.Ub).max()))
         self.stats["max_u"] = max(self.stats["max_u"], umax)
         dt_cfl = self.num.cfl * g.h / (2.0 * max(umax, 1e-9))
         nsub = int(math.ceil(frame_dt / dt_cfl))
