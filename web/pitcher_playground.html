@@ -79,7 +79,7 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
         <button class="pour" id="pour">按住倒奶（倾斜手腕）</button>
         <button id="refill">重新装奶 200 mL</button>
         <button id="clear">擦掉杯面</button>
-        <select id="scriptsel"><option value="heart">大白心</option><option value="push_heart">推推乐</option><option value="layered_heart">千层心</option><option value="tulip">压纹郁金香</option><option value="leaf">树叶</option><option value="swan">天鹅</option></select>
+        <select id="scriptsel"><option value="heart">大白心</option><option value="push_heart">推推乐</option><option value="layered_heart">千层心</option><option value="tulip">压纹郁金香</option><option value="leaf">树叶</option><option value="swan">天鹅</option><option value="tulip_sweep9">郁金香（联合扫描 #9，物理闭合）</option><option value="heart_sweep9">心形（联合扫描 #9，物理闭合）</option></select>
         <button class="primary" id="auto">回放脚本</button>
         <button id="show2d">杯面 2D 图</button>
       </div>
@@ -323,6 +323,7 @@ function requiredLift(R, tip){ const ct=Math.cos(CUP.tilt), st=Math.sin(CUP.tilt
   if(ok(0)) return 0; let lo=0, hi=0.15; if(!ok(hi)) return hi; for(let i=0;i<14;i++){ const m=0.5*(lo+hi); if(ok(m)) hi=m; else lo=m; } return hi; }
 // coffee surface = painted canvas texture
 /* 2-D surface-layer solver (latte2d.js): the coffee surface texture is its milk fraction c = m/l */
+let PHYS={params:null, coupling:null}; const COUPLING_DEFAULT=Object.assign({}, Latte2D.COUPLING);
 let solN=96, fieldCanvas=document.createElement('canvas'), fctx=fieldCanvas.getContext('2d'), fieldImg=null, cField=null;
 const paint=document.createElement('canvas'); paint.width=paint.height=512; const pctx=paint.getContext('2d');
 const tex=new THREE.CanvasTexture(paint); tex.anisotropy=4;
@@ -359,7 +360,7 @@ function solverReset(){ solver.queue.length=0; solver.t=0; solver.deposited=0; i
 function newSolver(N){ solN=N; solver.N=N; solver.area=1/(N*N); fieldCanvas.width=fieldCanvas.height=N; fieldImg=fctx.createImageData(N,N); cField=new Float32Array(N*N).fill(NaN); hits.length=0;
   solver.queue.length=0; solver.t=0; solver.deposited=0;
   if(!solver.worker && !solver.local) solver.worker=makeWorker();
-  if(solver.worker){ solver.inflight=true; solver.worker.postMessage({type:'init', N, num:{cg_tol:1e-8}}); } else { solver.local=new Latte2D.Latte2D(N,{}, {cg_tol:1e-8}); solver.local.concentration(cField); }
+  if(solver.worker){ solver.inflight=true; solver.worker.postMessage({type:'init', N, params:PHYS.params||{}, num:{cg_tol:1e-8}}); } else { solver.local=new Latte2D.Latte2D(N,PHYS.params||{}, {cg_tol:1e-8}); solver.local.concentration(cField); }
   paintField(); }
 // brown -> white as render.py: v = clip(c/0.8)^0.8
 function paintField(){ if(!cField) return; const N=solN; const d=fieldImg.data;
@@ -499,12 +500,14 @@ function intent(t){ let acc=0; for(const m of MOVES){ if(t<acc+m.dur){ const f=(
   if(m.axis==='y') y+=wob; else x+=wob;
   return {x, y, z:m.z0+(m.z1-m.z0)*e, Q:m.Q0+(m.Q1-m.Q0)*f, name:m.name}; } acc+=m.dur; }
   const last=MOVES[MOVES.length-1]; return {x:last.p1[0],y:last.p1[1],z:last.z1,Q:0,name:'结束'}; }
-function startScript(moves){ MOVES=moves; resetLedger((geom&&geom.name!=='参数化壶')?250e-6:200e-6); ui.fill.value=Math.round(st.V*1e6); out('fillv').textContent=ui.fill.value+' mL'; solverReset(); hits.length=0; pose.yaw=rad(-90); ui.yaw.value=-90; pose.tilt=rad(40); manualTilt=null; pouring=false;
+function startScript(moves, physics){ MOVES=moves; resetLedger((geom&&geom.name!=='参数化壶')?250e-6:200e-6); ui.fill.value=Math.round(st.V*1e6); out('fillv').textContent=ui.fill.value+' mL';
+  // optional physics preset of the script: 2-D closure parameters + coupling (e.g. the joint-sweep candidates use the dimensional coupling)
+  PHYS={params:(physics&&physics.params)||null, coupling:(physics&&physics.coupling)||null}; Object.assign(Latte2D.COUPLING, COUPLING_DEFAULT, PHYS.coupling||{}); newSolver(solN); hits.length=0; pose.yaw=rad(-90); ui.yaw.value=-90; pose.tilt=rad(40); manualTilt=null; pouring=false;
   resetKin(); auto={t:0, ierr:0, off:[0,0], Qseen:0}; }
 function resetKin(){ kin.tipPrev=null; kin.vel=[0,0,0]; kin.acc=[0,0,0]; kin.slope=[0,0]; kin.slopeRate=[0,0]; NRM=[0,0,1]; GEFF=G; }
 let SCRIPTS={heart:{moves:MOVES_HEART}, layered_heart:{moves:MOVES_LAYERED}};
 fetch('scripts.json').then(r=>r.json()).then(j=>{ SCRIPTS=j; }).catch(e=>console.warn('scripts.json not available, built-in scripts only', e));
-document.getElementById('auto').addEventListener('click',()=>{ const k=document.getElementById('scriptsel').value; const sc=SCRIPTS[k]||SCRIPTS.heart; startScript(sc.moves); });
+document.getElementById('auto').addEventListener('click',()=>{ const k=document.getElementById('scriptsel').value; const sc=SCRIPTS[k]||SCRIPTS.heart; startScript(sc.moves, sc.physics); });
 
 /* ---------------------------------------------------------------- strip chart */
 const strip=document.getElementById('strip'), sctx=strip.getContext('2d'); const hist2=[];
