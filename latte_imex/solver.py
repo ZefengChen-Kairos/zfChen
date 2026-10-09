@@ -44,6 +44,7 @@ class Params:
     m_opaque: float = 0.02  # surface-foam thickness (liquid-depth units) that looks fully white
     ent_coef: float = 0.74  # entrained coffee that wells up around the plume: E/Q = ent_coef * Fr
                             # (Ricou-Spalding jet entrainment 0.32 z/d  x  Turner fountain depth z/d = 2.32 Fr)
+    cell_frac: float = 1.0  # radius of the entrainment cell (where the entrained coffee sinks again) / fountain depth
     tau_d: float = 0.0      # surfacing time constant [s]; 0 = instantaneous closure.  Tested variants that did not
                             # help were removed: a delay growing with U_perp (over-pushed the high cut) and a
                             # sub-surface spreading D_sub (smeared the layers).
@@ -265,7 +266,7 @@ class Solver:
         g = self.g
         if not inlet.active or inlet.S_eff <= 0:
             z = np.zeros((g.N, g.N))
-            self.foam_src = None; self._SE = 0.0; self._S = 0.0
+            self.foam_src = None; self._SE = 0.0; self._S = 0.0; self._Lam_jet = None
             return z, z, z, z, 0.0
         K, _ = self.kernel(inlet)
         d = max(inlet.d_jet, 1e-6)
@@ -275,9 +276,12 @@ class Solver:
             self.foam_src = chi * P.phi_foam * inlet.S_eff * K
             self.tau_new = max(2.0 * inlet.U_perp / P.g_red, 1e-3)
             self._K = K; self._S = inlet.S_eff; self._SE = P.ent_coef * math.sqrt(Fr2) * inlet.S_eff
-            self._hit = inlet.x_hit; self._Rc = min(2.32 * math.sqrt(Fr2) * d, 0.45)   # entrainment cell ~ fountain depth
+            self._hit = inlet.x_hit; self._Rc = min(P.cell_frac * 2.32 * math.sqrt(Fr2) * d, 0.45)   # entrainment cell ~ fountain depth
+            # impact traction on the film: the jet drags the film it hits towards its horizontal velocity (cuts, notches)
+            self._Lam_jet = P.kappa_c * inlet.S_eff * K
+            self._vjet = (P.kappa_t * inlet.u_in[0], P.kappa_t * inlet.u_in[1])
             z = np.zeros((g.N, g.N))
-            return z, z, z, z, chi
+            return z, self._Lam_jet, z + self._vjet[0], z + self._vjet[1], chi
         if P.closure == "skin":
             # the whole poured volume enters the bulk at once (it drives the push through the pressure); the foam part that
             # survives the impact, chi(Fr), is submerged and surfaces after the fountain rise time 2 U_perp / g'
@@ -359,11 +363,13 @@ class Solver:
             f_tl = f1 - surf
             tl_new = (f_tl, tau_f * f_tl)
             s = surf / dt                                     # foam arriving at the film (white, mass and milk)
-            Lam = np.zeros_like(s)
-            if Ub is not None:
-                vsx, vsy = Ub                                 # it arrives with the coffee velocity
-            else:
-                vsx = vsy = np.zeros_like(s)
+            Lam = self._Lam_jet if getattr(self, "_Lam_jet", None) is not None else np.zeros_like(s)
+            ubx, uby = Ub if Ub is not None else (np.zeros_like(s), np.zeros_like(s))
+            jx, jy = self._vjet if getattr(self, "_Lam_jet", None) is not None else (0.0, 0.0)
+            # explicit momentum: surfacing foam arrives with the coffee velocity, traction pulls towards the jet velocity
+            wsum = np.maximum(s + Lam, 1e-300)
+            vsx = np.where(s + Lam > 0, (s * ubx + Lam * jx) / wsum, 0.0)
+            vsy = np.where(s + Lam > 0, (s * uby + Lam * jy) / wsum, 0.0)
 
         # ---- A: explicit Rusanov momentum advection (l frozen) --------------
         N = g.N
