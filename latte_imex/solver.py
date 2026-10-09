@@ -626,85 +626,85 @@ class Solver:
             self.Ds = None          # v2: up/down-welling act on the floating layer through its kinematics only
 
     def _ssa_operator(self):
-        """Constant part of the SSA stress operator (YIELD_FILM_DERIVATION.md 4.1-4.2): G maps the cell velocities z = [u; v]
-        to the four strain components s = (u_x, v_y, u_y, v_x) on every open face (normal derivatives compact, tangential
-        ones the average of the two cell-centred derivatives, one-sided at the wall); faces are listed x faces then y faces."""
+        """Constant parts of the SSA stress operator (YIELD_FILM_DERIVATION.md 4.2-4.4). Rows of G, one per term, each
+        compact where it lives: u_x on x faces, v_y on y faces, the divergence u_x + v_y at cells (central, one-sided at the
+        wall), the shear u_y + v_x at cell corners (2x2). Phi = 1/2 sum h^2 w (G z)^2, K = G^T diag(w) G.
+        For nu_eff every location also gets its own (u_x, u_y, v_x, v_y) and averages of l and c."""
         if self._ssa is not None:
             return self._ssa
         import scipy.sparse as sp
         g, N, h = self.g, self.g.N, self.g.h
-        n = N * N; idx = np.arange(n).reshape(N, N)
+        n = N * N; idx = np.arange(n).reshape(N, N); mask = g.mask.astype(bool)
         fx, fy = g.fx.astype(bool), g.fy.astype(bool)
         Lx, Rx = idx[:, :-1][fx], idx[:, 1:][fx]; Ly, Ry = idx[:-1, :][fy], idx[1:, :][fy]
+        cells = idx[mask]
+        cm = mask[:-1, :-1] & mask[1:, :-1] & mask[:-1, 1:] & mask[1:, 1:]
+        ka, kb, kc, kd = idx[:-1, :-1][cm], idx[:-1, 1:][cm], idx[1:, :-1][cm], idx[1:, 1:][cm]   # (j,i) (j,i+1) (j+1,i) (j+1,i+1)
+
+        def rows(m, cols_vals):
+            r = np.arange(m)
+            cols = np.concatenate([c for c, _ in cols_vals]); vals = np.concatenate([np.full(m, v) for _, v in cols_vals])
+            return sp.csr_matrix((vals, (np.tile(r, len(cols_vals)), cols)), shape=(m, n))
 
         def cell_deriv(L, R):
-            rows = np.r_[L, L, R, R]; cols = np.r_[R, L, R, L]
-            vals = np.r_[np.full(len(L), 1 / h), np.full(len(L), -1 / h), np.full(len(L), 1 / h), np.full(len(L), -1 / h)]
+            rr = np.r_[L, L, R, R]; cc = np.r_[R, L, R, L]
+            vv = np.r_[np.full(len(L), 1 / h), np.full(len(L), -1 / h), np.full(len(L), 1 / h), np.full(len(L), -1 / h)]
             cnt = np.bincount(np.r_[L, R], minlength=n)
-            return sp.diags(1.0 / np.maximum(cnt, 1)) @ sp.csr_matrix((vals, (rows, cols)), shape=(n, n))
+            return (sp.diags(1.0 / np.maximum(cnt, 1)) @ sp.csr_matrix((vv, (rr, cc)), shape=(n, n))).tocsr()
 
         Dx, Dy = cell_deriv(Lx, Rx), cell_deriv(Ly, Ry)
-
-        def comp_avg(L, R):
-            m = len(L); r = np.arange(m)
-            comp = sp.csr_matrix((np.r_[np.full(m, -1 / h), np.full(m, 1 / h)], (np.r_[r, r], np.r_[L, R])), shape=(m, n))
-            avg = sp.csr_matrix((np.full(2 * m, 0.5), (np.r_[r, r], np.r_[L, R])), shape=(m, n))
-            return comp, avg
-
-        cX, aX = comp_avg(Lx, Rx); cY, aY = comp_avg(Ly, Ry)
-        Ox, Oy = sp.csr_matrix((len(Lx), n)), sp.csr_matrix((len(Ly), n))
-        # rows: component k for all faces (x faces then y faces), k = u_x, v_y, u_y, v_x
-        ux = sp.vstack([sp.hstack([cX, Ox]), sp.hstack([aY @ Dx, Oy])])
-        vy = sp.vstack([sp.hstack([Ox, aX @ Dy]), sp.hstack([Oy, cY])])
-        uy = sp.vstack([sp.hstack([aX @ Dy, Ox]), sp.hstack([cY, Oy])])
-        vx = sp.vstack([sp.hstack([Ox, cX]), sp.hstack([Oy, aY @ Dx])])
-        G = [c.tocsr() for c in (ux, vy, uy, vx)]
-        GT = [Gk.T.tocsr() for Gk in G]
-        Gs = sp.vstack(G).tocsr()                     # stacked (4 nf x 2n): one matvec gives all four components
-        # column-wise products for diag(K) = 1/2 sum_ab Q_ab sum_f w_f G_a[f,i] G_b[f,i]
-        prod = lambda a, b: G[a].multiply(G[b]).T.tocsr()
-        self._ssa = dict(G=G, GT=GT, Gs=Gs, GsT=Gs.T.tocsr(), L=np.r_[Lx, Ly], R=np.r_[Rx, Ry], nf=len(Lx) + len(Ly),
-                         P00=prod(0, 0), P11=prod(1, 1), P01=prod(0, 1), P22=prod(2, 2), P33=prod(3, 3), P23=prod(2, 3))
+        U = lambda A: sp.hstack([A, sp.csr_matrix(A.shape)]).tocsr()
+        V = lambda A: sp.hstack([sp.csr_matrix(A.shape), A]).tocsr()
+        comp = lambda L, R: rows(len(L), [(L, -1 / h), (R, 1 / h)])
+        avg2 = lambda L, R: rows(len(L), [(L, 0.5), (R, 0.5)])
+        k2 = 1 / (2 * h); m4 = len(ka)
+        cx = rows(m4, [(kb, k2), (kd, k2), (ka, -k2), (kc, -k2)]); cy = rows(m4, [(kc, k2), (kd, k2), (ka, -k2), (kb, -k2)])
+        sel = rows(len(cells), [(cells, 1.0)])
+        cDx, cDy = (sel @ Dx).tocsr(), (sel @ Dy).tocsr()
+        G = sp.vstack([U(comp(Lx, Rx)), V(comp(Ly, Ry)), sp.hstack([cDx, cDy]), U(cy) + V(cx)]).tocsr()
+        # strain components (u_x, u_y, v_x, v_y) and the averaging of l, c at every location, in the row order of G
+        aX, aY = avg2(Lx, Rx), avg2(Ly, Ry)
+        strain = [
+            (U(comp(Lx, Rx)), U(aX @ Dy), V(comp(Lx, Rx)), V(aX @ Dy)),        # x faces
+            (U(aY @ Dx), U(comp(Ly, Ry)), V(aY @ Dx), V(comp(Ly, Ry))),        # y faces
+            (U(cDx), U(cDy), V(cDx), V(cDy)),                                    # cells
+            (U(cx), U(cy), V(cx), V(cy)),                                        # corners
+        ]
+        S4 = [sp.vstack([st[k] for st in strain]).tocsr() for k in range(4)]
+        Avg = sp.vstack([aX, aY, sel, rows(m4, [(ka, .25), (kb, .25), (kc, .25), (kd, .25)])]).tocsr()
+        half = np.r_[np.ones(len(Lx) + len(Ly) + len(cells)), np.full(m4, 0.5)]  # the shear term carries 1/2
+        self._ssa = dict(G=G, GT=G.T.tocsr(), P=G.multiply(G).T.tocsr(), S4=S4, Avg=Avg, half=half)
         return self._ssa
 
     def _ssa_step(self, ux, uy, lsn, c, dt):
-        """Step D of LATTE_MODEL.md 5.3: (M + dt K) u+ = M u-, K = 1/2 G^T (W x Q) G, W = 2 nu_eff l on the faces,
-        nu_eff = min(nu + tau_hat(c)/(sqrt(2 I) + eps), nu_max) lagged on u-.  Matrix-free, Jacobi-preconditioned CG
-        (diag(K) from the precomputed products G_a .* G_b)."""
+        """Step D of LATTE_MODEL.md 5.3: (M + dt K) u+ = M u-, K = G^T diag(w) G, w = 2 nu_eff l (x 1/2 for the shear rows),
+        nu_eff = min(nu + tau_hat(c)/(2|D|_e + eps), nu_max) at every location from its own strain rate, lagged on u-.
+        Matrix-free Jacobi-preconditioned CG (two sparse matvecs per iteration)."""
         P, g = self.P, self.g
-        S = self._ssa_operator(); G, GT, L, R = S["G"], S["GT"], S["L"], S["R"]
+        S = self._ssa_operator(); G, GT = S["G"], S["GT"]
         n = g.N * g.N
         z = np.r_[ux.ravel(), uy.ravel()]
-        s0, s1, s2, s3 = (Gk @ z for Gk in G)
-        I = 2 * s0 ** 2 + 2 * s1 ** 2 + 2 * s0 * s1 + 0.5 * (s2 + s3) ** 2
-        lf = 0.5 * (lsn.ravel()[L] + lsn.ravel()[R]); cf = 0.5 * (c.ravel()[L] + c.ravel()[R])
+        lr = S["Avg"] @ lsn.ravel()
         if P.tau_y > 0 or P.tau_y_crema > 0:
-            tau = cf * P.tau_y + (1.0 - cf) * P.tau_y_crema
-            nue = np.minimum(P.nu + tau / (np.sqrt(2.0 * I) + P.yield_eps), P.nu_max)
+            a, b, cc, d = (Sk @ z for Sk in S["S4"])
+            De = np.sqrt(np.maximum(a * a + d * d + a * d + 0.25 * (b + cc) ** 2, 0.0))
+            cr = S["Avg"] @ c.ravel()
+            tau = cr * P.tau_y + (1.0 - cr) * P.tau_y_crema
+            nue = np.minimum(P.nu + tau / (2.0 * De + P.yield_eps), P.nu_max)
         else:
-            nue = np.full(len(L), P.nu)
-        w = 2.0 * nue * lf
+            nue = P.nu
+        w = 2.0 * nue * lr * S["half"]
         mdiag = np.r_[lsn.ravel(), lsn.ravel()]
+        diag = mdiag + dt * (S["P"] @ w)
 
-        Gs, GsT, nfc = S["Gs"], S["GsT"], S["nf"]
-        bq = np.empty(4 * nfc)
+        def A(x):
+            return mdiag * x + dt * (GT @ (w * (G @ x)))
 
-        def Kz(x):
-            a = Gs @ x
-            a0, a1, a2, a3 = a[:nfc], a[nfc:2 * nfc], a[2 * nfc:3 * nfc], a[3 * nfc:]
-            # (W x Q) s with Q = [[2,1,0,0],[1,2,0,0],[0,0,.5,.5],[0,0,.5,.5]]
-            bq[:nfc] = w * (2 * a0 + a1); bq[nfc:2 * nfc] = w * (a0 + 2 * a1)
-            bq[2 * nfc:3 * nfc] = w * 0.5 * (a2 + a3); bq[3 * nfc:] = bq[2 * nfc:3 * nfc]
-            return 0.5 * (GsT @ bq)
-
-        dK = 0.5 * (2 * (S["P00"] @ w) + 2 * (S["P11"] @ w) + 2 * (S["P01"] @ w) + 0.5 * (S["P22"] @ w) + 0.5 * (S["P33"] @ w) + (S["P23"] @ w))
-        diag = mdiag + dt * dK
-        # Jacobi-preconditioned CG on (M + dt K) z = M z^-, starting from z^-
         rhs = mdiag * z
-        x = z.copy(); r = rhs - (mdiag * x + dt * Kz(x)); pz = r / diag; p_ = pz.copy(); rz = r @ pz
+        x = z.copy(); r = rhs - A(x); pz = r / diag; p_ = pz.copy(); rz = r @ pz
         bnorm = math.sqrt(rhs @ rhs) + 1e-300; it = 0
         while math.sqrt(r @ r) > self.num.ssa_tol * bnorm and it < self.num.cg_maxiter:
-            Ap = mdiag * p_ + dt * Kz(p_)
+            Ap = A(p_)
             alpha = rz / (p_ @ Ap + 1e-300)
             x += alpha * p_; r -= alpha * Ap
             pz = r / diag; rz_new = r @ pz
