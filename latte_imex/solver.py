@@ -292,6 +292,13 @@ class Solver:
             tot = self.msub + dt * s                       # what is below the surface before surfacing
             msub_new = tot / (1.0 + dt / tau)              # implicit decay
             s = (tot - msub_new) / dt                      # surfacing rate = mass source of the layer
+            # the submerged plume is carried by the flow (first-order upwind with the surface velocity); without this
+            # the reservoir stays where it was poured and surfaces as a straight bar along the path
+            ufx = 0.5 * (ux[:, 1:] + ux[:, :-1]) * g.fx
+            ufy = 0.5 * (uy[1:, :] + uy[:-1, :]) * g.fy
+            Fx = ufx * np.where(ufx > 0, msub_new[:, :-1], msub_new[:, 1:])
+            Fy = ufy * np.where(ufy > 0, msub_new[:-1, :], msub_new[1:, :])
+            msub_new = np.where(mask, np.maximum(msub_new - dt * g.div(Fx, Fy), 0.0), 0.0)
             if P.D_sub > 0:                                # plume spreading (explicit, sub-cycled)
                 kx = P.D_sub * g.fx.astype(float); ky = P.D_sub * g.fy.astype(float)
                 nd = max(1, int(math.ceil(4.0 * P.D_sub * dt / (h * h) / 0.2)))
