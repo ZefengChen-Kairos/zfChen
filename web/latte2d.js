@@ -47,10 +47,11 @@
         ax: A(), ay: A(), coef: A(), Gex: F(), Gey: F(), kx: F(), ky: F(), diag: A(), rhs: A(), lnew: A(), Gx: F(), Gy: F(),
         qxn: A(), qyn: A(), cfx: F(), cfy: F(), mnew: A(), tmp: A(), r: A(), p: A(), Ap: A(), z: A(), lfx: F(), lfy: F(),
         s: A(), Lam: A(), vsx: A(), vsy: A(), sl: A(), sqx: A(), sqy: A(), sm: A(), msubn: A(), ssurf: A(), smsub: A(),
-        f1: A(), t1: A(), sf: A(), sft: A(), tvx: A(), tvy: A(), Kn: A(), fsrc: A(), brhs: A(), bdiag: A() };
+        f1: A(), t1: A(), sf: A(), sft: A(), tvx: A(), tvy: A(), Kn: A(), fsrc: A(), brhs: A(), bdiag: A(), Ds: A(), cx: A(), cy: A(), sL: A() };
       this.msub = A(); this.tauCur = null;      // sub-surface milk waiting to surface (delay closure)
       // two-layer closure: submerged foam f and its rise-time moment ft, coffee-layer potential and velocity
-      this.f = A(); this.ft = A(); this.phib = A(); this.ubx = A(); this.uby = A(); this.hasUb = false; this.tl = { active: false };
+      this.f = A(); this.ft = A(); this.phib = A(); this.phic = A(); this.ubx = A(); this.uby = A(); this.udx = A(); this.udy = A();
+      this.hasUb = false; this.hasDs = false; this.brownNet = 0; this.tl = { active: false };
       this.fxf = new Float64Array(nfx); this.fyf = new Float64Array(nfx);
       for (let k = 0; k < nfx; k++) { this.fxf[k] = this.fx[k]; this.fyf[k] = this.fy[k]; }
     }
@@ -186,9 +187,9 @@
       }
     }
 
-    // first-order upwind transport of a with the coffee-layer velocity (ubx, uby): out = div(F)
-    upwindDiv(a, out) {
-      const N = this.N, w = this.w, fx = this.fx, fy = this.fy, ux = this.ubx, uy = this.uby;
+    // first-order upwind transport of a with the deep coffee velocity (udx, udy): out = div(F)
+    upwindDiv(a, out) {   // with the deep velocity (submerged foam)
+      const N = this.N, w = this.w, fx = this.fx, fy = this.fy, ux = this.udx, uy = this.udy;
       for (let j = 0; j < N; j++) for (let i = 0; i < N - 1; i++) { const f = j * (N - 1) + i, k = j * N + i;
         const u = fx[f] ? 0.5 * (ux[k] + ux[k + 1]) : 0; w.Fxqy[f] = u * (u > 0 ? a[k] : a[k + 1]); }
       for (let j = 0; j < N - 1; j++) for (let i = 0; i < N; i++) { const f = j * N + i;
@@ -220,36 +221,49 @@
       for (let i = 0; i < n; i++) { let sum = rhs[i]; for (let p = Math.max(0, i - b); p < i; p++) sum -= L[i * B + (i - p)] * x[p]; x[i] = sum / L[i * B]; }
       for (let i = n - 1; i >= 0; i--) { let sum = x[i]; for (let q = i + 1; q <= Math.min(n - 1, i + b); q++) sum -= L[q * B + (q - i)] * x[q]; x[i] = sum / L[i * B]; }
     }
-    // coffee layer under the film (quasi-steady potential flow): div U_b = S K + S_E (K - K_cell) - <.>, U_b = grad phi_b
-    bulkFlow() {
-      const N = this.N, n = N * N, h = this.h, w = this.w, tl = this.tl, mask = this.mask;
-      if (!tl.active || !(tl.S > 0)) { this.hasUb = false; return; }
-      const R = Math.max(tl.Rc, 2 * h); let nc = 0;
-      for (let k = 0; k < n; k++) if (mask[k] && Math.hypot(this.x[k] - tl.x0, this.y[k] - tl.y0) < R) nc++;
-      const kc = 1 / Math.max(nc * this.area, 1e-12); let mean = 0, nm = 0;
-      for (let k = 0; k < n; k++) {
-        const cell = mask[k] && Math.hypot(this.x[k] - tl.x0, this.y[k] - tl.y0) < R ? kc : 0;
-        w.brhs[k] = tl.S * w.Kn[k] + tl.SE * (w.Kn[k] - cell); if (mask[k]) { mean += w.brhs[k]; nm++; }
-      }
+    // coffee under the film (port of solver._bulk_flow): spreading of the poured volume U_v (div = S K - <.>), and the
+    // entrainment cell of the plunging jet as a surface flow U_c (div = S_E (K_cell - K), towards the jet) with the
+    // opposite return flow at depth; surface U_b = U_v + U_c drags the film, deep U_d = U_v - U_c carries the submerged
+    // foam, D_s = S_E (K_cell - K) creates / removes brown surface (substep)
+    potentialVelocity(div, phi, outx, outy) {
+      const N = this.N, n = N * N, h = this.h, mask = this.mask, w = this.w; let mean = 0, nm = 0;
+      for (let k = 0; k < n; k++) if (mask[k]) { mean += div[k]; nm++; }
       mean /= Math.max(nm, 1);
-      const eps = 1e-6, ih2 = 1 / (h * h), fxf = this.fxf, fyf = this.fyf;
-      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-        const k = j * N + i; w.brhs[k] = mask[k] ? -(w.brhs[k] - mean) : 0; let v = 0;
-        if (i < N - 1) v += fxf[j * (N - 1) + i]; if (i > 0) v += fxf[j * (N - 1) + i - 1];
-        if (j < N - 1) v += fyf[k]; if (j > 0) v += fyf[k - N];
-        w.bdiag[k] = eps + v * ih2;
-      }
-      if (N <= 160) {   // constant operator: banded Cholesky once, two triangular solves per frame (exact, ~2 ms at 96^2)
+      for (let k = 0; k < n; k++) { div[k] = mask[k] ? div[k] - mean : 0; w.brhs[k] = -div[k]; }
+      const eps = 1e-6;
+      if (N <= 160) {   // constant operator: banded Cholesky once, two triangular solves per frame (exact)
         if (!this.bulkL) this.bulkL = this.bandedCholesky(eps);
-        this.bandedSolve(this.bulkL, w.brhs, this.phib);
-      } else this.stats.cg_bulk = (this.stats.cg_bulk || 0) + this.pcg(fxf, fyf, null, eps, 1, w.brhs, w.bdiag, this.phib, 1e-8);
-      const ih = 1 / h, fx = this.fx, fy = this.fy, p = this.phib;
+        this.bandedSolve(this.bulkL, w.brhs, phi);
+      } else {
+        const ih2 = 1 / (h * h), fxf = this.fxf, fyf = this.fyf;
+        for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const k = j * N + i; let v = 0;
+          if (i < N - 1) v += fxf[j * (N - 1) + i]; if (i > 0) v += fxf[j * (N - 1) + i - 1]; if (j < N - 1) v += fyf[k]; if (j > 0) v += fyf[k - N];
+          w.bdiag[k] = eps + v * ih2; }
+        this.stats.cg_bulk = (this.stats.cg_bulk || 0) + this.pcg(fxf, fyf, null, eps, 1, w.brhs, w.bdiag, phi, 1e-8);
+      }
+      const ih = 1 / h, fx = this.fx, fy = this.fy, p = phi;
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
         const k = j * N + i; let gx = 0, gy = 0;
         if (i < N - 1 && fx[j * (N - 1) + i]) gx += (p[k + 1] - p[k]) * ih; if (i > 0 && fx[j * (N - 1) + i - 1]) gx += (p[k] - p[k - 1]) * ih;
         if (j < N - 1 && fy[k]) gy += (p[k + N] - p[k]) * ih; if (j > 0 && fy[k - N]) gy += (p[k] - p[k - N]) * ih;
-        this.ubx[k] = mask[k] ? gx / Math.max(this.nfx[k], 1) : 0; this.uby[k] = mask[k] ? gy / Math.max(this.nfy[k], 1) : 0;
+        outx[k] = mask[k] ? gx / Math.max(this.nfx[k], 1) : 0; outy[k] = mask[k] ? gy / Math.max(this.nfy[k], 1) : 0;
       }
+    }
+    bulkFlow() {
+      const N = this.N, n = N * N, h = this.h, w = this.w, tl = this.tl, mask = this.mask;
+      if (!tl.active || !(tl.S > 0)) { this.hasUb = false; this.hasDs = false; return; }
+      for (let k = 0; k < n; k++) w.Ds[k] = tl.S * w.Kn[k];
+      this.potentialVelocity(w.Ds, this.phib, this.ubx, this.uby);
+      if (tl.SE > 0) {
+        const R = Math.max(tl.Rc, 2 * h); let nc = 0;
+        for (let k = 0; k < n; k++) if (mask[k] && Math.hypot(this.x[k] - tl.x0, this.y[k] - tl.y0) < R) nc++;
+        const kc = 1 / Math.max(nc * this.area, 1e-12);
+        for (let k = 0; k < n; k++) w.Ds[k] = tl.SE * ((mask[k] && Math.hypot(this.x[k] - tl.x0, this.y[k] - tl.y0) < R ? kc : 0) - w.Kn[k]);
+        this.potentialVelocity(w.Ds, this.phic, w.cx, w.cy);
+        for (let k = 0; k < n; k++) { const vx = this.ubx[k], vy = this.uby[k];
+          this.ubx[k] = vx + w.cx[k]; this.uby[k] = vy + w.cy[k]; this.udx[k] = vx - w.cx[k]; this.udy[k] = vy - w.cy[k]; }
+        this.hasDs = true;
+      } else { this.udx.set(this.ubx); this.udy.set(this.uby); this.hasDs = false; }
       this.hasUb = true;
     }
 
@@ -261,7 +275,7 @@
       // delay closure: the deposited milk enters a sub-surface reservoir (impact momentum acts now), surfaces after tau,
       // is carried by a fraction of the surface velocity and pushes the layer through the pressure as a submerged mound
       const twol = P.closure === 'twolayer';
-      let sm = s; const smom = s; const delay = !twol && P.tau_d > 0 && this.tauCur !== null; const mn = w.msubn;
+      let sm = s, sL = null, brownRate = 0; const smom = s; const delay = !twol && P.tau_d > 0 && this.tauCur !== null; const mn = w.msubn;
       if (delay) {
         const tau = this.tauCur, msub = this.msub, ss = w.ssurf;
         for (let k = 0; k < n; k++) { const tot = msub[k] + dt * s[k]; mn[k] = tot / (1 + dt / tau); ss[k] = (tot - mn[k]) / dt; }
@@ -296,6 +310,12 @@
           const wsum = ss[k] + L; w.tvx[k] = wsum > 0 ? (ss[k] * ub + L * jx) / wsum : 0; w.tvy[k] = wsum > 0 ? (ss[k] * vb + L * jy) / wsum : 0;
         }
         sm = ss; tvx = w.tvx; tvy = w.tvy;
+        if (this.hasDs) {   // brown surface where coffee wells up; only brown liquid is pulled down at the jet (foam stays)
+          let br = 0;
+          for (let k = 0; k < n; k++) { const D = w.Ds[k], up = Math.max(D, 0), dn = Math.min(Math.max(-D, 0), 0.9 * Math.max(l[k] - m[k], 0) / dt);
+            w.sL[k] = ss[k] + (mask[k] ? up - dn : 0); if (mask[k]) br += up - dn; }
+          sL = w.sL; brownRate = br * this.area;
+        }
       }
       // A: Rusanov momentum advection
       for (let j = 0; j < N; j++) for (let i = 0; i < N - 1; i++) {
@@ -353,13 +373,14 @@
         w.diag[k] = 1 + dt * ih2 * v;
       }
       this.div(w.Gex, w.Gey, w.rhs);
-      for (let k = 0; k < n; k++) { w.rhs[k] = l[k] + dt * sm[k] - dt * w.rhs[k]; w.lnew[k] = l[k]; }
+      if (!sL) sL = sm;
+      for (let k = 0; k < n; k++) { w.rhs[k] = l[k] + dt * sL[k] - dt * w.rhs[k]; w.lnew[k] = l[k]; }
       this.stats.cg_mass += this.pcgMass(w.kx, w.ky, dt, w.rhs, w.diag, w.lnew);
       const ih = 1 / h;
       for (let j = 0; j < N; j++) for (let i = 0; i < N - 1; i++) { const f = j * (N - 1) + i, k = j * N + i; w.Gx[f] = fx[f] ? w.Gex[f] - w.kx[f] * (w.lnew[k + 1] - w.lnew[k]) * ih : 0; }
       for (let j = 0; j < N - 1; j++) for (let i = 0; i < N; i++) { const f = j * N + i; w.Gy[f] = fy[f] ? w.Gey[f] - w.ky[f] * (w.lnew[f + N] - w.lnew[f]) * ih : 0; }
       this.div(w.Gx, w.Gy, w.tmp);
-      for (let k = 0; k < n; k++) w.lnew[k] = l[k] + dt * sm[k] - dt * w.tmp[k];
+      for (let k = 0; k < n; k++) w.lnew[k] = l[k] + dt * sL[k] - dt * w.tmp[k];
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
         const k = j * N + i; let gx = 0, gy = 0;
         if (i < N - 1 && fx[j * (N - 1) + i]) gx += (w.lnew[k + 1] - w.lnew[k]) * ih;
@@ -421,7 +442,7 @@
       }
       if (!ok || lmin <= this.num.l_floor) return false;
       this.l.set(w.lnew); this.qx.set(w.qxn); this.qy.set(w.qyn); this.m.set(w.mnew); if (delay) this.msub.set(mn);
-      if (twol) { this.f.set(w.f1); this.ft.set(w.t1); }
+      if (twol) { this.f.set(w.f1); this.ft.set(w.t1); this.brownNet += brownRate * dt; }
       this.deposited += ssum * this.area * dt; this.stats.steps++;
       return true;
     }
@@ -439,18 +460,18 @@
       for (let k = 0; k < n; k++) {
         const ls = this.mask[k] ? this.l[k] : 1; const u = Math.hypot(this.qx[k], this.qy[k]) / ls; if (u > umax) umax = u;
         if (w.s[k] + w.Lam[k] > 0) { const v = Math.hypot(w.vsx[k], w.vsy[k]); if (v > umax) umax = v; }
-        if (this.hasUb) { const v = Math.hypot(this.ubx[k], this.uby[k]); if (v > umax) umax = v; }
+        if (this.hasUb) { const v = Math.max(Math.hypot(this.ubx[k], this.uby[k]), Math.hypot(this.udx[k], this.udy[k])); if (v > umax) umax = v; }
       }
       this.stats.max_u = Math.max(this.stats.max_u, umax);
       let nsub = Math.ceil(frameDt / (this.num.cfl * this.h / (2 * Math.max(umax, 1e-9))));
       nsub = Math.max(1, Math.min(nsub, this.num.max_substeps));
-      w.sl.set(this.l); w.sqx.set(this.qx); w.sqy.set(this.qy); w.sm.set(this.m); w.smsub.set(this.msub); w.sf.set(this.f); w.sft.set(this.ft); const dep0 = this.deposited;
+      w.sl.set(this.l); w.sqx.set(this.qx); w.sqy.set(this.qy); w.sm.set(this.m); w.smsub.set(this.msub); w.sf.set(this.f); w.sft.set(this.ft); const dep0 = this.deposited, bn0 = this.brownNet;
       let done = false;
       for (let attempt = 0; attempt < 8 && !done; attempt++) {
         const dt = frameDt / nsub; let ok = true;
         for (let k = 0; k < nsub; k++) if (!this.substep(dt)) { ok = false; break; }
         if (ok) done = true;
-        else { this.l.set(w.sl); this.qx.set(w.sqx); this.qy.set(w.sqy); this.m.set(w.sm); this.msub.set(w.smsub); this.f.set(w.sf); this.ft.set(w.sft); this.deposited = dep0; this.stats.retries++; nsub *= 2; }
+        else { this.l.set(w.sl); this.qx.set(w.sqx); this.qy.set(w.sqy); this.m.set(w.sm); this.msub.set(w.smsub); this.f.set(w.sf); this.ft.set(w.sft); this.deposited = dep0; this.brownNet = bn0; this.stats.retries++; nsub *= 2; }
       }
       if (!done) throw new Error('frame failed after retries');
       this.stats.max_substeps = Math.max(this.stats.max_substeps, nsub);
@@ -464,7 +485,8 @@
       return out;
     }
     reset() { this.l.fill(1); this.qx.fill(0); this.qy.fill(0); this.m.fill(0); this.msub.fill(0); this.tauCur = null; this.t = 0; this.deposited = 0;
-      this.f.fill(0); this.ft.fill(0); this.phib.fill(0); this.ubx.fill(0); this.uby.fill(0); this.hasUb = false; this.tl = { active: false };
+      this.f.fill(0); this.ft.fill(0); this.phib.fill(0); this.phic.fill(0); this.ubx.fill(0); this.uby.fill(0); this.udx.fill(0); this.udy.fill(0);
+      this.hasUb = false; this.hasDs = false; this.brownNet = 0; this.tl = { active: false };
       this.stats = { steps: 0, frames: 0, cg_mass: 0, max_u: 0, retries: 0, max_substeps: 0, clip_mass: 0 }; }
   }
 
