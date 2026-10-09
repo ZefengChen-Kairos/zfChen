@@ -36,6 +36,14 @@ def whiteness_sim(c, mask, c_sat=0.6):
     return np.where(mask, s, 0.0)
 
 
+def visible(c, mask, closure=None):
+    """Whiteness compared with the targets: v2 returns the foam opacity W itself; the older closures a milk fraction
+    saturated at 0.6 (whiteness_sim)."""
+    if closure == "v2":
+        return np.where(mask, np.clip(np.nan_to_num(c, nan=0.0), 0.0, 1.0), 0.0)
+    return whiteness_sim(c, mask)
+
+
 def loss_fields(s, w, mask, sigma):
     Gs = ndimage.gaussian_filter(s, sigma); Gw = ndimage.gaussian_filter(w, sigma)
     l1 = float(np.abs(Gs - Gw)[mask].mean())

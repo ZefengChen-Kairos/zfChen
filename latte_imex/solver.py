@@ -55,6 +55,20 @@ class Params:
     sub_pressure: float = 0.5   # the submerged milk is a mound under the surface: it enters the pressure as
                                 # c_p^2 l grad(l + sub_pressure*m_sub) and pushes the old layer outward before it surfaces
 
+    # ---- closure "v2" (LATTE_MODEL.md): the twolayer picture with consistent thickness scales. The film is the floating
+    # layer (crema + foam) in units of H_f, the coffee flows use the depth H; up/down-welling act by kinematics only;
+    # sources carry the surface velocity; basal drag beta/l; c_p^2 = g' H_f / D_L (set by the solver); SSA/Bingham
+    # in-plane stress; visible whiteness = foam opacity 1 - exp(-m/m_o).  The inlet must be S_eff = Q / D_L^3 (k_Q = 1).
+    H: float = 0.05         # coffee depth [m]
+    H_f: float = 0.003      # reference thickness of the floating layer (initial crema) [m]
+    D_L: float = 0.08       # cup diameter [m]
+    m_o: float = 0.2        # foam thickness (units of H_f) at which the foam layer transmits 1/e of the coffee colour
+    l_skin: float = 0.03    # skin thickness (units of H_f) of newly exposed coffee surface (keeps l > 0)
+    tau_y: float = 0.0      # yield stress / density of the foam [D_L^2/s^2] (Bingham film); 0 = Newtonian
+    tau_y_crema: float = 0.0  # same for the crema
+    yield_eps: float = 0.02   # strain-rate regularization of the yield stress [1/s]
+    nu_max: float = 0.5       # cap of the effective viscosity [D_L^2/s]
+
     def as_dict(self):
         return asdict(self)
 
@@ -73,6 +87,7 @@ class Numerics:
     explicit_mixing_limit: float = 0.05   # D*dt/h^2 below this: explicit mixing update instead of a PCG solve
     explicit_visc_limit: float = 0.2      # nu*dt/h^2 below this: explicit viscosity update (2-D limit 0.25)
     visc_tol: float = 1e-8                # PCG tolerance for the (non-stiff) viscosity solves
+    ssa_tol: float = 1e-6                 # PCG tolerance of the v2 SSA/Bingham stress solve (velocities)
 
 
 @dataclass
@@ -229,6 +244,12 @@ class Solver:
                           clip_mass=0.0, max_substeps=0, max_u=0.0, retries=0)
         self.l_floor = 1e-3
         self._kernel_cache = {}
+        self.brown_net = 0.0
+        if params.closure == "v2":
+            # c_p^2 = g' H_f / D_L^2 with g' in D_L/s^2: the buoyancy pressure of the floating layer (not a free parameter)
+            from dataclasses import replace
+            self.P = replace(params, cp=math.sqrt(params.g_red * params.H_f / params.D_L))
+            self._ssa = None
 
     # ----- inlet fields -----------------------------------------------------
     def kernel(self, inlet: Inlet):
@@ -272,15 +293,23 @@ class Solver:
             return z, z, z, z, 0.0
         K, _ = self.kernel(inlet)
         d = max(inlet.d_jet, 1e-6)
-        if P.closure == "twolayer":
+        if P.closure in ("twolayer", "v2"):
             Fr2 = inlet.U_perp ** 2 / (P.g_red * d)
             chi = 1.0 / (1.0 + (Fr2 / P.Fr_c2) ** P.p_dep)
-            self.foam_src = chi * P.phi_foam * inlet.S_eff * K
+            if P.closure == "v2":
+                # S_eff = Q / D_L^3: volume strength for the coffee (depth H) and for the floating layer (thickness H_f);
+                # the entrainment flux E = ent Fr Q runs in the upper half of the depth, h_s = H/2
+                S_v = inlet.S_eff * P.D_L / P.H; S_f = inlet.S_eff * P.D_L / P.H_f
+                SE = 2.0 * P.ent_coef * math.sqrt(Fr2) * S_v
+            else:
+                S_v = S_f = inlet.S_eff
+                SE = P.ent_coef * math.sqrt(Fr2) * inlet.S_eff
+            self.foam_src = chi * P.phi_foam * S_f * K
             self.tau_new = max(2.0 * inlet.U_perp / P.g_red, 1e-3)
-            self._K = K; self._S = inlet.S_eff; self._SE = P.ent_coef * math.sqrt(Fr2) * inlet.S_eff
+            self._K = K; self._S = S_v; self._SE = SE
             self._hit = inlet.x_hit; self._Rc = min(P.cell_frac * 2.32 * math.sqrt(Fr2) * d, 0.45)   # entrainment cell ~ fountain depth
             # impact traction on the film: the jet drags the film it hits towards its horizontal velocity (cuts, notches)
-            self._Lam_jet = P.kappa_c * inlet.S_eff * K
+            self._Lam_jet = P.kappa_c * S_f * K
             self._vjet = (P.kappa_t * inlet.u_in[0], P.kappa_t * inlet.u_in[1])
             z = np.zeros((g.N, g.N))
             return z, self._Lam_jet, z + self._vjet[0], z + self._vjet[1], chi
@@ -348,7 +377,9 @@ class Solver:
                 msub_new = np.where(mask, np.maximum(msub_new - dt * g.div(Fx, Fy), 0.0), 0.0)
 
         tl_new = None
-        if P.closure == "twolayer":
+        v2 = P.closure == "v2"
+        beta_B = P.beta
+        if P.closure in ("twolayer", "v2"):
             # submerged foam moves with the coffee layer (upwind), surfaces after its rise time and feeds the film
             Ub, Ud = getattr(self, "Ub", None), getattr(self, "Ud", None)
             f1, t1 = self.f, self.ft
@@ -374,6 +405,20 @@ class Solver:
             wsum = np.maximum(s + Lam, 1e-300)
             vsx = np.where(s + Lam > 0, (s * ubx + Lam * jx) / wsum, 0.0)
             vsy = np.where(s + Lam > 0, (s * uby + Lam * jy) / wsum, 0.0)
+            if v2:
+                # LATTE_MODEL.md 2.5: film source = surfacing foam + skin of newly exposed coffee surface, both arriving
+                # with the surface velocity U_s; basal drag -beta (u - U_s) (beta/l on the velocity) and jet traction are
+                # implicit through theta = 1 + dt (beta + Lam)/l; their known parts and the source momentum form one target
+                divUs = getattr(self, "divUs", None)
+                s_skin = P.l_skin * np.maximum(divUs, 0.0) if divUs is not None else np.zeros_like(s)
+                s_skin = np.where(mask, s_skin, 0.0)
+                s_l = s + s_skin
+                brown_rate = float(s_skin[mask].sum()) * g.area
+                Lam_eff = P.beta + Lam
+                vsx = (P.beta * ubx + Lam * jx + s_l * ubx) / (P.beta + Lam + s_l)
+                vsy = (P.beta * uby + Lam * jy + s_l * uby) / (P.beta + Lam + s_l)
+                s_mom = s_l
+                Lam = Lam_eff; beta_B = 0.0
             Ds = getattr(self, "Ds", None)
             if Ds is not None:
                 # surface created / destroyed by the entrainment cell: coffee welling up brings brown surface; where it is
@@ -390,13 +435,13 @@ class Solver:
         qx_s = qx - dt * g.div(Fx_qx, Fy_qx)
         qy_s = qy - dt * g.div(Fx_qy, Fy_qy)
         if P.closure == "twolayer" and getattr(self, "Ub", None) is not None:
-            # drag towards the moving coffee layer: -beta (q - l U_b); the -beta q part is implicit in step B
+            # drag towards the moving coffee layer (v1; v2 carries it in the step-B target): -beta (q - l U_b); the -beta q part is implicit in step B
             qx_s = qx_s + dt * P.beta * lsafe * self.Ub[0]
             qy_s = qy_s + dt * P.beta * lsafe * self.Ub[1]
 
         # ---- B: implicit mass + pressure + drag/traction --------------------
         a_x = np.empty((N, N)); a_y = np.empty((N, N)); coef = np.empty((N, N))
-        K.stepB_prepare(qx_s, qy_s, s_mom, Lam, vsx, vsy, lsafe, P.beta, P.cp ** 2, dt, a_x, a_y, coef)
+        K.stepB_prepare(qx_s, qy_s, s_mom, Lam, vsx, vsy, lsafe, beta_B, P.cp ** 2, dt, a_x, a_y, coef)
         if msub_new is not None and P.sub_pressure > 0:
             # bathymetry-like push of the submerged mound (explicit, known field): a -= dt (c_p^2 l/theta) grad(m_sub)
             gbx, gby = g.cell_grad(msub_new)
@@ -471,7 +516,15 @@ class Solver:
         lsn = np.where(mask, l_new, 1.0)
 
         # ---- D: implicit viscosity and mixing (l frozen at l^{n+1}) ---------
-        if P.nu > 0 and P.nu * dt / (h * h) < self.num.explicit_visc_limit:
+        if v2:
+            # SSA membrane stress of a floating Bingham film from the discrete dissipation functional (YIELD_FILM_DERIVATION.md):
+            # (M + dt K(nu_eff(u^-))) u^+ = M u^-, K = 1/2 G^T (W x Q) G, symmetric positive semi-definite, rigid motions free
+            c_now = np.where(mask, m_new / lsn, 0.0)
+            ux_new, uy_new, it = self._ssa_step(qx_new / lsn, qy_new / lsn, lsn, c_now, dt)
+            self.stats["cg_visc"] += it
+            qx_new = np.where(mask, lsn * ux_new, 0.0)
+            qy_new = np.where(mask, lsn * uy_new, 0.0)
+        elif P.nu > 0 and P.nu * dt / (h * h) < self.num.explicit_visc_limit:
             # explicit, stable for nu*dt/h^2 < 1/4 (2-D); l frozen at l^{n+1}
             lfx, lfy = g.face_avg(lsn)
             kvx, kvy = P.nu * lfx, P.nu * lfy
@@ -542,7 +595,7 @@ class Solver:
         g, h = self.g, self.g.h
         S, SE = getattr(self, "_S", 0.0), getattr(self, "_SE", 0.0)
         if S <= 0:
-            self.Ub = None; self.Ud = None; self.Ds = None
+            self.Ub = None; self.Ud = None; self.Ds = None; self.divUs = None
             return
         kx, ky = g.fx.astype(float), g.fy.astype(float)
         eps = 1e-6
@@ -555,7 +608,7 @@ class Solver:
             gx, gy = g.cell_grad(phi)
             return np.where(g.mask, gx, 0.0), np.where(g.mask, gy, 0.0), div
 
-        vx, vy, _ = potential_velocity(S * self._K)
+        vx, vy, div_v = potential_velocity(S * self._K)
         if SE > 0:
             x0, y0 = self._hit
             cell = (np.hypot(g.x - x0, g.y - y0) < max(self._Rc, 2 * h)) & g.mask
@@ -564,6 +617,89 @@ class Solver:
             self.Ub = (vx + cx, vy + cy); self.Ud = (vx - cx, vy - cy)
         else:
             self.Ub = self.Ud = (vx, vy); self.Ds = None
+        self.divUs = div_v + (self.Ds if self.Ds is not None else 0.0)     # surface divergence (v2 skin source)
+        if self.P.closure == "v2":
+            self.Ds = None          # v2: up/down-welling act on the floating layer through its kinematics only
+
+    def _ssa_operator(self):
+        """Constant part of the SSA stress operator (YIELD_FILM_DERIVATION.md 4.1-4.2): G maps the cell velocities z = [u; v]
+        to the four strain components s = (u_x, v_y, u_y, v_x) on every open face (normal derivatives compact, tangential
+        ones the average of the two cell-centred derivatives, one-sided at the wall); faces are listed x faces then y faces."""
+        if self._ssa is not None:
+            return self._ssa
+        import scipy.sparse as sp
+        g, N, h = self.g, self.g.N, self.g.h
+        n = N * N; idx = np.arange(n).reshape(N, N)
+        fx, fy = g.fx.astype(bool), g.fy.astype(bool)
+        Lx, Rx = idx[:, :-1][fx], idx[:, 1:][fx]; Ly, Ry = idx[:-1, :][fy], idx[1:, :][fy]
+
+        def cell_deriv(L, R):
+            rows = np.r_[L, L, R, R]; cols = np.r_[R, L, R, L]
+            vals = np.r_[np.full(len(L), 1 / h), np.full(len(L), -1 / h), np.full(len(L), 1 / h), np.full(len(L), -1 / h)]
+            cnt = np.bincount(np.r_[L, R], minlength=n)
+            return sp.diags(1.0 / np.maximum(cnt, 1)) @ sp.csr_matrix((vals, (rows, cols)), shape=(n, n))
+
+        Dx, Dy = cell_deriv(Lx, Rx), cell_deriv(Ly, Ry)
+
+        def comp_avg(L, R):
+            m = len(L); r = np.arange(m)
+            comp = sp.csr_matrix((np.r_[np.full(m, -1 / h), np.full(m, 1 / h)], (np.r_[r, r], np.r_[L, R])), shape=(m, n))
+            avg = sp.csr_matrix((np.full(2 * m, 0.5), (np.r_[r, r], np.r_[L, R])), shape=(m, n))
+            return comp, avg
+
+        cX, aX = comp_avg(Lx, Rx); cY, aY = comp_avg(Ly, Ry)
+        Ox, Oy = sp.csr_matrix((len(Lx), n)), sp.csr_matrix((len(Ly), n))
+        # rows: component k for all faces (x faces then y faces), k = u_x, v_y, u_y, v_x
+        ux = sp.vstack([sp.hstack([cX, Ox]), sp.hstack([aY @ Dx, Oy])])
+        vy = sp.vstack([sp.hstack([Ox, aX @ Dy]), sp.hstack([Oy, cY])])
+        uy = sp.vstack([sp.hstack([aX @ Dy, Ox]), sp.hstack([cY, Oy])])
+        vx = sp.vstack([sp.hstack([Ox, cX]), sp.hstack([Oy, aY @ Dx])])
+        G = [c.tocsr() for c in (ux, vy, uy, vx)]
+        GT = [Gk.T.tocsr() for Gk in G]
+        # column-wise products for diag(K) = 1/2 sum_ab Q_ab sum_f w_f G_a[f,i] G_b[f,i]
+        prod = lambda a, b: G[a].multiply(G[b]).T.tocsr()
+        self._ssa = dict(G=G, GT=GT, L=np.r_[Lx, Ly], R=np.r_[Rx, Ry], nf=len(Lx) + len(Ly),
+                         P00=prod(0, 0), P11=prod(1, 1), P01=prod(0, 1), P22=prod(2, 2), P33=prod(3, 3), P23=prod(2, 3))
+        return self._ssa
+
+    def _ssa_step(self, ux, uy, lsn, c, dt):
+        """Step D of LATTE_MODEL.md 5.3: (M + dt K) u+ = M u-, K = 1/2 G^T (W x Q) G, W = 2 nu_eff l on the faces,
+        nu_eff = min(nu + tau_hat(c)/(sqrt(2 I) + eps), nu_max) lagged on u-.  Matrix-free, Jacobi-preconditioned CG
+        (diag(K) from the precomputed products G_a .* G_b)."""
+        P, g = self.P, self.g
+        S = self._ssa_operator(); G, GT, L, R = S["G"], S["GT"], S["L"], S["R"]
+        n = g.N * g.N
+        z = np.r_[ux.ravel(), uy.ravel()]
+        s0, s1, s2, s3 = (Gk @ z for Gk in G)
+        I = 2 * s0 ** 2 + 2 * s1 ** 2 + 2 * s0 * s1 + 0.5 * (s2 + s3) ** 2
+        lf = 0.5 * (lsn.ravel()[L] + lsn.ravel()[R]); cf = 0.5 * (c.ravel()[L] + c.ravel()[R])
+        if P.tau_y > 0 or P.tau_y_crema > 0:
+            tau = cf * P.tau_y + (1.0 - cf) * P.tau_y_crema
+            nue = np.minimum(P.nu + tau / (np.sqrt(2.0 * I) + P.yield_eps), P.nu_max)
+        else:
+            nue = np.full(len(L), P.nu)
+        w = 2.0 * nue * lf
+        mdiag = np.r_[lsn.ravel(), lsn.ravel()]
+
+        def Kz(x):
+            a0, a1, a2, a3 = (Gk @ x for Gk in G)
+            # (W x Q) s with Q = [[2,1,0,0],[1,2,0,0],[0,0,.5,.5],[0,0,.5,.5]]
+            b0 = w * (2 * a0 + a1); b1 = w * (a0 + 2 * a1); b2 = w * 0.5 * (a2 + a3)
+            return 0.5 * (GT[0] @ b0 + GT[1] @ b1 + GT[2] @ b2 + GT[3] @ b2)
+
+        dK = 0.5 * (2 * (S["P00"] @ w) + 2 * (S["P11"] @ w) + 2 * (S["P01"] @ w) + 0.5 * (S["P22"] @ w) + 0.5 * (S["P33"] @ w) + (S["P23"] @ w))
+        diag = mdiag + dt * dK
+        # Jacobi-preconditioned CG on (M + dt K) z = M z^-, starting from z^-
+        rhs = mdiag * z
+        x = z.copy(); r = rhs - (mdiag * x + dt * Kz(x)); pz = r / diag; p_ = pz.copy(); rz = r @ pz
+        bnorm = math.sqrt(rhs @ rhs) + 1e-300; it = 0
+        while math.sqrt(r @ r) > self.num.ssa_tol * bnorm and it < self.num.cg_maxiter:
+            Ap = mdiag * p_ + dt * Kz(p_)
+            alpha = rz / (p_ @ Ap + 1e-300)
+            x += alpha * p_; r -= alpha * Ap
+            pz = r / diag; rz_new = r @ pz
+            p_ = pz + (rz_new / rz) * p_; rz = rz_new; it += 1
+        return x[:n].reshape(g.N, g.N), x[n:].reshape(g.N, g.N), it
 
     def _factor_bulk(self, kx, ky, eps):
         """Sparse LU of the constant coffee-layer operator eps*phi - div(k grad phi) (k = open faces): the matrix never
@@ -673,9 +809,11 @@ class Solver:
                     milk_error=M - self.deposited)
 
     def concentration(self):
-        """Visible whiteness in [0, 1]: milk fraction m/l (chi closure) or surface-foam thickness over the opaque
-        thickness (skin closure)."""
+        """Visible whiteness in [0, 1]: milk fraction m/l (chi closure), surface-foam thickness over the opaque
+        thickness (skin closure), or the foam-layer opacity 1 - exp(-m/m_o) (v2)."""
         g = self.g
+        if self.P.closure == "v2":
+            return np.where(g.mask, 1.0 - np.exp(-np.maximum(self.m, 0.0) / self.P.m_o), np.nan)
         if self.P.closure == "skin":
             return np.where(g.mask, np.clip(self.m / self.P.m_opaque, 0.0, 1.0), np.nan)
         return np.where(g.mask, self.m / np.where(g.mask, self.l, 1.0), np.nan)

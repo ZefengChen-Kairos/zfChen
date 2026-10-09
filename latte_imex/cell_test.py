@@ -40,13 +40,13 @@ SPACE = dict(ent_coef=(0.3, 1.5, "log"), cell_frac=(0.1, 0.5, "log"), beta=(1.0,
 def objective(r, N):
     """loss + |gap fraction - target gap fraction| (the plain loss does not see the brown gaps)."""
     import numpy as np
-    from .optimize import whiteness_sim, target_at, gap_stats
+    from .optimize import visible, target_at, gap_stats
     from .action_opt import tag_of
     mask = np.hypot(*np.meshgrid(*(2 * [(np.arange(N) + 0.5) / N - 0.5]))) < 0.49
     if not r.get("ok"):
         return 10.0, {}
     c = np.load(os.path.join(r["out"], r["model"], f"{r['name']}_{tag_of(r['h'], r['q'], r['s'])}_N{N}.npy"))
-    gs, gt = gap_stats(whiteness_sim(c, mask), mask, N), gap_stats(target_at(r["name"], N), mask, N)
+    gs, gt = gap_stats(visible(c, mask, r.get("closure")), mask, N), gap_stats(target_at(r["name"], N), mask, N)
     return r["loss"] + abs(gs["gap_frac"] - gt["gap_frac"]), gs
 
 

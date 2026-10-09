@@ -12,7 +12,17 @@ from multiprocessing import Pool
 import numpy as np
 
 from .action_opt import run_one, PATTERNS
-from .cell_test import SPACE, objective
+from .cell_test import SPACE as SPACE_CELL, objective
+
+# v2 (LATTE_MODEL.md): every physical constant is fitted, within physical ranges; the regularizations are fixed
+SPACE_V2 = dict(phi_foam=(0.2, 0.7, "lin"), g_red=(40.0, 110.0, "log"), Fr_c2=(5.0, 100.0, "log"), p_dep=(1.0, 4.0, "lin"),
+                ent_coef=(0.2, 1.5, "log"), cell_frac=(0.05, 1.0, "log"), beta=(0.5, 20.0, "log"), kappa_c=(0.1, 3.0, "log"),
+                kappa_t=(0.3, 1.0, "lin"), H=(0.03, 0.07, "lin"), H_f=(0.001, 0.006, "log"), m_o=(0.05, 1.0, "log"),
+                tau_y=(0.01, 3.0, "log"), nu=(1e-4, 1e-2, "log"))
+BASE_V2 = dict(closure="v2", l_skin=0.03, yield_eps=0.02, nu_max=0.5, tau_y_crema=0.0, D=1e-7, D_L=0.08)
+X0_V2 = dict(phi_foam=0.45, g_red=75.0, Fr_c2=30.0, p_dep=1.56, ent_coef=0.74, cell_frac=0.3, beta=3.0, kappa_c=1.0,
+             kappa_t=0.9, H=0.05, H_f=0.003, m_o=0.2, tau_y=0.3, nu=1e-3)
+SPACE = SPACE_CELL
 
 ACT = dict(h=(0.3, 2.0), q=(0.6, 2.0), s=(0.8, 1.3))     # log-scaled action-factor bounds
 
@@ -52,17 +62,26 @@ def main():
     ap.add_argument("--sigma0", type=float, default=0.12)
     ap.add_argument("--popsize", type=int, default=13)
     ap.add_argument("--resume", action="store_true")
+    ap.add_argument("--spec", default="cell", choices=["cell", "v2"])
     a = ap.parse_args()
-    d = os.path.join(a.out, "joint_cma"); os.makedirs(d, exist_ok=True)
-    F = json.load(open(os.path.join(a.out, f"cell_fit_N{a.N}.json")))["best"]["over"]
-    base = {k: v for k, v in F.items() if k not in SPACE}
+    global SPACE
+    d = os.path.join(a.out, "joint_cma" if a.spec == "cell" else "joint_cma_v2"); os.makedirs(d, exist_ok=True)
+    if a.spec == "v2":
+        SPACE = SPACE_V2
+        F = dict(BASE_V2, **X0_V2); base = dict(BASE_V2)
+    else:
+        F = json.load(open(os.path.join(a.out, f"cell_fit_N{a.N}.json")))["best"]["over"]
+        base = {k: v for k, v in F.items() if k not in SPACE}
     st_path = os.path.join(d, "state.pkl")
     if a.resume and os.path.exists(st_path):
         es, hist, gen0 = pickle.load(open(st_path, "rb"))
     else:
-        src = next(p for p in (f"cellfit_refine_N{a.N}.json", f"fit_refine_N{a.N}.json") if os.path.exists(os.path.join(a.out, p)))
-        A = json.load(open(os.path.join(a.out, src)))
-        acts = {n: next((v["best"]["h"], v["best"]["q"], v["best"]["s"]) for k, v in A.items() if k.endswith("/" + n)) for n in PATTERNS}
+        if a.spec == "v2":
+            src = "neutral"; acts = {n: (1.0, 1.0, 1.0) for n in PATTERNS}     # no bias from the v1 fits
+        else:
+            src = next(p for p in (f"cellfit_refine_N{a.N}.json", f"fit_refine_N{a.N}.json") if os.path.exists(os.path.join(a.out, p)))
+            A = json.load(open(os.path.join(a.out, src)))
+            acts = {n: next((v["best"]["h"], v["best"]["q"], v["best"]["s"]) for k, v in A.items() if k.endswith("/" + n)) for n in PATTERNS}
         x0 = encode(F, acts)
         es = cma.CMAEvolutionStrategy(list(x0), a.sigma0, dict(bounds=[0, 1], popsize=a.popsize, seed=5, verbose=-9))
         hist, gen0 = [dict(gen=-1, J=None, src=src, x0=list(x0))], 0
@@ -70,11 +89,12 @@ def main():
         for gen in range(gen0, gen0 + a.gens):
             X = es.ask()
             cands = [decode(x, base) for x in X]
-            jobs = [(f"jc{gen:02d}_{k:02d}", n, *acts[n], a.N, a.out, phys) for k, (phys, acts) in enumerate(cands) for n in PATTERNS]
+            tag = "jc" if a.spec == "cell" else "v2c"
+            jobs = [(f"{tag}{gen:02d}_{k:02d}", n, *acts[n], a.N, a.out, phys) for k, (phys, acts) in enumerate(cands) for n in PATTERNS]
             R = pool.map(run_one, jobs)
             Js, rows = [], []
             for k, (phys, acts) in enumerate(cands):
-                rs = [dict(r, out=a.out) for r in R if r["model"] == f"jc{gen:02d}_{k:02d}"]
+                rs = [dict(r, out=a.out) for r in R if r["model"] == f"{tag}{gen:02d}_{k:02d}"]
                 per = {r["name"]: objective(r, a.N) for r in rs}
                 J = float(np.mean([v[0] for v in per.values()])); Js.append(J)
                 rows.append(dict(k=k, J=J, loss=float(np.mean([r["loss"] for r in rs])), phys={kk: phys[kk] for kk in SPACE}, acts=acts,

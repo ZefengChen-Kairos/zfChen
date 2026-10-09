@@ -61,15 +61,18 @@ def run_one(job):
         return json.load(open(stem + ".json"))
     from .pitcher import Pitcher, GridPitcherGeometry, Coupling, BaristaScript
     from .solver import Solver, Params, Numerics
-    from .optimize import whiteness_sim, loss_fields, target_at
+    from .optimize import visible, loss_fields, target_at
     if _GEOM is None:
         _GEOM = GridPitcherGeometry.load(nr=6)
     ph, kQ = physics9()
+    closure = over.get("closure")
+    if closure == "v2":
+        kQ = 1.0                                            # v2: S_eff = Q / D_L^3, the thickness scales H, H_f are physics
     cp = Coupling(c_S=kQ / D_L ** 3, c_U=1.0 / D_L, c_u=1.0 / D_L, footprint="physical")
     script = BaristaScript(moves=scaled_moves(name, h, q, s), pitcher=Pitcher(geom=_GEOM, V0=250e-6), coupling=cp)
     pd = dict(ph, D=1e-7, kappa_Q=125.0, return_law="v05"); pd.update(over)
     num = Numerics(N=N); sol = Solver(Params(**pd), num); t0 = time.time()
-    res = dict(model=model, name=name, h=h, q=q, s=s, N=N)
+    res = dict(model=model, name=name, h=h, q=q, s=s, N=N, closure=closure)
     try:
         while sol.t < script.T - 1e-9:
             probe, _ = script.sample(sol.t); fdt = num.frame_dt
@@ -79,7 +82,7 @@ def run_one(job):
         c = sol.concentration(); mask = sol.g.mask
         if not np.all(np.isfinite(c[mask])):
             raise FloatingPointError("non-finite c")
-        L, parts = loss_fields(whiteness_sim(c, mask), target_at(name, N), mask, N / 48)
+        L, parts = loss_fields(visible(c, mask, closure), target_at(name, N), mask, N / 48)
         np.save(stem + ".npy", c.astype(np.float32))
         V_end = script.pitcher.state.V
         res.update(loss=L, ok=True, V_end=float(V_end), deposited=float(sol.ledger()["deposited"]), **parts)
