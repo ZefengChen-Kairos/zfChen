@@ -359,7 +359,7 @@ function solverPush(inlet, dt){ solver.queue.push({inlet, dt}); solver.modelSec+
 function solverBusy(){ return solver.queue.length>=4 || (solver.inflight && solver.queue.length>=2); }
 function solverReset(){ solver.queue.length=0; solver.t=0; solver.deposited=0; if(solver.worker){ solver.inflight=true; solver.worker.postMessage({type:'reset'}); } else if(solver.local){ solver.local.reset(); solver.local.concentration(cField); paintField(); } }
 // the 2-D closure parameters actually sent to the solver: the script's physics preset, with the delay closure switched by the checkbox
-function solverParams(){ const p=Object.assign({}, PHYS.params||{}); const on=document.getElementById('delay').checked; if(!on) p.tau_d=0; else if(!(p.tau_d>0)) Object.assign(p,{tau_d:0.2,tau_d_exp:0,sub_pressure:0.5,sub_advect:0.3,D_sub:0}); return p; }
+function solverParams(){ const p=Object.assign({}, PHYS.params||{}); const on=document.getElementById('delay').checked; if(!on) p.tau_d=0; else if(!(p.tau_d>0)) Object.assign(p,{tau_d:0.2,sub_pressure:0.5,sub_advect:0.3}); return p; }
 function newSolver(N){ solN=N; solver.N=N; solver.area=1/(N*N); fieldCanvas.width=fieldCanvas.height=N; fieldImg=fctx.createImageData(N,N); cField=new Float32Array(N*N).fill(NaN); hits.length=0;
   solver.queue.length=0; solver.t=0; solver.deposited=0;
   if(!solver.worker && !solver.local) solver.worker=makeWorker();

@@ -34,13 +34,12 @@ class Params:
     return_law: str = "v1"  # "v1": chi*kappa_r*U_perp ; "v05": kappa_r*U_perp*chi^(1/(2p)) capped
     # "push first, whiten later": the deposited milk enters a sub-surface reservoir and surfaces after tau_d
     # (its impact momentum acts immediately); tau_d = 0 reproduces the instantaneous closure
-    tau_d: float = 0.0      # surfacing delay at U_perp = tau_d_ref     [s]
-    tau_d_ref: float = 8.75 # 0.70 m/s in cup diameters per second    [D_L/s]
-    tau_d_exp: float = 1.0  # tau = tau_d (U_perp/tau_d_ref)^tau_d_exp
-    D_sub: float = 0.0      # spreading of the sub-surface plume        [D_L^2/s]
-    sub_advect: float = 1.0     # fraction of the surface velocity that carries the submerged plume (0 = it stays
-                                # where it was poured; the plume sits below the thin surface layer, so < 1 is plausible)
-    sub_pressure: float = 1.0   # the submerged milk is a mound under the surface: it enters the pressure as
+    tau_d: float = 0.0      # surfacing time constant [s]; 0 = instantaneous closure.  Tested variants that did not
+                            # help were removed: a delay growing with U_perp (over-pushed the high cut) and a
+                            # sub-surface spreading D_sub (smeared the layers).
+    sub_advect: float = 0.3     # fraction of the surface velocity that carries the submerged plume (0 = it stays
+                                # where it was poured; 1 = it follows the pushed layer and fills the gap again)
+    sub_pressure: float = 0.5   # the submerged milk is a mound under the surface: it enters the pressure as
                                 # c_p^2 l grad(l + sub_pressure*m_sub) and pushes the old layer outward before it surfaces
 
     def as_dict(self):
@@ -256,7 +255,7 @@ class Solver:
         K, _ = self.kernel(inlet)
         d = max(inlet.d_jet, 1e-6)
         if P.tau_d > 0:
-            self.tau_cur = max(1e-3, P.tau_d * (max(inlet.U_perp, 1e-6) / P.tau_d_ref) ** P.tau_d_exp)
+            self.tau_cur = P.tau_d
         zc = inlet.U_perp ** 2 / (P.B_dep * d)
         chi = 1.0 / (1.0 + zc ** P.p_dep)
         s = chi * inlet.S_eff * K
@@ -302,12 +301,6 @@ class Solver:
                 Fx = ufx * np.where(ufx > 0, msub_new[:, :-1], msub_new[:, 1:])
                 Fy = ufy * np.where(ufy > 0, msub_new[:-1, :], msub_new[1:, :])
                 msub_new = np.where(mask, np.maximum(msub_new - dt * g.div(Fx, Fy), 0.0), 0.0)
-            if P.D_sub > 0:                                # plume spreading (explicit, sub-cycled)
-                kx = P.D_sub * g.fx.astype(float); ky = P.D_sub * g.fy.astype(float)
-                nd = max(1, int(math.ceil(4.0 * P.D_sub * dt / (h * h) / 0.2)))
-                for _ in range(nd):
-                    msub_new = msub_new + (dt / nd) * g.diffusion(kx, ky, msub_new)
-                msub_new = np.where(mask, np.maximum(msub_new, 0.0), 0.0)
 
         # ---- A: explicit Rusanov momentum advection (l frozen) --------------
         N = g.N

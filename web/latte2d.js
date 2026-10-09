@@ -11,7 +11,7 @@
   const DEFAULT_PARAMS = { cp: 0.3, beta: 3.0, nu: 1e-3, D: 1e-7, kappa_Q: 125.0, kappa_c: 1.0, kappa_t: 0.7, kappa_r: 0.3,
     B_dep: 2.5, p_dep: 2.0, return_law: 'v05',
     // "push first, whiten later" delay closure (port of solver.Params): tau_d = 0 reproduces the instantaneous closure
-    tau_d: 0, tau_d_ref: 8.75, tau_d_exp: 1, D_sub: 0, sub_advect: 1, sub_pressure: 1 };
+    tau_d: 0, sub_advect: 0.3, sub_pressure: 0.5 };
   const DEFAULT_NUM = { cup_radius: 0.49, cfl: 0.5, frame_dt: 1 / 120, max_substeps: 64, cg_tol: 1e-10, cg_maxiter: 500,
     kernel_quadrature: 3, scan_safety: 0.5, explicit_mixing_limit: 0.05, explicit_visc_limit: 0.2, visc_tol: 1e-8, l_floor: 1e-3 };
 
@@ -74,7 +74,7 @@
       Z *= this.area; if (Z <= 0) throw new Error('inlet footprint does not intersect the cup');
       const d = Math.max(inlet.d_jet, 1e-6), zc = inlet.U_perp * inlet.U_perp / (P.B_dep * d);
       const chi = 1 / (1 + Math.pow(zc, P.p_dep));
-      if (P.tau_d > 0) this.tauCur = Math.max(1e-3, P.tau_d * Math.pow(Math.max(inlet.U_perp, 1e-6) / P.tau_d_ref, P.tau_d_exp));
+      if (P.tau_d > 0) this.tauCur = P.tau_d;
       const Rdep = Math.sqrt(Math.max(inlet.r1 * inlet.r2, 1e-12));
       let rad;
       if (P.return_law === 'v05') {
@@ -185,16 +185,6 @@
             const v = fy[f] ? a * 0.5 * (w.uy[f] + w.uy[f + N]) : 0; w.Fyqx[f] = v * (v > 0 ? mn[f] : mn[f + N]); }
           this.div(w.Fxqx, w.Fyqx, w.tmp);
           for (let k = 0; k < n; k++) mn[k] = mask[k] ? Math.max(mn[k] - dt * w.tmp[k], 0) : 0;
-        }
-        if (P.D_sub > 0) {
-          const nd = Math.max(1, Math.ceil(4 * P.D_sub * dt / (h * h) / 0.2)), ddt = dt / nd, ih2 = 1 / (h * h);
-          for (let it = 0; it < nd; it++) {
-            for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const k = j * N + i; let v = 0;
-              if (i < N - 1 && fx[j * (N - 1) + i]) v += mn[k + 1] - mn[k]; if (i > 0 && fx[j * (N - 1) + i - 1]) v += mn[k - 1] - mn[k];
-              if (j < N - 1 && fy[k]) v += mn[k + N] - mn[k]; if (j > 0 && fy[k - N]) v += mn[k - N] - mn[k];
-              w.tmp[k] = P.D_sub * ih2 * v; }
-            for (let k = 0; k < n; k++) mn[k] = mask[k] ? Math.max(mn[k] + ddt * w.tmp[k], 0) : 0;
-          }
         }
         sm = ss;
       }
