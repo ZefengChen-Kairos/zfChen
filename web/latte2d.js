@@ -9,7 +9,9 @@
   'use strict';
 
   const DEFAULT_PARAMS = { cp: 0.3, beta: 3.0, nu: 1e-3, D: 1e-7, kappa_Q: 125.0, kappa_c: 1.0, kappa_t: 0.7, kappa_r: 0.3,
-    B_dep: 2.5, p_dep: 2.0, return_law: 'v05' };
+    B_dep: 2.5, p_dep: 2.0, return_law: 'v05',
+    // "push first, whiten later" delay closure (port of solver.Params): tau_d = 0 reproduces the instantaneous closure
+    tau_d: 0, tau_d_ref: 8.75, tau_d_exp: 1, D_sub: 0, sub_advect: 1, sub_pressure: 1 };
   const DEFAULT_NUM = { cup_radius: 0.49, cfl: 0.5, frame_dt: 1 / 120, max_substeps: 64, cg_tol: 1e-10, cg_maxiter: 500,
     kernel_quadrature: 3, scan_safety: 0.5, explicit_mixing_limit: 0.05, explicit_visc_limit: 0.2, visc_tol: 1e-8, l_floor: 1e-3 };
 
@@ -41,7 +43,8 @@
       this.w = { lsafe: A(), ux: A(), uy: A(), c: A(), Fxqx: F(), Fxqy: F(), Fyqx: F(), Fyqy: F(), qxs: A(), qys: A(),
         ax: A(), ay: A(), coef: A(), Gex: F(), Gey: F(), kx: F(), ky: F(), diag: A(), rhs: A(), lnew: A(), Gx: F(), Gy: F(),
         qxn: A(), qyn: A(), cfx: F(), cfy: F(), mnew: A(), tmp: A(), r: A(), p: A(), Ap: A(), z: A(), lfx: F(), lfy: F(),
-        s: A(), Lam: A(), vsx: A(), vsy: A(), sl: A(), sqx: A(), sqy: A(), sm: A() };
+        s: A(), Lam: A(), vsx: A(), vsy: A(), sl: A(), sqx: A(), sqy: A(), sm: A(), msubn: A(), ssurf: A(), smsub: A() };
+      this.msub = A(); this.tauCur = null;      // sub-surface milk waiting to surface (delay closure)
     }
 
     // ---------------------------------------------------------------- inlet fields
@@ -71,6 +74,7 @@
       Z *= this.area; if (Z <= 0) throw new Error('inlet footprint does not intersect the cup');
       const d = Math.max(inlet.d_jet, 1e-6), zc = inlet.U_perp * inlet.U_perp / (P.B_dep * d);
       const chi = 1 / (1 + Math.pow(zc, P.p_dep));
+      if (P.tau_d > 0) this.tauCur = Math.max(1e-3, P.tau_d * Math.pow(Math.max(inlet.U_perp, 1e-6) / P.tau_d_ref, P.tau_d_exp));
       const Rdep = Math.sqrt(Math.max(inlet.r1 * inlet.r2, 1e-12));
       let rad;
       if (P.return_law === 'v05') {
@@ -167,6 +171,33 @@
       const N = this.N, n = N * N, h = this.h, P = this.P, w = this.w, mask = this.mask, fx = this.fx, fy = this.fy;
       const l = this.l, qx = this.qx, qy = this.qy, m = this.m, s = w.s, Lam = w.Lam, vsx = w.vsx, vsy = w.vsy;
       for (let k = 0; k < n; k++) { const ls = mask[k] ? l[k] : 1; w.lsafe[k] = ls; w.ux[k] = mask[k] ? qx[k] / ls : 0; w.uy[k] = mask[k] ? qy[k] / ls : 0; w.c[k] = mask[k] ? m[k] / ls : 0; }
+      // delay closure: the deposited milk enters a sub-surface reservoir (impact momentum acts now), surfaces after tau,
+      // is carried by a fraction of the surface velocity and pushes the layer through the pressure as a submerged mound
+      let sm = s; const smom = s; const delay = P.tau_d > 0 && this.tauCur !== null; const mn = w.msubn;
+      if (delay) {
+        const tau = this.tauCur, msub = this.msub, ss = w.ssurf;
+        for (let k = 0; k < n; k++) { const tot = msub[k] + dt * s[k]; mn[k] = tot / (1 + dt / tau); ss[k] = (tot - mn[k]) / dt; }
+        if (P.sub_advect > 0) {
+          const a = P.sub_advect;
+          for (let j = 0; j < N; j++) for (let i = 0; i < N - 1; i++) { const f = j * (N - 1) + i, k = j * N + i;
+            const u = fx[f] ? a * 0.5 * (w.ux[k] + w.ux[k + 1]) : 0; w.Fxqx[f] = u * (u > 0 ? mn[k] : mn[k + 1]); }
+          for (let j = 0; j < N - 1; j++) for (let i = 0; i < N; i++) { const f = j * N + i;
+            const v = fy[f] ? a * 0.5 * (w.uy[f] + w.uy[f + N]) : 0; w.Fyqx[f] = v * (v > 0 ? mn[f] : mn[f + N]); }
+          this.div(w.Fxqx, w.Fyqx, w.tmp);
+          for (let k = 0; k < n; k++) mn[k] = mask[k] ? Math.max(mn[k] - dt * w.tmp[k], 0) : 0;
+        }
+        if (P.D_sub > 0) {
+          const nd = Math.max(1, Math.ceil(4 * P.D_sub * dt / (h * h) / 0.2)), ddt = dt / nd, ih2 = 1 / (h * h);
+          for (let it = 0; it < nd; it++) {
+            for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const k = j * N + i; let v = 0;
+              if (i < N - 1 && fx[j * (N - 1) + i]) v += mn[k + 1] - mn[k]; if (i > 0 && fx[j * (N - 1) + i - 1]) v += mn[k - 1] - mn[k];
+              if (j < N - 1 && fy[k]) v += mn[k + N] - mn[k]; if (j > 0 && fy[k - N]) v += mn[k - N] - mn[k];
+              w.tmp[k] = P.D_sub * ih2 * v; }
+            for (let k = 0; k < n; k++) mn[k] = mask[k] ? Math.max(mn[k] + ddt * w.tmp[k], 0) : 0;
+          }
+        }
+        sm = ss;
+      }
       // A: Rusanov momentum advection
       for (let j = 0; j < N; j++) for (let i = 0; i < N - 1; i++) {
         const f = j * (N - 1) + i, k = j * N + i;
@@ -187,8 +218,16 @@
       // B: implicit mass + pressure + drag/traction
       const cp2 = P.cp * P.cp;
       for (let k = 0; k < n; k++) {
-        const ls = w.lsafe[k], theta = 1 + dt * (P.beta + Lam[k] / ls), f = dt * (s[k] + Lam[k]);
+        const ls = w.lsafe[k], theta = 1 + dt * (P.beta + Lam[k] / ls), f = dt * (smom[k] + Lam[k]);
         w.ax[k] = (w.qxs[k] + f * vsx[k]) / theta; w.ay[k] = (w.qys[k] + f * vsy[k]) / theta; w.coef[k] = cp2 * ls / theta;
+      }
+      if (delay && P.sub_pressure > 0) {   // submerged mound pushes the layer: a -= dt (cp^2 l/theta) w grad(m_sub)
+        const ihh = 1 / h, wsp = P.sub_pressure;
+        for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const k = j * N + i; let gx = 0, gy = 0;
+          if (i < N - 1 && fx[j * (N - 1) + i]) gx += (mn[k + 1] - mn[k]) * ihh; if (i > 0 && fx[j * (N - 1) + i - 1]) gx += (mn[k] - mn[k - 1]) * ihh;
+          if (j < N - 1 && fy[k]) gy += (mn[k + N] - mn[k]) * ihh; if (j > 0 && fy[k - N]) gy += (mn[k] - mn[k - N]) * ihh;
+          gx = this.nfx[k] > 0 ? gx / this.nfx[k] : 0; gy = this.nfy[k] > 0 ? gy / this.nfy[k] : 0;
+          w.ax[k] -= dt * w.coef[k] * wsp * gx; w.ay[k] -= dt * w.coef[k] * wsp * gy; }
       }
       for (let j = 0; j < N; j++) for (let i = 0; i < N - 1; i++) {
         const f = j * (N - 1) + i, k = j * N + i;
@@ -212,13 +251,13 @@
         w.diag[k] = 1 + dt * ih2 * v;
       }
       this.div(w.Gex, w.Gey, w.rhs);
-      for (let k = 0; k < n; k++) { w.rhs[k] = l[k] + dt * s[k] - dt * w.rhs[k]; w.lnew[k] = l[k]; }
+      for (let k = 0; k < n; k++) { w.rhs[k] = l[k] + dt * sm[k] - dt * w.rhs[k]; w.lnew[k] = l[k]; }
       this.stats.cg_mass += this.pcgMass(w.kx, w.ky, dt, w.rhs, w.diag, w.lnew);
       const ih = 1 / h;
       for (let j = 0; j < N; j++) for (let i = 0; i < N - 1; i++) { const f = j * (N - 1) + i, k = j * N + i; w.Gx[f] = fx[f] ? w.Gex[f] - w.kx[f] * (w.lnew[k + 1] - w.lnew[k]) * ih : 0; }
       for (let j = 0; j < N - 1; j++) for (let i = 0; i < N; i++) { const f = j * N + i; w.Gy[f] = fy[f] ? w.Gey[f] - w.ky[f] * (w.lnew[f + N] - w.lnew[f]) * ih : 0; }
       this.div(w.Gx, w.Gy, w.tmp);
-      for (let k = 0; k < n; k++) w.lnew[k] = l[k] + dt * s[k] - dt * w.tmp[k];
+      for (let k = 0; k < n; k++) w.lnew[k] = l[k] + dt * sm[k] - dt * w.tmp[k];
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
         const k = j * N + i; let gx = 0, gy = 0;
         if (i < N - 1 && fx[j * (N - 1) + i]) gx += (w.lnew[k + 1] - w.lnew[k]) * ih;
@@ -227,6 +266,7 @@
         if (j > 0 && fy[k - N]) gy += (w.lnew[k] - w.lnew[k - N]) * ih;
         gx = this.nfx[k] > 0 ? gx / this.nfx[k] : 0; gy = this.nfy[k] > 0 ? gy / this.nfy[k] : 0;
         w.qxn[k] = w.ax[k] - dt * w.coef[k] * gx; w.qyn[k] = w.ay[k] - dt * w.coef[k] * gy;
+        if (delay) { w.qxn[k] += dt * sm[k] * w.ux[k]; w.qyn[k] += dt * sm[k] * w.uy[k]; }   // surfacing milk moves with the surface
       }
       // C: milk with the same flux
       this.limitedFaces(w.c, w.Gx, w.Gy, w.cfx, w.cfy);
@@ -234,7 +274,7 @@
       this.div(w.cfx, w.cfy, w.mnew);
       let clip = 0;
       for (let k = 0; k < n; k++) {
-        let mv = m[k] + dt * s[k] - dt * w.mnew[k];
+        let mv = m[k] + dt * sm[k] - dt * w.mnew[k];
         if (mask[k]) { clip += Math.max(mv - w.lnew[k], 0) + Math.max(-mv, 0); mv = Math.min(Math.max(mv, 0), w.lnew[k]); }
         else { mv = 0; w.lnew[k] = 1; w.qxn[k] = 0; w.qyn[k] = 0; }
         w.mnew[k] = mv;
@@ -275,10 +315,10 @@
       let ok = true, lmin = Infinity, ssum = 0;
       for (let k = 0; k < n; k++) {
         if (!isFinite(w.lnew[k]) || !isFinite(w.qxn[k]) || !isFinite(w.qyn[k]) || !isFinite(w.mnew[k])) { ok = false; break; }
-        if (mask[k]) { if (w.lnew[k] < lmin) lmin = w.lnew[k]; ssum += s[k]; }
+        if (mask[k]) { if (w.lnew[k] < lmin) lmin = w.lnew[k]; ssum += sm[k]; }
       }
       if (!ok || lmin <= this.num.l_floor) return false;
-      this.l.set(w.lnew); this.qx.set(w.qxn); this.qy.set(w.qyn); this.m.set(w.mnew);
+      this.l.set(w.lnew); this.qx.set(w.qxn); this.qy.set(w.qyn); this.m.set(w.mnew); if (delay) this.msub.set(mn);
       this.deposited += ssum * this.area * dt; this.stats.steps++;
       return true;
     }
@@ -299,13 +339,13 @@
       this.stats.max_u = Math.max(this.stats.max_u, umax);
       let nsub = Math.ceil(frameDt / (this.num.cfl * this.h / (2 * Math.max(umax, 1e-9))));
       nsub = Math.max(1, Math.min(nsub, this.num.max_substeps));
-      w.sl.set(this.l); w.sqx.set(this.qx); w.sqy.set(this.qy); w.sm.set(this.m); const dep0 = this.deposited;
+      w.sl.set(this.l); w.sqx.set(this.qx); w.sqy.set(this.qy); w.sm.set(this.m); w.smsub.set(this.msub); const dep0 = this.deposited;
       let done = false;
       for (let attempt = 0; attempt < 8 && !done; attempt++) {
         const dt = frameDt / nsub; let ok = true;
         for (let k = 0; k < nsub; k++) if (!this.substep(dt)) { ok = false; break; }
         if (ok) done = true;
-        else { this.l.set(w.sl); this.qx.set(w.sqx); this.qy.set(w.sqy); this.m.set(w.sm); this.deposited = dep0; this.stats.retries++; nsub *= 2; }
+        else { this.l.set(w.sl); this.qx.set(w.sqx); this.qy.set(w.sqy); this.m.set(w.sm); this.msub.set(w.smsub); this.deposited = dep0; this.stats.retries++; nsub *= 2; }
       }
       if (!done) throw new Error('frame failed after retries');
       this.stats.max_substeps = Math.max(this.stats.max_substeps, nsub);
@@ -318,7 +358,7 @@
       for (let k = 0; k < n; k++) out[k] = this.mask[k] ? this.m[k] / this.l[k] : NaN;
       return out;
     }
-    reset() { this.l.fill(1); this.qx.fill(0); this.qy.fill(0); this.m.fill(0); this.t = 0; this.deposited = 0;
+    reset() { this.l.fill(1); this.qx.fill(0); this.qy.fill(0); this.m.fill(0); this.msub.fill(0); this.tauCur = null; this.t = 0; this.deposited = 0;
       this.stats = { steps: 0, frames: 0, cg_mass: 0, max_u: 0, retries: 0, max_substeps: 0, clip_mass: 0 }; }
   }
 

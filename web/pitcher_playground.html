@@ -87,6 +87,7 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
         <button id="show2d">杯面 2D 图</button>
       </div>
       <div class="row" style="margin-top:8px"><label for="pitchersel">壶形</label><select id="pitchersel"><option value="nx" selected>你的 NX 壶（STEP）</option><option value="param">参数化壶</option></select><span class="val" id="pitcherv">—</span></div>
+      <div class="row" style="margin-top:8px"><label for="delay">先推后白</label><input type="checkbox" id="delay" checked><span class="val" id="delayv">时延 0.2 s，水下奶堆推挤 0.5，随流 0.3</span></div>
       <div class="row" style="margin-top:8px"><label for="grid">求解网格</label><select id="grid"><option value="64">64²（快）</option><option value="96" selected>96²（约实时）</option><option value="128">128²（约 1/2 实时）</option><option value="256">256²（约 1/8 实时）</option><option value="512">512²（很慢，约 1/40）</option><option value="768">768²（极慢，仅离线对照）</option></select><span class="val" id="speedv">—</span></div>
     </div>
     <div>
@@ -357,10 +358,12 @@ function pump(){ if(solver.inflight||solver.queue.length===0) return;
 function solverPush(inlet, dt){ solver.queue.push({inlet, dt}); solver.modelSec+=dt; pump(); }
 function solverBusy(){ return solver.queue.length>=4 || (solver.inflight && solver.queue.length>=2); }
 function solverReset(){ solver.queue.length=0; solver.t=0; solver.deposited=0; if(solver.worker){ solver.inflight=true; solver.worker.postMessage({type:'reset'}); } else if(solver.local){ solver.local.reset(); solver.local.concentration(cField); paintField(); } }
+// the 2-D closure parameters actually sent to the solver: the script's physics preset, with the delay closure switched by the checkbox
+function solverParams(){ const p=Object.assign({}, PHYS.params||{}); const on=document.getElementById('delay').checked; if(!on) p.tau_d=0; else if(!(p.tau_d>0)) Object.assign(p,{tau_d:0.2,tau_d_exp:0,sub_pressure:0.5,sub_advect:0.3,D_sub:0}); return p; }
 function newSolver(N){ solN=N; solver.N=N; solver.area=1/(N*N); fieldCanvas.width=fieldCanvas.height=N; fieldImg=fctx.createImageData(N,N); cField=new Float32Array(N*N).fill(NaN); hits.length=0;
   solver.queue.length=0; solver.t=0; solver.deposited=0;
   if(!solver.worker && !solver.local) solver.worker=makeWorker();
-  if(solver.worker){ solver.inflight=true; solver.worker.postMessage({type:'init', N, params:PHYS.params||{}, num:{cg_tol:1e-8}}); } else { solver.local=new Latte2D.Latte2D(N,PHYS.params||{}, {cg_tol:1e-8}); solver.local.concentration(cField); }
+  if(solver.worker){ solver.inflight=true; const prm=solverParams(); solver.worker.postMessage({type:'init', N, params:prm, num:{cg_tol:1e-8}}); } else { solver.local=new Latte2D.Latte2D(N,solverParams(), {cg_tol:1e-8}); solver.local.concentration(cField); }
   paintField(); }
 // brown -> white as render.py: v = clip(c/0.8)^0.8
 function paintField(){ if(!cField) return; const N=solN; const d=fieldImg.data;
@@ -455,6 +458,7 @@ function resetLedger(V){ st.V=V; st.Q=0; st.flowing=false; st.Vlip=0; st.Vjet=0;
 document.getElementById('refill').addEventListener('click',()=>{ resetLedger(+ui.fill.value*1e-6); });
 document.getElementById('clear').addEventListener('click',()=>{ solverReset(); hits.length=0; });
 document.getElementById('grid').addEventListener('change',ev=>{ newSolver(+ev.target.value); });
+document.getElementById('delay').addEventListener('change',()=>{ newSolver(solN); });
 let nxGrid=null;
 function usePitcher(which){ const g=(which==='nx'&&nxGrid)?nxGrid:parametricGrid(); buildGeometry(g); buildMeshes(); resetLedger(st.V+st.Vlip+st.Vjet); resetKin();
   out('pitcherv').textContent=(capacity*1e6).toFixed(0)+' mL'; }
