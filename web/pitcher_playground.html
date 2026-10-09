@@ -529,7 +529,7 @@ function frame(now){ requestAnimationFrame(frame); let el=Math.min(0.1,(now-last
     if(auto){ const it=intent(auto.t); auto.t+=DT; pose.tip[0]=it.x*D_L-auto.off[0]; pose.tip[1]=it.y*D_L-auto.off[1]; pose.tip[2]=it.z; ui.height.value=(it.z*100).toFixed(1);
       auto.Qseen+=(st.Q-auto.Qseen)*(1-Math.exp(-DT/0.25));
       let rate; if(it.Q<=0){rate=st.flowing?-rad(60):-rad(4); auto.ierr=0;} else if(!st.flowing) rate=rad(60); else { const err=it.Q-auto.Qseen; auto.ierr=Math.max(-2e-6,Math.min(2e-6,auto.ierr+err*DT)); rate=Math.max(-rad(60),Math.min(rad(60), rad(0.8)/1e-6*err + rad(1.5)/1e-6*auto.ierr)); }
-      pose.tilt=Math.max(0,Math.min(rad(150),pose.tilt+rate*DT)); if(auto.t>MOVES.reduce((s,m)=>s+m.dur,0)+1.5) auto=null; out('hud').textContent='脚本：'+it.name; }
+      pose.tilt=Math.max(0,Math.min(rad(150),pose.tilt+rate*DT)); if(auto.t>MOVES.reduce((s,m)=>s+m.dur,0)+1.5) auto=null; out('hud').textContent='脚本：'+it.name+'   t '+fmt(st.t,1)+' s   Q '+fmt(st.Q*1e6,1)+' mL/s'; }
     else if(manualTilt!==null){ pose.tilt=manualTilt; }
     else { let rate=0; if(pouring) rate=rad(45); else rate=-rad(60); if(keyTilt) rate=keyTilt*rad(45); pose.tilt=Math.max(0,Math.min(rad(150),pose.tilt+rate*DT)); }
     placeCup(pose.yaw);
