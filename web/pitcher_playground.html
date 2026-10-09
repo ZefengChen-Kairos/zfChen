@@ -80,7 +80,7 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
         <button class="pour" id="pour">按住倒奶（倾斜手腕）</button>
         <button id="refill">重新装奶 200 mL</button>
         <button id="clear">擦掉杯面</button>
-        <select id="scriptsel"><option value="heart">大白心</option><option value="push_heart">推推乐</option><option value="layered_heart">千层心</option><option value="tulip">压纹郁金香</option><option value="leaf">树叶</option><option value="swan">天鹅</option><option value="tulip_sweep9">郁金香（联合扫描 #9，物理闭合）</option><option value="heart_sweep9">心形（联合扫描 #9，物理闭合）</option></select>
+        <select id="scriptsel"><option value="heart">大白心</option><option value="push_heart">推推乐</option><option value="layered_heart">千层心</option><option value="tulip">压纹郁金香</option><option value="leaf">树叶</option><option value="swan">天鹅</option><option value="tulip_sweep9">郁金香（联合扫描 #9 的动作）</option><option value="heart_sweep9">心形（联合扫描 #9 的动作）</option></select>
         <button class="primary" id="auto">回放脚本</button>
         <button id="show2d">杯面 2D 图</button>
       </div>
@@ -510,11 +510,11 @@ function intent(t){ let acc=0; for(const m of MOVES){ if(t<acc+m.dur){ const f=(
   const last=MOVES[MOVES.length-1]; return {x:last.p1[0],y:last.p1[1],z:last.z1,Q:0,name:'结束'}; }
 function startScript(moves, physics){ MOVES=moves; resetLedger((geom&&geom.name!=='参数化壶')?250e-6:200e-6); ui.fill.value=Math.round(st.V*1e6); out('fillv').textContent=ui.fill.value+' mL';
   // optional physics preset of the script: 2-D closure parameters + coupling (e.g. the joint-sweep candidates use the dimensional coupling)
-  PHYS={params:(physics&&physics.params)||null, coupling:(physics&&physics.coupling)||null}; Object.assign(Latte2D.COUPLING, COUPLING_DEFAULT, PHYS.coupling||{}); newSolver(solN); hits.length=0; pose.yaw=rad(-90); ui.yaw.value=-90; pose.tilt=rad(40); manualTilt=null; pouring=false;
+  if(physics){ PHYS={params:physics.params||null, coupling:physics.coupling||null}; } Object.assign(Latte2D.COUPLING, COUPLING_DEFAULT, PHYS.coupling||{}); newSolver(solN); hits.length=0; pose.yaw=rad(-90); ui.yaw.value=-90; pose.tilt=rad(40); manualTilt=null; pouring=false;
   resetKin(); auto={t:0, ierr:0, off:[0,0], Qseen:0}; }
 function resetKin(){ kin.tipPrev=null; kin.vel=[0,0,0]; kin.acc=[0,0,0]; kin.slope=[0,0]; kin.slopeRate=[0,0]; NRM=[0,0,1]; GEFF=G; }
 let SCRIPTS={heart:{moves:MOVES_HEART}, layered_heart:{moves:MOVES_LAYERED}};
-fetch('scripts.json').then(r=>r.json()).then(j=>{ SCRIPTS=j; }).catch(e=>console.warn('scripts.json not available, built-in scripts only', e));
+fetch('scripts.json').then(r=>r.json()).then(j=>{ SCRIPTS=j; const d=j._default_physics; if(d){ PHYS={params:d.params||null, coupling:d.coupling||null}; Object.assign(Latte2D.COUPLING, COUPLING_DEFAULT, PHYS.coupling||{}); newSolver(solN); } }).catch(e=>console.warn('scripts.json not available, built-in scripts only', e));
 document.getElementById('auto').addEventListener('click',()=>{ const k=document.getElementById('scriptsel').value; const sc=SCRIPTS[k]||SCRIPTS.heart; startScript(sc.moves, sc.physics); });
 
 /* ---------------------------------------------------------------- strip chart */
