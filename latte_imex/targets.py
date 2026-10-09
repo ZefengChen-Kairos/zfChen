@@ -16,6 +16,8 @@ from matplotlib.colors import rgb_to_hsv
 HERE = os.path.dirname(__file__)
 TDIR = os.path.join(HERE, "targets")
 REF = os.environ.get("LATTE_REF", "/tmp/claude-0/-home-user-zfChen/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/ref")
+# method "otsu2": two-class Otsu split of (1-S)V (foam vs crema).  method "foam3": three-class split (dark crema, light-tan
+# crema, foam) so that a pale crema halo is not counted as foam; small white blobs touching the rim (reflections) removed.
 
 # clip time [s], rotation [deg, counter-clockwise in the cup frame], mirror x
 FRAMES = dict(
@@ -23,7 +25,7 @@ FRAMES = dict(
     push_heart=dict(t=16.4, rot=-100.0, flip=False),
     layered_heart=dict(t=11.8, rot=-130.0, flip=False),
     tulip=dict(t=17.75, rot=-165.0, flip=False),
-    leaf=dict(t=14.4, rot=45.0, flip=False),
+    leaf=dict(t=12.2, rot=45.0, flip=False, method="foam3", M=256),   # 10-09: was 14.4 s (watermark over the leaf, glare)
     swan=dict(t=20.5, rot=0.0, flip=False),
 )
 
@@ -124,6 +126,31 @@ def whiteness(rgb_w, mask):
     return w, thr, lo, hi
 
 
+def _kmeans3(v, it=60):
+    c = np.quantile(v, [0.1, 0.5, 0.9])
+    for _ in range(it):
+        lab = np.argmin(np.abs(v[:, None] - c[None, :]), 1)
+        c = np.array([v[lab == j].mean() if np.any(lab == j) else c[j] for j in range(3)])
+    return np.sort(c)
+
+
+def whiteness_foam3(rgb_w, mask, ramp=1.0, min_blob=0.01):
+    """Three-class split of f = (1-S)V into dark crema / light-tan crema / foam; w ramps between the tan and foam centres.
+    White blobs smaller than min_blob of the cup that touch the rim (reflections) are removed."""
+    hsv = rgb_to_hsv(np.clip(rgb_w, 0, 1))
+    f = (1 - hsv[..., 1]) * hsv[..., 2]
+    c = _kmeans3(f[mask])
+    mid = 0.5 * (c[1] + c[2]); half = ramp * 0.5 * (c[2] - c[1])
+    w = np.where(mask, np.clip((f - (mid - half)) / (2 * half), 0, 1), 0.0)
+    M = w.shape[0]; g = (np.arange(M) + 0.5) / M - 0.5; X, Y = np.meshgrid(g, g); rim = np.hypot(X, Y) > 0.46
+    lab, n = ndimage.label(w > 0.5)
+    for k in range(1, n + 1):
+        comp = lab == k
+        if comp.sum() < min_blob * mask.sum() and (comp & rim).any():
+            w[ndimage.binary_dilation(comp, iterations=2)] = 0.0
+    return w, c[1], c[1], c[2]
+
+
 def build(names=None, M=192, preview=True):
     os.makedirs(TDIR, exist_ok=True)
     names = names or list(FRAMES)
@@ -134,10 +161,14 @@ def build(names=None, M=192, preview=True):
         grab(name, cfg["t"], fpath)
         rgb = load_rgb(fpath)
         ell = liquid_ellipse(rgb)
-        rgb_w, mask = warp(rgb, ell, M, cfg["rot"], cfg["flip"])
-        w, thr, lo, hi = whiteness(rgb_w, mask)
-        np.savez_compressed(os.path.join(TDIR, f"{name}.npz"), w=w.astype(np.float32), mask=mask, M=M,
-                            t=cfg["t"], rot=cfg["rot"], flip=cfg["flip"])
+        Mi = cfg.get("M", M)
+        rgb_w, mask = warp(rgb, ell, Mi, cfg["rot"], cfg["flip"])
+        if cfg.get("method", "otsu2") == "foam3":
+            w, thr, lo, hi = whiteness_foam3(rgb_w, mask)
+        else:
+            w, thr, lo, hi = whiteness(rgb_w, mask)
+        np.savez_compressed(os.path.join(TDIR, f"{name}.npz"), w=w.astype(np.float32), mask=mask, M=Mi,
+                            t=cfg["t"], rot=cfg["rot"], flip=cfg["flip"], method=cfg.get("method", "otsu2"))
         rows.append((name, rgb, ell, rgb_w, w, mask))
         print(f"{name}: t={cfg['t']} center={ell['center'].round(1)} axes={ell['axes'].round(1)} "
               f"angle={math.degrees(ell['angle']):.1f} white_area={w[mask].mean():.3f} thr={thr:.3f}")
