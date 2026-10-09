@@ -38,6 +38,8 @@ class Params:
     tau_d_ref: float = 8.75 # 0.70 m/s in cup diameters per second    [D_L/s]
     tau_d_exp: float = 1.0  # tau = tau_d (U_perp/tau_d_ref)^tau_d_exp
     D_sub: float = 0.0      # spreading of the sub-surface plume        [D_L^2/s]
+    sub_pressure: float = 1.0   # the submerged milk is a mound under the surface: it enters the pressure as
+                                # c_p^2 l grad(l + sub_pressure*m_sub) and pushes the old layer outward before it surfaces
 
     def as_dict(self):
         return asdict(self)
@@ -307,6 +309,11 @@ class Solver:
         # ---- B: implicit mass + pressure + drag/traction --------------------
         a_x = np.empty((N, N)); a_y = np.empty((N, N)); coef = np.empty((N, N))
         K.stepB_prepare(qx_s, qy_s, s_mom, Lam, vsx, vsy, lsafe, P.beta, P.cp ** 2, dt, a_x, a_y, coef)
+        if msub_new is not None and P.sub_pressure > 0:
+            # bathymetry-like push of the submerged mound (explicit, known field): a -= dt (c_p^2 l/theta) grad(m_sub)
+            gbx, gby = g.cell_grad(msub_new)
+            a_x = a_x - dt * coef * P.sub_pressure * gbx
+            a_y = a_y - dt * coef * P.sub_pressure * gby
         # explicit part of face flux
         Gex = np.empty((N, N - 1)); Gey = np.empty((N - 1, N))
         K.mass_fluxes(a_x, a_y, l, lsafe, g.fx, g.fy, Gex, Gey, None, None)
