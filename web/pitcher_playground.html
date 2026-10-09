@@ -88,7 +88,7 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
       </div>
       <div class="row" style="margin-top:8px"><label for="pitchersel">壶形</label><select id="pitchersel"><option value="nx" selected>你的 NX 壶（STEP）</option><option value="param">参数化壶</option></select><span class="val" id="pitcherv">—</span></div>
       <div class="row" style="margin-top:8px"><label for="modelsel">物理模型</label><select id="modelsel"><option value="chi" selected>旧闭合 #9</option><option value="twolayer">双层（拟合参数，较慢）</option></select><span class="val" id="modelv">—</span></div>
-      <div class="row" style="margin-top:8px"><label for="delay">先推后白</label><input type="checkbox" id="delay"><span class="val" id="delayv">时延 0.2 s，水下奶堆推挤 0.5，随流 0.3（仅旧闭合）</span></div>
+      <div class="row" style="margin-top:8px"><label for="delay">先推后白</label><input type="checkbox" id="delay"><span class="val" id="delayv" title="时延 0.2 s，水下奶堆推挤 0.5，随流 0.3；只作用于旧闭合">0.2 s</span></div>
       <div class="row" style="margin-top:8px"><label for="grid">求解网格</label><select id="grid"><option value="64">64²（快）</option><option value="96" selected>96²（约实时）</option><option value="128">128²（约 1/2 实时）</option><option value="256">256²（约 1/8 实时）</option><option value="512">512²（很慢，约 1/40）</option><option value="768">768²（极慢，仅离线对照）</option></select><span class="val" id="speedv">—</span></div>
     </div>
     <div>
@@ -364,7 +364,8 @@ function solverReset(){ solver.queue.length=0; solver.t=0; solver.deposited=0; i
 function solverParams(){ const p=Object.assign({}, PHYS.params||{}); const on=document.getElementById('delay').checked; if(!on) p.tau_d=0; else if(!(p.tau_d>0)) Object.assign(p,{tau_d:0.2,sub_pressure:0.5,sub_advect:0.3});
   const tl=SCRIPTS&&SCRIPTS._twolayer_physics; if(document.getElementById('modelsel').value==='twolayer'&&tl) Object.assign(p, tl.params, {tau_d:0}); return p; }
 function updateModelText(){ const tl=SCRIPTS&&SCRIPTS._twolayer_physics, two=document.getElementById('modelsel').value==='twolayer';
-  document.getElementById('modelv').textContent=two&&tl?`g′ ${tl.params.g_red.toFixed(0)}, Fr_c² ${tl.params.Fr_c2.toFixed(0)}, φ ${tl.params.phi_foam.toFixed(2)}, β ${tl.params.beta.toFixed(2)}, κ_c ${tl.params.kappa_c.toFixed(2)}`:(two?'scripts.json 未加载':'B_dep、κ_r 等联合扫描参数');
+  const mv=document.getElementById('modelv'); mv.textContent=two?(tl?'拟合':'未加载'):'#9';
+  mv.title=two&&tl?`双层闭合，拟合常数：g′ ${tl.params.g_red.toFixed(0)}, Fr_c² ${tl.params.Fr_c2.toFixed(0)}, φ_foam ${tl.params.phi_foam.toFixed(2)}, β ${tl.params.beta.toFixed(2)}, κ_c ${tl.params.kappa_c.toFixed(2)}`:'旧闭合：联合扫描 #9 的 B_dep、κ_r 等';
   document.getElementById('delay').disabled=two; }
 function newSolver(N){ solN=N; solver.N=N; solver.area=1/(N*N); fieldCanvas.width=fieldCanvas.height=N; fieldImg=fctx.createImageData(N,N); cField=new Float32Array(N*N).fill(NaN); hits.length=0;
   solver.queue.length=0; solver.t=0; solver.deposited=0;
