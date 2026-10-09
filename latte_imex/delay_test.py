@@ -4,7 +4,12 @@ import json, sys, os, time, numpy as np
 from latte_imex.pitcher import Pitcher, GridPitcherGeometry, Coupling, BaristaScript, v05_moves, v05_moves_low
 from latte_imex.solver import Solver, Params, Numerics
 name, N, out, tag = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
-over = {k: float(v) for k, v in (a.split("=") for a in sys.argv[5:])}
+def _val(v):
+    try:
+        return float(v)
+    except ValueError:
+        return v
+over = {k: _val(v) for k, v in (a.split("=") for a in sys.argv[5:])}
 D_L = 0.08
 r = json.load(open("runs/joint_sweep_r2fix/results.json"))[9]; ph = dict(r["physics"]); kQ = ph.pop("kQ")
 geom = GridPitcherGeometry.load(nr=6)

@@ -34,6 +34,12 @@ class Params:
     return_law: str = "v1"  # "v1": chi*kappa_r*U_perp ; "v05": kappa_r*U_perp*chi^(1/(2p)) capped
     # "push first, whiten later": the deposited milk enters a sub-surface reservoir and surfaces after tau_d
     # (its impact momentum acts immediately); tau_d = 0 reproduces the instantaneous closure
+    # ---- closure "skin" (bulk + submerged foam + surface foam), replaces chi-splitting, kappa_r, return law and delay
+    closure: str = "chi"    # "chi": original single-layer closure ; "skin": see SkinNotes in PITCHER_MODEL.md section 15
+    g_red: float = 75.0     # reduced gravity of the milk foam g(1 - rho_f/rho)   [D_L/s^2]  (6 m/s^2 for rho_f/rho = 0.4)
+    Fr_c2: float = 23.0     # critical densimetric Froude number^2 of foam survival: chi = 1/(1+(U^2/(g' d Fr_c^2))^p_dep)
+    phi_foam: float = 0.5   # foam volume fraction of the poured milk
+    m_opaque: float = 0.02  # surface-foam thickness (liquid-depth units) that looks fully white
     tau_d: float = 0.0      # surfacing time constant [s]; 0 = instantaneous closure.  Tested variants that did not
                             # help were removed: a delay growing with U_perp (over-pushed the high cut) and a
                             # sub-surface spreading D_sub (smeared the layers).
@@ -208,6 +214,9 @@ class Solver:
         self.deposited = 0.0           # cumulative integral of s over domain and time (surfaced milk)
         self.msub = np.zeros((g.N, g.N))   # sub-surface milk waiting to surface (delay closure)
         self.tau_cur = None            # surfacing time constant of the current/last inlet
+        self.f = np.zeros((g.N, g.N))      # skin closure: submerged foam (liquid-depth units)
+        self.ft = np.zeros((g.N, g.N))     # skin closure: f * (mean remaining rise time) to carry tau with the foam
+        self.foam_src = None; self.tau_new = 0.0
         self.stats = dict(steps=0, frames=0, cg_mass=0, cg_visc=0, cg_mix=0,
                           clip_mass=0.0, max_substeps=0, max_u=0.0, retries=0)
         self.l_floor = 1e-3
@@ -251,9 +260,22 @@ class Solver:
         g = self.g
         if not inlet.active or inlet.S_eff <= 0:
             z = np.zeros((g.N, g.N))
+            self.foam_src = None
             return z, z, z, z, 0.0
         K, _ = self.kernel(inlet)
         d = max(inlet.d_jet, 1e-6)
+        if P.closure == "skin":
+            # the whole poured volume enters the bulk at once (it drives the push through the pressure); the foam part that
+            # survives the impact, chi(Fr), is submerged and surfaces after the fountain rise time 2 U_perp / g'
+            Fr2 = inlet.U_perp ** 2 / (P.g_red * d)
+            chi = 1.0 / (1.0 + (Fr2 / P.Fr_c2) ** P.p_dep)
+            s = inlet.S_eff * K
+            Lam = P.kappa_c * inlet.S_eff * K
+            self.foam_src = chi * P.phi_foam * s
+            self.tau_new = max(2.0 * inlet.U_perp / P.g_red, 1e-3)
+            vsx = P.kappa_t * inlet.u_in[0] * np.ones_like(K)
+            vsy = P.kappa_t * inlet.u_in[1] * np.ones_like(K)
+            return s, Lam, vsx, vsy, chi
         if P.tau_d > 0:
             self.tau_cur = P.tau_d
         zc = inlet.U_perp ** 2 / (P.B_dep * d)
@@ -342,7 +364,26 @@ class Solver:
         # ---- C: milk with the same face flux ---------------------------------
         cfx = K.limited_face_x(c, Gx, g.fx, np.empty((N, N - 1)))
         cfy = K.limited_face_y(c, Gy, g.fy, np.empty((N - 1, N)))
-        m_new = m + dt * s - dt * g.div(Gx * cfx, Gy * cfy)
+        if P.closure == "skin":
+            # submerged foam and its rise-time moment move with the same face flux as the bulk (van Leer limited)
+            fl = np.where(mask, self.f / lsafe, 0.0); tl = np.where(mask, self.ft / lsafe, 0.0)
+            ffx = K.limited_face_x(fl, Gx, g.fx, np.empty((N, N - 1))); ffy = K.limited_face_y(fl, Gy, g.fy, np.empty((N - 1, N)))
+            tfx = K.limited_face_x(tl, Gx, g.fx, np.empty((N, N - 1))); tfy = K.limited_face_y(tl, Gy, g.fy, np.empty((N - 1, N)))
+            f1 = self.f - dt * g.div(Gx * ffx, Gy * ffy)
+            t1 = self.ft - dt * g.div(Gx * tfx, Gy * tfy)
+            if self.foam_src is not None:
+                f1 = f1 + dt * self.foam_src
+                t1 = t1 + dt * self.foam_src * self.tau_new
+            f1 = np.where(mask, np.maximum(f1, 0.0), 0.0); t1 = np.where(mask, np.maximum(t1, 0.0), 0.0)
+            tau_f = np.where(f1 > 1e-14, t1 / np.maximum(f1, 1e-300), 1.0)
+            tau_f = np.maximum(tau_f, 1e-3)
+            surf = f1 * (1.0 - np.exp(-dt / tau_f))          # foam reaching the surface this step
+            f_new = f1 - surf
+            ft_new = tau_f * f_new
+            s_m = surf / dt
+        else:
+            s_m = s
+        m_new = m + dt * s_m - dt * g.div(Gx * cfx, Gy * cfy)
         # boundedness guard (should be inactive under the material CFL)
         over = np.maximum(m_new - l_new, 0.0) + np.maximum(-m_new, 0.0)
         self.stats["clip_mass"] += float(over[mask].sum() * g.area)
@@ -404,6 +445,8 @@ class Solver:
                 and np.isfinite(m_new).all() and l_new[mask].min() > self.l_floor):
             return False
         self.l, self.qx, self.qy, self.m = l_new, qx_new, qy_new, m_new
+        if P.closure == "skin":
+            self.f, self.ft = f_new, ft_new
         if msub_new is not None:
             self.msub = msub_new
         self.deposited += float(s[mask].sum()) * g.area * dt
@@ -427,7 +470,8 @@ class Solver:
         dt_cfl = self.num.cfl * g.h / (2.0 * max(umax, 1e-9))
         nsub = int(math.ceil(frame_dt / dt_cfl))
         nsub = max(1, min(nsub, self.num.max_substeps))
-        saved = (self.l.copy(), self.qx.copy(), self.qy.copy(), self.m.copy(), self.deposited, self.msub.copy())
+        saved = (self.l.copy(), self.qx.copy(), self.qy.copy(), self.m.copy(), self.deposited, self.msub.copy(),
+                 self.f.copy(), self.ft.copy())
         for attempt in range(8):
             dt = frame_dt / nsub
             ok = True
@@ -441,6 +485,7 @@ class Solver:
             self.l, self.qx, self.qy, self.m = (a.copy() for a in saved[:4])
             self.deposited = saved[4]
             self.msub = saved[5].copy()
+            self.f, self.ft = saved[6].copy(), saved[7].copy()
             self.stats["retries"] += 1
             nsub *= 2
         else:
@@ -464,7 +509,11 @@ class Solver:
                     milk_error=M - self.deposited)
 
     def concentration(self):
+        """Visible whiteness in [0, 1]: milk fraction m/l (chi closure) or surface-foam thickness over the opaque
+        thickness (skin closure)."""
         g = self.g
+        if self.P.closure == "skin":
+            return np.where(g.mask, np.clip(self.m / self.P.m_opaque, 0.0, 1.0), np.nan)
         return np.where(g.mask, self.m / np.where(g.mask, self.l, 1.0), np.nan)
 
     def energy(self):
