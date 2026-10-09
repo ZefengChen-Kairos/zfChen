@@ -376,7 +376,7 @@ function paintField(){ if(!cField) return; const N=solN; const d=fieldImg.data;
 newSolver(96);
 // pitcher mesh from the (z, phi) grid: outer wall, inner (liquid) wall, bottom, rim band.  three local coords = (x, z, -y) of the body frame
 const pitcherGroup=new THREE.Group(); scene.add(pitcherGroup);
-const steel=new THREE.MeshPhongMaterial({color:0xd9dde3,specular:0x9aa3ad,shininess:60,side:THREE.DoubleSide});
+const steel=new THREE.MeshPhongMaterial({color:0x2b2e33,specular:0x8a9099,shininess:45,side:THREE.DoubleSide});   // dark (black-coated) pitcher so it reads against the white cup and milk
 const milkMat=new THREE.MeshLambertMaterial({color:0xf4efe6,side:THREE.DoubleSide,clippingPlanes:[new THREE.Plane(new THREE.Vector3(0,-1,0),0)]});
 let meshes=[];
 function surfaceFromGrid(rfun, zTop, scale){ const nz=48, nphi=72, pos=[], idx=[];
