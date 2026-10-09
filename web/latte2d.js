@@ -11,7 +11,10 @@
   const DEFAULT_PARAMS = { cp: 0.3, beta: 3.0, nu: 1e-3, D: 1e-7, kappa_Q: 125.0, kappa_c: 1.0, kappa_t: 0.7, kappa_r: 0.3,
     B_dep: 2.5, p_dep: 2.0, return_law: 'v05',
     // "push first, whiten later" delay closure (port of solver.Params): tau_d = 0 reproduces the instantaneous closure
-    tau_d: 0, sub_advect: 0.3, sub_pressure: 0.5 };
+    tau_d: 0, sub_advect: 0.3, sub_pressure: 0.5,
+    // closure 'twolayer' (port of solver.Params): the layer is the floating foam/crema film, dragged (beta) by a coffee layer
+    // driven by the poured volume; the foam that survives the impact, chi(Fr), surfaces after the fountain rise time 2U/g'
+    closure: 'chi', g_red: 75.0, Fr_c2: 23.0, phi_foam: 0.5, ent_coef: 0.74, cell_frac: 1.0 };
   const DEFAULT_NUM = { cup_radius: 0.49, cfl: 0.5, frame_dt: 1 / 120, max_substeps: 64, cg_tol: 1e-10, cg_maxiter: 500,
     kernel_quadrature: 3, scan_safety: 0.5, explicit_mixing_limit: 0.05, explicit_visc_limit: 0.2, visc_tol: 1e-8, l_floor: 1e-3 };
 
@@ -43,14 +46,19 @@
       this.w = { lsafe: A(), ux: A(), uy: A(), c: A(), Fxqx: F(), Fxqy: F(), Fyqx: F(), Fyqy: F(), qxs: A(), qys: A(),
         ax: A(), ay: A(), coef: A(), Gex: F(), Gey: F(), kx: F(), ky: F(), diag: A(), rhs: A(), lnew: A(), Gx: F(), Gy: F(),
         qxn: A(), qyn: A(), cfx: F(), cfy: F(), mnew: A(), tmp: A(), r: A(), p: A(), Ap: A(), z: A(), lfx: F(), lfy: F(),
-        s: A(), Lam: A(), vsx: A(), vsy: A(), sl: A(), sqx: A(), sqy: A(), sm: A(), msubn: A(), ssurf: A(), smsub: A() };
+        s: A(), Lam: A(), vsx: A(), vsy: A(), sl: A(), sqx: A(), sqy: A(), sm: A(), msubn: A(), ssurf: A(), smsub: A(),
+        f1: A(), t1: A(), sf: A(), sft: A(), tvx: A(), tvy: A(), Kn: A(), fsrc: A(), brhs: A(), bdiag: A() };
       this.msub = A(); this.tauCur = null;      // sub-surface milk waiting to surface (delay closure)
+      // two-layer closure: submerged foam f and its rise-time moment ft, coffee-layer potential and velocity
+      this.f = A(); this.ft = A(); this.phib = A(); this.ubx = A(); this.uby = A(); this.hasUb = false; this.tl = { active: false };
+      this.fxf = new Float64Array(nfx); this.fyf = new Float64Array(nfx);
+      for (let k = 0; k < nfx; k++) { this.fxf[k] = this.fx[k]; this.fyf[k] = this.fy[k]; }
     }
 
     // ---------------------------------------------------------------- inlet fields
     inletFields(inlet) {
       const N = this.N, h = this.h, P = this.P, w = this.w;
-      w.s.fill(0); w.Lam.fill(0); w.vsx.fill(0); w.vsy.fill(0);
+      w.s.fill(0); w.Lam.fill(0); w.vsx.fill(0); w.vsy.fill(0); this.tl.active = false;
       if (!inlet || !inlet.active || inlet.S_eff <= 0) return 0;
       const r1 = Math.max(inlet.r1, 1.5 * h), r2 = Math.max(inlet.r2, 1.5 * h), phi = inlet.phi || 0;
       const x0 = inlet.x_hit[0], y0 = inlet.x_hit[1];
@@ -72,7 +80,19 @@
         K[k] = acc; Z += acc;
       }
       Z *= this.area; if (Z <= 0) throw new Error('inlet footprint does not intersect the cup');
-      const d = Math.max(inlet.d_jet, 1e-6), zc = inlet.U_perp * inlet.U_perp / (P.B_dep * d);
+      const d = Math.max(inlet.d_jet, 1e-6);
+      if (P.closure === 'twolayer') {
+        const Fr2 = inlet.U_perp * inlet.U_perp / (P.g_red * d), chi = 1 / (1 + Math.pow(Fr2 / P.Fr_c2, P.p_dep)), S = inlet.S_eff;
+        const tl = this.tl; tl.active = true; tl.S = S; tl.SE = P.ent_coef * Math.sqrt(Fr2) * S; tl.x0 = x0; tl.y0 = y0;
+        tl.Rc = Math.min(P.cell_frac * 2.32 * Math.sqrt(Fr2) * d, 0.45); tl.tauNew = Math.max(2 * inlet.U_perp / P.g_red, 1e-3);
+        tl.jx = P.kappa_t * inlet.u_in[0]; tl.jy = P.kappa_t * inlet.u_in[1];
+        for (let k = 0; k < N * N; k++) {
+          const Kk = K[k] / Z; w.Kn[k] = Kk; w.fsrc[k] = chi * P.phi_foam * S * Kk;
+          w.Lam[k] = P.kappa_c * S * Kk; w.vsx[k] = tl.jx; w.vsy[k] = tl.jy;   // jet impact traction on the film
+        }
+        return chi;
+      }
+      const zc = inlet.U_perp * inlet.U_perp / (P.B_dep * d);
       const chi = 1 / (1 + Math.pow(zc, P.p_dep));
       if (P.tau_d > 0) this.tauCur = P.tau_d;
       const Rdep = Math.sqrt(Math.max(inlet.r1 * inlet.r2, 1e-12));
@@ -166,6 +186,45 @@
       }
     }
 
+    // first-order upwind transport of a with the coffee-layer velocity (ubx, uby): out = div(F)
+    upwindDiv(a, out) {
+      const N = this.N, w = this.w, fx = this.fx, fy = this.fy, ux = this.ubx, uy = this.uby;
+      for (let j = 0; j < N; j++) for (let i = 0; i < N - 1; i++) { const f = j * (N - 1) + i, k = j * N + i;
+        const u = fx[f] ? 0.5 * (ux[k] + ux[k + 1]) : 0; w.Fxqy[f] = u * (u > 0 ? a[k] : a[k + 1]); }
+      for (let j = 0; j < N - 1; j++) for (let i = 0; i < N; i++) { const f = j * N + i;
+        const v = fy[f] ? 0.5 * (uy[f] + uy[f + N]) : 0; w.Fyqy[f] = v * (v > 0 ? a[f] : a[f + N]); }
+      this.div(w.Fxqy, w.Fyqy, out);
+    }
+    // coffee layer under the film (quasi-steady potential flow): div U_b = S K + S_E (K - K_cell) - <.>, U_b = grad phi_b
+    bulkFlow() {
+      const N = this.N, n = N * N, h = this.h, w = this.w, tl = this.tl, mask = this.mask;
+      if (!tl.active || !(tl.S > 0)) { this.hasUb = false; return; }
+      const R = Math.max(tl.Rc, 2 * h); let nc = 0;
+      for (let k = 0; k < n; k++) if (mask[k] && Math.hypot(this.x[k] - tl.x0, this.y[k] - tl.y0) < R) nc++;
+      const kc = 1 / Math.max(nc * this.area, 1e-12); let mean = 0, nm = 0;
+      for (let k = 0; k < n; k++) {
+        const cell = mask[k] && Math.hypot(this.x[k] - tl.x0, this.y[k] - tl.y0) < R ? kc : 0;
+        w.brhs[k] = tl.S * w.Kn[k] + tl.SE * (w.Kn[k] - cell); if (mask[k]) { mean += w.brhs[k]; nm++; }
+      }
+      mean /= Math.max(nm, 1);
+      const eps = 1e-6, ih2 = 1 / (h * h), fxf = this.fxf, fyf = this.fyf;
+      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+        const k = j * N + i; w.brhs[k] = mask[k] ? -(w.brhs[k] - mean) : 0; let v = 0;
+        if (i < N - 1) v += fxf[j * (N - 1) + i]; if (i > 0) v += fxf[j * (N - 1) + i - 1];
+        if (j < N - 1) v += fyf[k]; if (j > 0) v += fyf[k - N];
+        w.bdiag[k] = eps + v * ih2;
+      }
+      this.stats.cg_bulk = (this.stats.cg_bulk || 0) + this.pcg(fxf, fyf, null, eps, 1, w.brhs, w.bdiag, this.phib, 1e-8);
+      const ih = 1 / h, fx = this.fx, fy = this.fy, p = this.phib;
+      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+        const k = j * N + i; let gx = 0, gy = 0;
+        if (i < N - 1 && fx[j * (N - 1) + i]) gx += (p[k + 1] - p[k]) * ih; if (i > 0 && fx[j * (N - 1) + i - 1]) gx += (p[k] - p[k - 1]) * ih;
+        if (j < N - 1 && fy[k]) gy += (p[k + N] - p[k]) * ih; if (j > 0 && fy[k - N]) gy += (p[k] - p[k - N]) * ih;
+        this.ubx[k] = mask[k] ? gx / Math.max(this.nfx[k], 1) : 0; this.uby[k] = mask[k] ? gy / Math.max(this.nfy[k], 1) : 0;
+      }
+      this.hasUb = true;
+    }
+
     // ---------------------------------------------------------------- one sub-step
     substep(dt) {
       const N = this.N, n = N * N, h = this.h, P = this.P, w = this.w, mask = this.mask, fx = this.fx, fy = this.fy;
@@ -173,7 +232,8 @@
       for (let k = 0; k < n; k++) { const ls = mask[k] ? l[k] : 1; w.lsafe[k] = ls; w.ux[k] = mask[k] ? qx[k] / ls : 0; w.uy[k] = mask[k] ? qy[k] / ls : 0; w.c[k] = mask[k] ? m[k] / ls : 0; }
       // delay closure: the deposited milk enters a sub-surface reservoir (impact momentum acts now), surfaces after tau,
       // is carried by a fraction of the surface velocity and pushes the layer through the pressure as a submerged mound
-      let sm = s; const smom = s; const delay = P.tau_d > 0 && this.tauCur !== null; const mn = w.msubn;
+      const twol = P.closure === 'twolayer';
+      let sm = s; const smom = s; const delay = !twol && P.tau_d > 0 && this.tauCur !== null; const mn = w.msubn;
       if (delay) {
         const tau = this.tauCur, msub = this.msub, ss = w.ssurf;
         for (let k = 0; k < n; k++) { const tot = msub[k] + dt * s[k]; mn[k] = tot / (1 + dt / tau); ss[k] = (tot - mn[k]) / dt; }
@@ -187,6 +247,27 @@
           for (let k = 0; k < n; k++) mn[k] = mask[k] ? Math.max(mn[k] - dt * w.tmp[k], 0) : 0;
         }
         sm = ss;
+      }
+      let tvx = vsx, tvy = vsy;
+      if (twol) {
+        // submerged foam moves with the coffee layer (upwind), surfaces after its rise time and feeds the film
+        const f1 = w.f1, t1 = w.t1, tl = this.tl, ss = w.ssurf;
+        f1.set(this.f); t1.set(this.ft);
+        if (this.hasUb) {
+          this.upwindDiv(this.f, w.tmp); for (let k = 0; k < n; k++) f1[k] -= dt * w.tmp[k];
+          this.upwindDiv(this.ft, w.tmp); for (let k = 0; k < n; k++) t1[k] -= dt * w.tmp[k];
+        }
+        for (let k = 0; k < n; k++) {
+          if (tl.active) { f1[k] += dt * w.fsrc[k]; t1[k] += dt * w.fsrc[k] * tl.tauNew; }
+          f1[k] = mask[k] ? Math.max(f1[k], 0) : 0; t1[k] = mask[k] ? Math.max(t1[k], 0) : 0;
+          const tau = Math.max(f1[k] > 1e-14 ? t1[k] / Math.max(f1[k], 1e-300) : 1, 1e-3);
+          const surf = f1[k] * (1 - Math.exp(-dt / tau));
+          f1[k] -= surf; t1[k] = tau * f1[k]; ss[k] = surf / dt;
+          // explicit momentum: surfacing foam arrives with the coffee velocity, traction pulls towards the jet velocity
+          const ub = this.hasUb ? this.ubx[k] : 0, vb = this.hasUb ? this.uby[k] : 0, L = Lam[k], jx = tl.active ? tl.jx : 0, jy = tl.active ? tl.jy : 0;
+          const wsum = ss[k] + L; w.tvx[k] = wsum > 0 ? (ss[k] * ub + L * jx) / wsum : 0; w.tvy[k] = wsum > 0 ? (ss[k] * vb + L * jy) / wsum : 0;
+        }
+        sm = ss; tvx = w.tvx; tvy = w.tvy;
       }
       // A: Rusanov momentum advection
       for (let j = 0; j < N; j++) for (let i = 0; i < N - 1; i++) {
@@ -205,11 +286,14 @@
       }
       this.div(w.Fxqx, w.Fyqx, w.qxs); this.div(w.Fxqy, w.Fyqy, w.qys);
       for (let k = 0; k < n; k++) { w.qxs[k] = qx[k] - dt * w.qxs[k]; w.qys[k] = qy[k] - dt * w.qys[k]; }
+      if (twol && this.hasUb) {   // drag towards the moving coffee layer: -beta (q - l U_b); the -beta q part is implicit in B
+        for (let k = 0; k < n; k++) { w.qxs[k] += dt * P.beta * w.lsafe[k] * this.ubx[k]; w.qys[k] += dt * P.beta * w.lsafe[k] * this.uby[k]; }
+      }
       // B: implicit mass + pressure + drag/traction
       const cp2 = P.cp * P.cp;
       for (let k = 0; k < n; k++) {
         const ls = w.lsafe[k], theta = 1 + dt * (P.beta + Lam[k] / ls), f = dt * (smom[k] + Lam[k]);
-        w.ax[k] = (w.qxs[k] + f * vsx[k]) / theta; w.ay[k] = (w.qys[k] + f * vsy[k]) / theta; w.coef[k] = cp2 * ls / theta;
+        w.ax[k] = (w.qxs[k] + f * tvx[k]) / theta; w.ay[k] = (w.qys[k] + f * tvy[k]) / theta; w.coef[k] = cp2 * ls / theta;
       }
       if (delay && P.sub_pressure > 0) {   // submerged mound pushes the layer: a -= dt (cp^2 l/theta) w grad(m_sub)
         const ihh = 1 / h, wsp = P.sub_pressure;
@@ -309,6 +393,7 @@
       }
       if (!ok || lmin <= this.num.l_floor) return false;
       this.l.set(w.lnew); this.qx.set(w.qxn); this.qy.set(w.qyn); this.m.set(w.mnew); if (delay) this.msub.set(mn);
+      if (twol) { this.f.set(w.f1); this.ft.set(w.t1); }
       this.deposited += ssum * this.area * dt; this.stats.steps++;
       return true;
     }
@@ -321,21 +406,23 @@
         frameDt = Math.min(frameDt, Math.max(lim, 1e-4));
       }
       const chi = this.inletFields(inlet);
+      if (this.P.closure === 'twolayer') this.bulkFlow();
       const n = this.N * this.N, w = this.w; let umax = 0;
       for (let k = 0; k < n; k++) {
         const ls = this.mask[k] ? this.l[k] : 1; const u = Math.hypot(this.qx[k], this.qy[k]) / ls; if (u > umax) umax = u;
         if (w.s[k] + w.Lam[k] > 0) { const v = Math.hypot(w.vsx[k], w.vsy[k]); if (v > umax) umax = v; }
+        if (this.hasUb) { const v = Math.hypot(this.ubx[k], this.uby[k]); if (v > umax) umax = v; }
       }
       this.stats.max_u = Math.max(this.stats.max_u, umax);
       let nsub = Math.ceil(frameDt / (this.num.cfl * this.h / (2 * Math.max(umax, 1e-9))));
       nsub = Math.max(1, Math.min(nsub, this.num.max_substeps));
-      w.sl.set(this.l); w.sqx.set(this.qx); w.sqy.set(this.qy); w.sm.set(this.m); w.smsub.set(this.msub); const dep0 = this.deposited;
+      w.sl.set(this.l); w.sqx.set(this.qx); w.sqy.set(this.qy); w.sm.set(this.m); w.smsub.set(this.msub); w.sf.set(this.f); w.sft.set(this.ft); const dep0 = this.deposited;
       let done = false;
       for (let attempt = 0; attempt < 8 && !done; attempt++) {
         const dt = frameDt / nsub; let ok = true;
         for (let k = 0; k < nsub; k++) if (!this.substep(dt)) { ok = false; break; }
         if (ok) done = true;
-        else { this.l.set(w.sl); this.qx.set(w.sqx); this.qy.set(w.sqy); this.m.set(w.sm); this.msub.set(w.smsub); this.deposited = dep0; this.stats.retries++; nsub *= 2; }
+        else { this.l.set(w.sl); this.qx.set(w.sqx); this.qy.set(w.sqy); this.m.set(w.sm); this.msub.set(w.smsub); this.f.set(w.sf); this.ft.set(w.sft); this.deposited = dep0; this.stats.retries++; nsub *= 2; }
       }
       if (!done) throw new Error('frame failed after retries');
       this.stats.max_substeps = Math.max(this.stats.max_substeps, nsub);
@@ -349,6 +436,7 @@
       return out;
     }
     reset() { this.l.fill(1); this.qx.fill(0); this.qy.fill(0); this.m.fill(0); this.msub.fill(0); this.tauCur = null; this.t = 0; this.deposited = 0;
+      this.f.fill(0); this.ft.fill(0); this.phib.fill(0); this.ubx.fill(0); this.uby.fill(0); this.hasUb = false; this.tl = { active: false };
       this.stats = { steps: 0, frames: 0, cg_mass: 0, max_u: 0, retries: 0, max_substeps: 0, clip_mass: 0 }; }
   }
 
