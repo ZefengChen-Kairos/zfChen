@@ -531,16 +531,27 @@ class Solver:
         rhs = np.where(g.mask, rhs - rhs[g.mask].mean(), 0.0)
         kx, ky = g.fx.astype(float), g.fy.astype(float)
         eps = 1e-6
-        diag = eps + (np.pad(kx, ((0, 0), (1, 0))) + np.pad(kx, ((0, 0), (0, 1)))
-                      + np.pad(ky, ((1, 0), (0, 0))) + np.pad(ky, ((0, 1), (0, 0)))) / (h * h)
-
-        def A(phi):
-            return eps * phi - g.diffusion(kx, ky, phi)
-
-        self.phi_b, it = pcg(A, -rhs, diag, getattr(self, "phi_b", np.zeros_like(rhs)), 1e-8, self.num.cg_maxiter)
-        self.stats["cg_bulk"] = self.stats.get("cg_bulk", 0) + it
+        if getattr(self, "_bulk_lu", None) is None:
+            self._bulk_lu = self._factor_bulk(kx, ky, eps)
+        self.phi_b = self._bulk_lu(-rhs.ravel()).reshape(rhs.shape)
         gx, gy = g.cell_grad(self.phi_b)
         self.Ub = (np.where(g.mask, gx, 0.0), np.where(g.mask, gy, 0.0))
+
+    def _factor_bulk(self, kx, ky, eps):
+        """Sparse LU of the constant coffee-layer operator eps*phi - div(k grad phi) (k = open faces): the matrix never
+        changes, only the source does, so it is factorized once and every frame costs two triangular solves."""
+        import scipy.sparse as sp
+        from scipy.sparse.linalg import splu
+        g, N = self.g, self.g.N
+        ih2 = 1.0 / (g.h * g.h)
+        idx = np.arange(N * N).reshape(N, N)
+        rows, cols, vals = [], [], []
+        for k, a, b in ((kx, idx[:, :-1], idx[:, 1:]), (ky, idx[:-1, :], idx[1:, :])):
+            w = (k * ih2).ravel(); a = a.ravel(); b = b.ravel()
+            rows += [a, b, a, b]; cols += [a, b, b, a]; vals += [w, w, -w, -w]
+        A = sp.coo_matrix((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(N * N, N * N))
+        A = (A + eps * sp.identity(N * N)).tocsc()
+        return splu(A).solve
 
     def _entrainment_flow(self):
         """Surface upwelling of the coffee entrained by the plunging jet: div(l grad phi) = S_E K - <S_E K>, u_e = grad phi.

@@ -195,6 +195,31 @@
         const v = fy[f] ? 0.5 * (uy[f] + uy[f + N]) : 0; w.Fyqy[f] = v * (v > 0 ? a[f] : a[f + N]); }
       this.div(w.Fxqy, w.Fyqy, out);
     }
+    // banded Cholesky L L^T of  eps*phi - div(open-face grad phi) / h^2  (5-point, half-bandwidth N; row-major cells)
+    bandedCholesky(eps) {
+      const N = this.N, n = N * N, b = N, B = b + 1, L = new Float64Array(n * B), ih2 = 1 / (this.h * this.h);
+      const A = (i, j) => {   // matrix entry for j <= i
+        if (i === j) { const jj = (i / N) | 0, ii = i - jj * N; let v = 0;
+          if (ii < N - 1) v += this.fxf[jj * (N - 1) + ii]; if (ii > 0) v += this.fxf[jj * (N - 1) + ii - 1];
+          if (jj < N - 1) v += this.fyf[i]; if (jj > 0) v += this.fyf[i - N]; return eps + v * ih2; }
+        if (j === i - 1 && (i % N) !== 0) { const jj = (i / N) | 0, ii = i - jj * N; return -this.fxf[jj * (N - 1) + ii - 1] * ih2; }
+        if (j === i - N) return -this.fyf[i - N] * ih2;
+        return 0; };
+      for (let i = 0; i < n; i++) {
+        const j0 = Math.max(0, i - b);
+        for (let j = j0; j <= i; j++) {
+          let sum = A(i, j); const p0 = Math.max(j0, j - b);
+          for (let p = p0; p < j; p++) sum -= L[i * B + (i - p)] * L[j * B + (j - p)];
+          if (i === j) L[i * B] = Math.sqrt(sum); else L[i * B + (i - j)] = sum / L[j * B];
+        }
+      }
+      return L;
+    }
+    bandedSolve(L, rhs, x) {
+      const N = this.N, n = N * N, b = N, B = b + 1;
+      for (let i = 0; i < n; i++) { let sum = rhs[i]; for (let p = Math.max(0, i - b); p < i; p++) sum -= L[i * B + (i - p)] * x[p]; x[i] = sum / L[i * B]; }
+      for (let i = n - 1; i >= 0; i--) { let sum = x[i]; for (let q = i + 1; q <= Math.min(n - 1, i + b); q++) sum -= L[q * B + (q - i)] * x[q]; x[i] = sum / L[i * B]; }
+    }
     // coffee layer under the film (quasi-steady potential flow): div U_b = S K + S_E (K - K_cell) - <.>, U_b = grad phi_b
     bulkFlow() {
       const N = this.N, n = N * N, h = this.h, w = this.w, tl = this.tl, mask = this.mask;
@@ -214,7 +239,10 @@
         if (j < N - 1) v += fyf[k]; if (j > 0) v += fyf[k - N];
         w.bdiag[k] = eps + v * ih2;
       }
-      this.stats.cg_bulk = (this.stats.cg_bulk || 0) + this.pcg(fxf, fyf, null, eps, 1, w.brhs, w.bdiag, this.phib, 1e-8);
+      if (N <= 160) {   // constant operator: banded Cholesky once, two triangular solves per frame (exact, ~2 ms at 96^2)
+        if (!this.bulkL) this.bulkL = this.bandedCholesky(eps);
+        this.bandedSolve(this.bulkL, w.brhs, this.phib);
+      } else this.stats.cg_bulk = (this.stats.cg_bulk || 0) + this.pcg(fxf, fyf, null, eps, 1, w.brhs, w.bdiag, this.phib, 1e-8);
       const ih = 1 / h, fx = this.fx, fy = this.fy, p = this.phib;
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
         const k = j * N + i; let gx = 0, gy = 0;
