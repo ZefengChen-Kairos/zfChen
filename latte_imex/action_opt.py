@@ -50,9 +50,11 @@ def tag_of(h, q, s):
 
 
 def run_one(job):
-    """job = (model, name, h, q, s, N, out) -> dict with loss, iou, ...; cached on disk."""
+    """job = (model, name, h, q, s, N, out[, over]) -> dict with loss, iou, ...; cached on disk under <out>/<model>.
+    over (optional) replaces MODELS[model] as the physics overrides (closure fits use their own model labels)."""
     global _GEOM
-    model, name, h, q, s, N, out = job
+    model, name, h, q, s, N, out = job[:7]
+    over = job[7] if len(job) > 7 else MODELS[model]
     d = os.path.join(out, model); os.makedirs(d, exist_ok=True)
     stem = os.path.join(d, f"{name}_{tag_of(h, q, s)}_N{N}")
     if os.path.exists(stem + ".json"):
@@ -65,7 +67,7 @@ def run_one(job):
     ph, kQ = physics9()
     cp = Coupling(c_S=kQ / D_L ** 3, c_U=1.0 / D_L, c_u=1.0 / D_L, footprint="physical")
     script = BaristaScript(moves=scaled_moves(name, h, q, s), pitcher=Pitcher(geom=_GEOM, V0=250e-6), coupling=cp)
-    pd = dict(ph, D=1e-7, kappa_Q=125.0, return_law="v05"); pd.update(MODELS[model])
+    pd = dict(ph, D=1e-7, kappa_Q=125.0, return_law="v05"); pd.update(over)
     num = Numerics(N=N); sol = Solver(Params(**pd), num); t0 = time.time()
     res = dict(model=model, name=name, h=h, q=q, s=s, N=N)
     try:
