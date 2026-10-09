@@ -45,6 +45,22 @@ def loss_fields(s, w, mask, sigma):
     return l1 + 0.5 * (1 - iou) + 0.5 * area, dict(l1=l1, iou=iou, area_diff=area)
 
 
+def gap_stats(img, mask, N, D_mm=80.0, close_mm=6.0, thr=0.5):
+    """Brown gaps inside the pattern: white = img > thr; the pattern outline is the white set closed with a disc of
+    close_mm; gaps = closed outline minus white.  Returns the gap fraction of the outline and the mean gap width in mm
+    (4 x mean distance to the nearest non-gap pixel, exact for a strip)."""
+    white = (img > thr) & mask
+    r = max(1, int(round(close_mm / D_mm * N / 2)))
+    yy, xx = np.mgrid[-r:r + 1, -r:r + 1]
+    disc = xx * xx + yy * yy <= r * r
+    closed = ndimage.binary_closing(np.pad(white, r), structure=disc)[r:-r, r:-r] & mask
+    gaps = closed & ~white
+    if closed.sum() == 0 or gaps.sum() == 0:
+        return dict(gap_frac=0.0, gap_width_mm=0.0)
+    d = ndimage.distance_transform_edt(gaps)
+    return dict(gap_frac=float(gaps.sum() / closed.sum()), gap_width_mm=float(4.0 * d[gaps].mean() * D_mm / N))
+
+
 def target_at(name, N):
     w, m = targets.load(name)
     M = w.shape[0]
