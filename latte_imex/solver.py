@@ -32,6 +32,12 @@ class Params:
     B_dep: float = 240.0    # deposition switch scale      [D_L/s^2]
     p_dep: float = 2.0      # deposition switch exponent
     return_law: str = "v1"  # "v1": chi*kappa_r*U_perp ; "v05": kappa_r*U_perp*chi^(1/(2p)) capped
+    # "push first, whiten later": the deposited milk enters a sub-surface reservoir and surfaces after tau_d
+    # (its impact momentum acts immediately); tau_d = 0 reproduces the instantaneous closure
+    tau_d: float = 0.0      # surfacing delay at U_perp = tau_d_ref     [s]
+    tau_d_ref: float = 8.75 # 0.70 m/s in cup diameters per second    [D_L/s]
+    tau_d_exp: float = 1.0  # tau = tau_d (U_perp/tau_d_ref)^tau_d_exp
+    D_sub: float = 0.0      # spreading of the sub-surface plume        [D_L^2/s]
 
     def as_dict(self):
         return asdict(self)
@@ -196,7 +202,9 @@ class Solver:
         self.qy = np.zeros((g.N, g.N))
         self.m = np.zeros((g.N, g.N))
         self.t = 0.0
-        self.deposited = 0.0           # cumulative integral of s over domain and time
+        self.deposited = 0.0           # cumulative integral of s over domain and time (surfaced milk)
+        self.msub = np.zeros((g.N, g.N))   # sub-surface milk waiting to surface (delay closure)
+        self.tau_cur = None            # surfacing time constant of the current/last inlet
         self.stats = dict(steps=0, frames=0, cg_mass=0, cg_visc=0, cg_mix=0,
                           clip_mass=0.0, max_substeps=0, max_u=0.0, retries=0)
         self.l_floor = 1e-3
@@ -243,6 +251,8 @@ class Solver:
             return z, z, z, z, 0.0
         K, _ = self.kernel(inlet)
         d = max(inlet.d_jet, 1e-6)
+        if P.tau_d > 0:
+            self.tau_cur = max(1e-3, P.tau_d * (max(inlet.U_perp, 1e-6) / P.tau_d_ref) ** P.tau_d_exp)
         zc = inlet.U_perp ** 2 / (P.B_dep * d)
         chi = 1.0 / (1.0 + zc ** P.p_dep)
         s = chi * inlet.S_eff * K
@@ -272,6 +282,21 @@ class Solver:
         uy = np.where(mask, qy / lsafe, 0.0)
         c = np.where(mask, m / lsafe, 0.0)
 
+        # ---- delay closure: impact momentum now, white later --------------------
+        s_mom = s
+        msub_new = None
+        if P.tau_d > 0 and (self.tau_cur is not None):
+            tau = self.tau_cur
+            tot = self.msub + dt * s                       # what is below the surface before surfacing
+            msub_new = tot / (1.0 + dt / tau)              # implicit decay
+            s = (tot - msub_new) / dt                      # surfacing rate = mass source of the layer
+            if P.D_sub > 0:                                # plume spreading (explicit, sub-cycled)
+                kx = P.D_sub * g.fx.astype(float); ky = P.D_sub * g.fy.astype(float)
+                nd = max(1, int(math.ceil(4.0 * P.D_sub * dt / (h * h) / 0.2)))
+                for _ in range(nd):
+                    msub_new = msub_new + (dt / nd) * g.diffusion(kx, ky, msub_new)
+                msub_new = np.where(mask, np.maximum(msub_new, 0.0), 0.0)
+
         # ---- A: explicit Rusanov momentum advection (l frozen) --------------
         N = g.N
         Fx_qx = np.empty((N, N - 1)); Fx_qy = np.empty((N, N - 1)); Fy_qx = np.empty((N - 1, N)); Fy_qy = np.empty((N - 1, N))
@@ -281,7 +306,7 @@ class Solver:
 
         # ---- B: implicit mass + pressure + drag/traction --------------------
         a_x = np.empty((N, N)); a_y = np.empty((N, N)); coef = np.empty((N, N))
-        K.stepB_prepare(qx_s, qy_s, s, Lam, vsx, vsy, lsafe, P.beta, P.cp ** 2, dt, a_x, a_y, coef)
+        K.stepB_prepare(qx_s, qy_s, s_mom, Lam, vsx, vsy, lsafe, P.beta, P.cp ** 2, dt, a_x, a_y, coef)
         # explicit part of face flux
         Gex = np.empty((N, N - 1)); Gey = np.empty((N - 1, N))
         K.mass_fluxes(a_x, a_y, l, lsafe, g.fx, g.fy, Gex, Gey, None, None)
@@ -299,6 +324,10 @@ class Solver:
         l_new = l + dt * s - dt * g.div(Gx, Gy)          # conservative update with the final flux
         qx_new = np.empty((N, N)); qy_new = np.empty((N, N))
         K.q_from_gradient(a_x, a_y, coef, l_new, g.fx, g.fy, g.nfx, g.nfy, dt, 1.0 / h, qx_new, qy_new)
+        if msub_new is not None:
+            # surfacing milk joins the layer with the local surface velocity (no extra momentum of its own)
+            qx_new = qx_new + dt * s * ux
+            qy_new = qy_new + dt * s * uy
 
         # ---- C: milk with the same face flux ---------------------------------
         cfx = K.limited_face_x(c, Gx, g.fx, np.empty((N, N - 1)))
@@ -365,6 +394,8 @@ class Solver:
                 and np.isfinite(m_new).all() and l_new[mask].min() > self.l_floor):
             return False
         self.l, self.qx, self.qy, self.m = l_new, qx_new, qy_new, m_new
+        if msub_new is not None:
+            self.msub = msub_new
         self.deposited += float(s[mask].sum()) * g.area * dt
         self.stats["steps"] += 1
         return True
@@ -386,7 +417,7 @@ class Solver:
         dt_cfl = self.num.cfl * g.h / (2.0 * max(umax, 1e-9))
         nsub = int(math.ceil(frame_dt / dt_cfl))
         nsub = max(1, min(nsub, self.num.max_substeps))
-        saved = (self.l.copy(), self.qx.copy(), self.qy.copy(), self.m.copy(), self.deposited)
+        saved = (self.l.copy(), self.qx.copy(), self.qy.copy(), self.m.copy(), self.deposited, self.msub.copy())
         for attempt in range(8):
             dt = frame_dt / nsub
             ok = True
@@ -399,6 +430,7 @@ class Solver:
             # restore the committed state and retry the whole frame with a smaller sub-step
             self.l, self.qx, self.qy, self.m = (a.copy() for a in saved[:4])
             self.deposited = saved[4]
+            self.msub = saved[5].copy()
             self.stats["retries"] += 1
             nsub *= 2
         else:
@@ -416,7 +448,8 @@ class Solver:
         g = self.g
         L = float(self.l[g.mask].sum() * g.area)
         M = float(self.m[g.mask].sum() * g.area)
-        return dict(t=self.t, layer=L, milk=M, brown=L - M, deposited=self.deposited,
+        R = float(self.msub[g.mask].sum() * g.area)
+        return dict(t=self.t, layer=L, milk=M, brown=L - M, deposited=self.deposited, reservoir=R,
                     layer_error=L - (g.n_cells * g.area + self.deposited),
                     milk_error=M - self.deposited)
 
