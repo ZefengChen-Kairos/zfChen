@@ -82,12 +82,13 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
         <button class="pour" id="pour">按住倒奶（倾斜手腕）</button>
         <button id="refill">重新装奶 200 mL</button>
         <button id="clear">擦掉杯面</button>
-        <select id="scriptsel"><option value="heart">大白心</option><option value="push_heart">推推乐</option><option value="layered_heart">千层心</option><option value="tulip">压纹郁金香</option><option value="leaf">树叶</option><option value="swan">天鹅</option><option value="tulip_sweep9">郁金香（联合扫描 #9 的动作）</option><option value="heart_sweep9">心形（联合扫描 #9 的动作）</option></select>
+        <select id="scriptsel"><option value="heart">大白心</option><option value="push_heart">推推乐</option><option value="layered_heart">千层心</option><option value="tulip">压纹郁金香</option><option value="leaf">树叶</option><option value="swan">天鹅</option><option value="heart_opt">大白心（优化动作）</option><option value="push_heart_opt">推推乐（优化动作）</option><option value="layered_heart_opt">千层心（优化动作）</option><option value="tulip_opt">压纹郁金香（优化动作）</option><option value="leaf_opt">树叶（优化动作）</option><option value="swan_opt">天鹅（优化动作）</option><option value="tulip_sweep9">郁金香（联合扫描 #9 的动作）</option><option value="heart_sweep9">心形（联合扫描 #9 的动作）</option></select>
         <button class="primary" id="auto">回放脚本</button>
         <button id="show2d">杯面 2D 图</button>
       </div>
       <div class="row" style="margin-top:8px"><label for="pitchersel">壶形</label><select id="pitchersel"><option value="nx" selected>你的 NX 壶（STEP）</option><option value="param">参数化壶</option></select><span class="val" id="pitcherv">—</span></div>
-      <div class="row" style="margin-top:8px"><label for="delay">先推后白</label><input type="checkbox" id="delay" checked><span class="val" id="delayv">时延 0.2 s，水下奶堆推挤 0.5，随流 0.3</span></div>
+      <div class="row" style="margin-top:8px"><label for="modelsel">物理模型</label><select id="modelsel"><option value="chi" selected>旧闭合 #9</option><option value="twolayer">双层（拟合参数，较慢）</option></select><span class="val" id="modelv">—</span></div>
+      <div class="row" style="margin-top:8px"><label for="delay">先推后白</label><input type="checkbox" id="delay"><span class="val" id="delayv">时延 0.2 s，水下奶堆推挤 0.5，随流 0.3（仅旧闭合）</span></div>
       <div class="row" style="margin-top:8px"><label for="grid">求解网格</label><select id="grid"><option value="64">64²（快）</option><option value="96" selected>96²（约实时）</option><option value="128">128²（约 1/2 实时）</option><option value="256">256²（约 1/8 实时）</option><option value="512">512²（很慢，约 1/40）</option><option value="768">768²（极慢，仅离线对照）</option></select><span class="val" id="speedv">—</span></div>
     </div>
     <div>
@@ -324,7 +325,7 @@ function requiredLift(R, tip){ const ct=Math.cos(CUP.tilt), st=Math.sin(CUP.tilt
   if(ok(0)) return 0; let lo=0, hi=0.15; if(!ok(hi)) return hi; for(let i=0;i<14;i++){ const m=0.5*(lo+hi); if(ok(m)) hi=m; else lo=m; } return hi; }
 // coffee surface = painted canvas texture
 /* 2-D surface-layer solver (latte2d.js): the coffee surface texture is its milk fraction c = m/l */
-let PHYS={params:null, coupling:null}; const COUPLING_DEFAULT=Object.assign({}, Latte2D.COUPLING);
+let PHYS={params:null, coupling:null}, SCRIPTS=null; const COUPLING_DEFAULT=Object.assign({}, Latte2D.COUPLING);
 let solN=96, fieldCanvas=document.createElement('canvas'), fctx=fieldCanvas.getContext('2d'), fieldImg=null, cField=null;
 const paint=document.createElement('canvas'); paint.width=paint.height=512; const pctx=paint.getContext('2d');
 const tex=new THREE.CanvasTexture(paint); tex.anisotropy=4;
@@ -359,7 +360,12 @@ function solverPush(inlet, dt){ solver.queue.push({inlet, dt}); solver.modelSec+
 function solverBusy(){ return solver.queue.length>=4 || (solver.inflight && solver.queue.length>=2); }
 function solverReset(){ solver.queue.length=0; solver.t=0; solver.deposited=0; if(solver.worker){ solver.inflight=true; solver.worker.postMessage({type:'reset'}); } else if(solver.local){ solver.local.reset(); solver.local.concentration(cField); paintField(); } }
 // the 2-D closure parameters actually sent to the solver: the script's physics preset, with the delay closure switched by the checkbox
-function solverParams(){ const p=Object.assign({}, PHYS.params||{}); const on=document.getElementById('delay').checked; if(!on) p.tau_d=0; else if(!(p.tau_d>0)) Object.assign(p,{tau_d:0.2,sub_pressure:0.5,sub_advect:0.3}); return p; }
+// the model switch puts the fitted two-layer constants (scripts.json _twolayer_physics) on top of the preset
+function solverParams(){ const p=Object.assign({}, PHYS.params||{}); const on=document.getElementById('delay').checked; if(!on) p.tau_d=0; else if(!(p.tau_d>0)) Object.assign(p,{tau_d:0.2,sub_pressure:0.5,sub_advect:0.3});
+  const tl=SCRIPTS&&SCRIPTS._twolayer_physics; if(document.getElementById('modelsel').value==='twolayer'&&tl) Object.assign(p, tl.params, {tau_d:0}); return p; }
+function updateModelText(){ const tl=SCRIPTS&&SCRIPTS._twolayer_physics, two=document.getElementById('modelsel').value==='twolayer';
+  document.getElementById('modelv').textContent=two&&tl?`g′ ${tl.params.g_red.toFixed(0)}, Fr_c² ${tl.params.Fr_c2.toFixed(0)}, φ ${tl.params.phi_foam.toFixed(2)}, β ${tl.params.beta.toFixed(2)}, κ_c ${tl.params.kappa_c.toFixed(2)}`:(two?'scripts.json 未加载':'B_dep、κ_r 等联合扫描参数');
+  document.getElementById('delay').disabled=two; }
 function newSolver(N){ solN=N; solver.N=N; solver.area=1/(N*N); fieldCanvas.width=fieldCanvas.height=N; fieldImg=fctx.createImageData(N,N); cField=new Float32Array(N*N).fill(NaN); hits.length=0;
   solver.queue.length=0; solver.t=0; solver.deposited=0;
   if(!solver.worker && !solver.local) solver.worker=makeWorker();
@@ -459,6 +465,7 @@ document.getElementById('refill').addEventListener('click',()=>{ resetLedger(+ui
 document.getElementById('clear').addEventListener('click',()=>{ solverReset(); hits.length=0; });
 document.getElementById('grid').addEventListener('change',ev=>{ newSolver(+ev.target.value); });
 document.getElementById('delay').addEventListener('change',()=>{ newSolver(solN); });
+document.getElementById('modelsel').addEventListener('change',()=>{ updateModelText(); newSolver(solN); });
 let nxGrid=null;
 function usePitcher(which){ const g=(which==='nx'&&nxGrid)?nxGrid:parametricGrid(); buildGeometry(g); buildMeshes(); resetLedger(st.V+st.Vlip+st.Vjet); resetKin();
   out('pitcherv').textContent=(capacity*1e6).toFixed(0)+' mL'; }
@@ -516,10 +523,10 @@ function startScript(moves, physics){ MOVES=moves; resetLedger((geom&&geom.name!
   if(physics){ PHYS={params:physics.params||null, coupling:physics.coupling||null}; } Object.assign(Latte2D.COUPLING, COUPLING_DEFAULT, PHYS.coupling||{}); newSolver(solN); hits.length=0; pose.yaw=rad(-90); ui.yaw.value=-90; pose.tilt=rad(40); manualTilt=null; pouring=false;
   resetKin(); auto={t:0, ierr:0, off:[0,0], Qseen:0}; }
 function resetKin(){ kin.tipPrev=null; kin.vel=[0,0,0]; kin.acc=[0,0,0]; kin.slope=[0,0]; kin.slopeRate=[0,0]; NRM=[0,0,1]; GEFF=G; }
-let SCRIPTS={heart:{moves:MOVES_HEART}, layered_heart:{moves:MOVES_LAYERED}};
-fetch('scripts.json').then(r=>r.json()).then(j=>{ SCRIPTS=j; const d=j._default_physics; if(d){ PHYS={params:d.params||null, coupling:d.coupling||null}; Object.assign(Latte2D.COUPLING, COUPLING_DEFAULT, PHYS.coupling||{}); newSolver(solN); } }).catch(e=>console.warn('scripts.json not available, built-in scripts only', e));
+SCRIPTS={heart:{moves:MOVES_HEART}, layered_heart:{moves:MOVES_LAYERED}};
+fetch('scripts.json').then(r=>r.json()).then(j=>{ SCRIPTS=j; updateModelText(); const d=j._default_physics; if(d){ PHYS={params:d.params||null, coupling:d.coupling||null}; Object.assign(Latte2D.COUPLING, COUPLING_DEFAULT, PHYS.coupling||{}); newSolver(solN); } }).catch(e=>console.warn('scripts.json not available, built-in scripts only', e));
 const TARGET_CN={heart:'大白心',push_heart:'推推乐',layered_heart:'千层心',tulip:'压纹郁金香',leaf:'树叶',swan:'天鹅'};
-function updateTarget(){ const k=document.getElementById('scriptsel').value.replace(/_sweep\d+$/,''); const src='targets/'+(TARGET_CN[k]?k:'heart')+'.png';
+function updateTarget(){ const k=document.getElementById('scriptsel').value.replace(/_(sweep\d+|opt)$/,''); const src='targets/'+(TARGET_CN[k]?k:'heart')+'.png';
   document.getElementById('targetimg').src=src; document.getElementById('targetimg2').src=src;
   document.getElementById('targettxt').textContent='视频目标：'+(TARGET_CN[k]||'大白心')+'（参考视频末帧展平到正圆杯的奶白度场）。回放脚本后双击杯子，杯面 2D 图会和它并排显示。'; }
 document.getElementById('scriptsel').addEventListener('change',updateTarget); updateTarget();

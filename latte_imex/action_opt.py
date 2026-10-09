@@ -137,22 +137,28 @@ def refine(pool, N, out, prev):
     return best
 
 
-def export_web(best, path="web/scripts.json"):
-    """Write the optimized intents of the given model into the web bench scripts (moves only; the physics of each
-    script is the bench default without the delay closure, the closure the search ran with)."""
+def export_web(best, path="web/scripts.json", fit=None):
+    """Add the optimized intents as extra web scripts <name>_opt next to the V0.5 ones (same physics preset), switch the
+    delay closure off in every preset (the search ran without it), and store the fitted two-layer constants as
+    _twolayer_physics for the bench's model switch."""
     from .pitcher import moves_to_json
     d = json.load(open(path))
-    for k, v in best.items():
-        b = v["best"]; n = b["name"]
-        if n not in d:
-            continue
-        d[n]["moves"] = moves_to_json(scaled_moves(n, b["h"], b["q"], b["s"]))
-        d[n]["opt"] = dict(h=b["h"], q=b["q"], s=b["s"], loss=round(b["loss"], 4), iou=round(b["iou"], 3), N=b["N"],
-                           base_loss=round(v["base"]["loss"], 4))
     for k, v in d.items():
         prm = v.get("params") if k == "_default_physics" else (v.get("physics") or {}).get("params")
         if prm is not None:
             prm["tau_d"] = 0.0
+    for k, v in best.items():
+        b = v["best"]; n = b["name"]
+        if n not in d:
+            continue
+        d[f"{n}_opt"] = dict(cn=d[n].get("cn", n) + "（优化动作）", moves=moves_to_json(scaled_moves(n, b["h"], b["q"], b["s"])),
+                             physics=copy.deepcopy(d[n].get("physics")),
+                             opt=dict(model=b["model"], h=b["h"], q=b["q"], s=b["s"], loss=round(b["loss"], 4), iou=round(b["iou"], 3),
+                                      N=b["N"], base_loss=round(v["base"]["loss"], 4)))
+    if fit is not None:
+        d["_twolayer_physics"] = dict(params=fit["over"], mean_loss_v05=round(fit["mean"], 4),
+                                      note="two-layer closure constants fitted on the six V0.5 intents (LHS, 96^2); "
+                                           "the rest of the closure is the default preset")
     json.dump(d, open(path, "w"), ensure_ascii=False)
 
 
@@ -199,7 +205,9 @@ def main():
     a = ap.parse_args()
     models, patterns = a.models.split(","), a.patterns.split(",")
     if a.export_web:
-        export_web({k: v for k, v in json.load(open(a.export_web)).items() if k.split("/")[0] in models})
+        fp = os.path.join(a.out, "twolayer_fit_N96.json")
+        export_web({k: v for k, v in json.load(open(a.export_web)).items() if k.split("/")[0] in models},
+                   fit=json.load(open(fp))["best"] if os.path.exists(fp) else None)
         return
     with Pool(a.procs, maxtasksperchild=4) as pool:
         if a.verify:
