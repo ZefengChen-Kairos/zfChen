@@ -87,7 +87,9 @@ class Numerics:
     explicit_mixing_limit: float = 0.05   # D*dt/h^2 below this: explicit mixing update instead of a PCG solve
     explicit_visc_limit: float = 0.2      # nu*dt/h^2 below this: explicit viscosity update (2-D limit 0.25)
     visc_tol: float = 1e-8                # PCG tolerance for the (non-stiff) viscosity solves
-    ssa_tol: float = 1e-6                 # PCG tolerance of the v2 SSA/Bingham stress solve (velocities)
+    ssa_tol: float = 1e-4                 # PCG tolerance of the v2 SSA/Bingham stress solve (velocities)
+    ssa_per_frame: bool = True            # v2: the (implicit, unconditionally stable) stress step once per control frame
+                                          # after the sub-steps instead of once per sub-step (Lie splitting at frame level)
 
 
 @dataclass
@@ -516,7 +518,9 @@ class Solver:
         lsn = np.where(mask, l_new, 1.0)
 
         # ---- D: implicit viscosity and mixing (l frozen at l^{n+1}) ---------
-        if v2:
+        if v2 and self.num.ssa_per_frame:
+            pass                    # v2: the stress step runs once per frame (advance_frame)
+        elif v2:
             # SSA membrane stress of a floating Bingham film from the discrete dissipation functional (YIELD_FILM_DERIVATION.md):
             # (M + dt K(nu_eff(u^-))) u^+ = M u^-, K = 1/2 G^T (W x Q) G, symmetric positive semi-definite, rigid motions free
             c_now = np.where(mask, m_new / lsn, 0.0)
@@ -656,9 +660,10 @@ class Solver:
         vx = sp.vstack([sp.hstack([Ox, cX]), sp.hstack([Oy, aY @ Dx])])
         G = [c.tocsr() for c in (ux, vy, uy, vx)]
         GT = [Gk.T.tocsr() for Gk in G]
+        Gs = sp.vstack(G).tocsr()                     # stacked (4 nf x 2n): one matvec gives all four components
         # column-wise products for diag(K) = 1/2 sum_ab Q_ab sum_f w_f G_a[f,i] G_b[f,i]
         prod = lambda a, b: G[a].multiply(G[b]).T.tocsr()
-        self._ssa = dict(G=G, GT=GT, L=np.r_[Lx, Ly], R=np.r_[Rx, Ry], nf=len(Lx) + len(Ly),
+        self._ssa = dict(G=G, GT=GT, Gs=Gs, GsT=Gs.T.tocsr(), L=np.r_[Lx, Ly], R=np.r_[Rx, Ry], nf=len(Lx) + len(Ly),
                          P00=prod(0, 0), P11=prod(1, 1), P01=prod(0, 1), P22=prod(2, 2), P33=prod(3, 3), P23=prod(2, 3))
         return self._ssa
 
@@ -681,11 +686,16 @@ class Solver:
         w = 2.0 * nue * lf
         mdiag = np.r_[lsn.ravel(), lsn.ravel()]
 
+        Gs, GsT, nfc = S["Gs"], S["GsT"], S["nf"]
+        bq = np.empty(4 * nfc)
+
         def Kz(x):
-            a0, a1, a2, a3 = (Gk @ x for Gk in G)
+            a = Gs @ x
+            a0, a1, a2, a3 = a[:nfc], a[nfc:2 * nfc], a[2 * nfc:3 * nfc], a[3 * nfc:]
             # (W x Q) s with Q = [[2,1,0,0],[1,2,0,0],[0,0,.5,.5],[0,0,.5,.5]]
-            b0 = w * (2 * a0 + a1); b1 = w * (a0 + 2 * a1); b2 = w * 0.5 * (a2 + a3)
-            return 0.5 * (GT[0] @ b0 + GT[1] @ b1 + GT[2] @ b2 + GT[3] @ b2)
+            bq[:nfc] = w * (2 * a0 + a1); bq[nfc:2 * nfc] = w * (a0 + 2 * a1)
+            bq[2 * nfc:3 * nfc] = w * 0.5 * (a2 + a3); bq[3 * nfc:] = bq[2 * nfc:3 * nfc]
+            return 0.5 * (GsT @ bq)
 
         dK = 0.5 * (2 * (S["P00"] @ w) + 2 * (S["P11"] @ w) + 2 * (S["P01"] @ w) + 0.5 * (S["P22"] @ w) + 0.5 * (S["P33"] @ w) + (S["P23"] @ w))
         diag = mdiag + dt * dK
@@ -790,6 +800,13 @@ class Solver:
         else:
             raise RuntimeError(f"frame at t={self.t:.4f} failed after retries (nsub={nsub})")
         self.stats["max_substeps"] = max(self.stats["max_substeps"], nsub)
+        if self.P.closure == "v2" and self.num.ssa_per_frame:
+            # step D of LATTE_MODEL.md 5.3 once for the whole frame (l, m frozen at the end of the frame)
+            g = self.g
+            lsn = np.where(g.mask, self.l, 1.0)
+            ux, uy, it = self._ssa_step(self.qx / lsn, self.qy / lsn, lsn, np.where(g.mask, self.m / lsn, 0.0), frame_dt)
+            self.stats["cg_visc"] += it
+            self.qx = np.where(g.mask, lsn * ux, 0.0); self.qy = np.where(g.mask, lsn * uy, 0.0)
         self.t += frame_dt
         self.stats["frames"] += 1
         return chi, nsub
