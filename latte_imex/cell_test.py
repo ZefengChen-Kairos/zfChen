@@ -4,7 +4,7 @@ liquid subducted at the jet): six patterns with the fitted constants and the two
     python -m latte_imex.cell_test --N 96 --out runs/action_opt          # four fixed variants
     python -m latte_imex.cell_test --fit --n 40 --N 96                   # LHS refit, objective loss + gap-fraction error
 """
-import argparse, json, os
+import argparse, json, math, os
 from multiprocessing import Pool
 from .action_opt import run_one, PATTERNS
 
@@ -48,6 +48,53 @@ def objective(r, N):
     c = np.load(os.path.join(r["out"], r["model"], f"{r['name']}_{tag_of(r['h'], r['q'], r['s'])}_N{N}.npy"))
     gs, gt = gap_stats(visible(c, mask, r.get("closure")), mask, N), gap_stats(target_at(r["name"], N), mask, N)
     return r["loss"] + abs(gs["gap_frac"] - gt["gap_frac"]), gs
+
+
+def _outline(img, mask, N, close_mm=6.0, thr=0.5, D_mm=80.0):
+    import numpy as np
+    from scipy import ndimage
+    white = (img > thr) & mask
+    r = max(1, int(round(close_mm / D_mm * N / 2))); y, x = np.mgrid[-r:r + 1, -r:r + 1]
+    return ndimage.binary_closing(np.pad(white, r), structure=x * x + y * y <= r * r)[r:-r, r:-r] & mask
+
+
+def struct_stats(img, mask, N):
+    """Location-free structure of a whiteness image: interior structure density (mean gradient magnitude inside the
+    pattern outline, two cells away from its edge), the whiteness quantiles inside the outline, and the gap fraction.
+    Location-free on purpose: a pointwise comparison penalizes misplaced structure twice and therefore prefers a
+    smooth blob (a disc with the target outline beats every simulation on band-pass correlation)."""
+    import numpy as np
+    from scipy import ndimage
+    from .optimize import gap_stats
+    yy, xx = np.meshgrid(*(2 * [(np.arange(N) + 0.5) / N - 0.5]), indexing="ij")
+    inner = np.hypot(xx, yy) < 0.45
+    o = _outline(img, mask, N); core = ndimage.binary_erosion(o, iterations=2) & inner
+    g = ndimage.gaussian_gradient_magnitude(img, 1.0)
+    ed = float(g[core].mean()) if core.sum() > 20 else 0.0
+    q = np.quantile(img[o], np.linspace(0.05, 0.95, 10)) if o.sum() > 20 else np.zeros(10)
+    return ed, q, gap_stats(img, mask, N)["gap_frac"]
+
+
+_ST = {}
+
+
+def objective_struct(r, N):
+    """J_A = loss + |gap fraction - target| + 0.5 |ln((e + 0.01)/(e_t + 0.01))| + W1(whiteness inside the outline).
+    loss places the pattern; the three statistics ask for the right amount of interior structure, gaps and contrast
+    without asking where each line is."""
+    import numpy as np
+    from .optimize import visible, target_at
+    from .action_opt import tag_of
+    mask = np.hypot(*np.meshgrid(*(2 * [(np.arange(N) + 0.5) / N - 0.5]))) < 0.49
+    if not r.get("ok"):
+        return 10.0, {}
+    if (r["name"], N) not in _ST:
+        _ST[(r["name"], N)] = struct_stats(target_at(r["name"], N), mask, N)
+    et, qt, gt = _ST[(r["name"], N)]
+    c = np.load(os.path.join(r["out"], r["model"], f"{r['name']}_{tag_of(r['h'], r['q'], r['s'])}_N{N}.npy"))
+    ed, q, gf = struct_stats(visible(c, mask, r.get("closure")), mask, N)
+    t_gap, t_edge, t_w1 = abs(gf - gt), 0.5 * abs(math.log((ed + 0.01) / (et + 0.01))), float(np.abs(q - qt).mean())
+    return r["loss"] + t_gap + t_edge + t_w1, dict(gap_frac=gf, edge=ed, t_gap=t_gap, t_edge=t_edge, t_w1=t_w1)
 
 
 def fit_main():

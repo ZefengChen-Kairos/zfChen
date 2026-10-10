@@ -12,7 +12,7 @@ from multiprocessing import Pool
 import numpy as np
 
 from .action_opt import run_one, PATTERNS
-from .cell_test import SPACE as SPACE_CELL, objective
+from .cell_test import SPACE as SPACE_CELL, objective, objective_struct
 
 # v2 (LATTE_MODEL.md): every physical constant is fitted, within physical ranges; the regularizations are fixed
 SPACE_V2 = dict(phi_foam=(0.2, 0.7, "lin"), g_red=(40.0, 110.0, "log"), Fr_c2=(5.0, 100.0, "log"), p_dep=(1.0, 4.0, "lin"),
@@ -66,6 +66,7 @@ def main():
     ap.add_argument("--init", default=None, help="history.json of an earlier run: warm start from its best physics and actions")
     ap.add_argument("--name", default=None, help="run directory / job tag (default joint_cma or joint_cma_v2)")
     ap.add_argument("--seed", type=int, default=5)
+    ap.add_argument("--objective", default="gap", choices=["gap", "struct"])
     a = ap.parse_args()
     global SPACE
     name = a.name or ("joint_cma" if a.spec == "cell" else "joint_cma_v2")
@@ -92,6 +93,7 @@ def main():
         x0 = encode(F, acts)
         es = cma.CMAEvolutionStrategy(list(x0), a.sigma0, dict(bounds=[0, 1], popsize=a.popsize, seed=a.seed, verbose=-9))
         hist, gen0 = [dict(gen=-1, J=None, src=src, x0=list(x0))], 0
+    obj = objective_struct if a.objective == "struct" else objective
     with Pool(4, maxtasksperchild=8) as pool:
         for gen in range(gen0, gen0 + a.gens):
             X = es.ask()
@@ -102,7 +104,7 @@ def main():
             Js, rows = [], []
             for k, (phys, acts) in enumerate(cands):
                 rs = [dict(r, out=a.out) for r in R if r["model"] == f"{tag}{gen:02d}_{k:02d}"]
-                per = {r["name"]: objective(r, a.N) for r in rs}
+                per = {r["name"]: obj(r, a.N) for r in rs}
                 J = float(np.mean([v[0] for v in per.values()])); Js.append(J)
                 rows.append(dict(k=k, J=J, loss=float(np.mean([r["loss"] for r in rs])), phys={kk: phys[kk] for kk in SPACE}, acts=acts,
                                  gap={n: round(v[1].get("gap_frac", 0.0), 3) for n, v in per.items()}))

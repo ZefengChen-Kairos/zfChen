@@ -6,7 +6,7 @@ actions, objective = loss + |gap fraction - target gap fraction| (cell_test.obje
 import argparse, json, os
 from multiprocessing import Pool
 from . import action_opt as ao
-from .cell_test import objective
+from .cell_test import objective, objective_struct
 from .joint_cma import BASE_V2
 
 STEP = dict(h=(0.85, 1.18), q=(0.88, 1.14), s=(0.95, 1.05))
@@ -18,15 +18,18 @@ def main():
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--N", type=int, default=96)
     ap.add_argument("--out", default="runs/action_opt")
+    ap.add_argument("--objective", default="gap", choices=["gap", "struct"])
+    ap.add_argument("--model", default="v2best")
     a = ap.parse_args()
     H = [json.load(open(os.path.join(a.out, r, "history.json")))["best"] for r in a.runs.split(",")]
     B = min(H, key=lambda h: h["J"])["best"]
     phys = dict(BASE_V2, **B["phys"])
-    ao.MODELS["v2best"] = phys                                                  # before the fork
-    key = lambda r: objective(dict(r, out=a.out), a.N)[0]
+    ao.MODELS[a.model] = phys                                                  # before the fork
+    obj = objective_struct if a.objective == "struct" else objective
+    key = lambda r: obj(dict(r, out=a.out), a.N)[0]
     cur = {n: tuple(B["acts"][n]) for n in ao.PATTERNS}
     with Pool(4, maxtasksperchild=8) as pool:
-        best = {n: r for n, r in zip(ao.PATTERNS, pool.map(ao.run_one, [("v2best", n, *cur[n], a.N, a.out) for n in ao.PATTERNS]))}
+        best = {n: r for n, r in zip(ao.PATTERNS, pool.map(ao.run_one, [(a.model, n, *cur[n], a.N, a.out) for n in ao.PATTERNS]))}
         start = dict(best)
         for rnd in range(a.rounds):
             jobs = []
@@ -35,7 +38,7 @@ def main():
                 for i, k in enumerate("hqs"):
                     for f in STEP[k]:
                         v = [b["h"], b["q"], b["s"]]; v[i] = round(v[i] * f, 3)
-                        jobs.append(("v2best", n, *v, a.N, a.out))
+                        jobs.append((a.model, n, *v, a.N, a.out))
             R = pool.map(ao.run_one, jobs)
             moved = 0
             for n in ao.PATTERNS:
@@ -44,8 +47,8 @@ def main():
             print(f"round {rnd}: {moved} patterns moved, mean J {sum(key(r) for r in best.values()) / 6:.3f}", flush=True)
             if not moved:
                 break
-    res = {f"v2best/{n}": dict(best=best[n], base=start[n], n=0) for n in ao.PATTERNS}
-    json.dump(dict(phys=phys, src=B, actions=res), open(os.path.join(a.out, f"v2_actions_N{a.N}.json"), "w"), indent=1)
+    res = {f"{a.model}/{n}": dict(best=best[n], base=start[n], n=0) for n in ao.PATTERNS}
+    json.dump(dict(phys=phys, src=B, actions=res), open(os.path.join(a.out, f"{a.model}_actions_N{a.N}.json"), "w"), indent=1)
     for n in ao.PATTERNS:
         print(f"{n:14s} J {key(start[n]):.3f} -> {key(best[n]):.3f}  loss {best[n]['loss']:.3f}  h {best[n]['h']} q {best[n]['q']} s {best[n]['s']}")
 
