@@ -63,9 +63,13 @@ def main():
     ap.add_argument("--popsize", type=int, default=13)
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--spec", default="cell", choices=["cell", "v2"])
+    ap.add_argument("--init", default=None, help="history.json of an earlier run: warm start from its best physics and actions")
+    ap.add_argument("--name", default=None, help="run directory / job tag (default joint_cma or joint_cma_v2)")
+    ap.add_argument("--seed", type=int, default=5)
     a = ap.parse_args()
     global SPACE
-    d = os.path.join(a.out, "joint_cma" if a.spec == "cell" else "joint_cma_v2"); os.makedirs(d, exist_ok=True)
+    name = a.name or ("joint_cma" if a.spec == "cell" else "joint_cma_v2")
+    d = os.path.join(a.out, name); os.makedirs(d, exist_ok=True)
     if a.spec == "v2":
         SPACE = SPACE_V2
         F = dict(BASE_V2, **X0_V2); base = dict(BASE_V2)
@@ -76,20 +80,23 @@ def main():
     if a.resume and os.path.exists(st_path):
         es, hist, gen0 = pickle.load(open(st_path, "rb"))
     else:
-        if a.spec == "v2":
+        if a.init:
+            B = json.load(open(a.init))["best"]["best"]; src = a.init
+            F = dict(F, **B["phys"]); acts = {n: tuple(B["acts"][n]) for n in PATTERNS}
+        elif a.spec == "v2":
             src = "neutral"; acts = {n: (1.0, 1.0, 1.0) for n in PATTERNS}     # no bias from the v1 fits
         else:
             src = next(p for p in (f"cellfit_refine_N{a.N}.json", f"fit_refine_N{a.N}.json") if os.path.exists(os.path.join(a.out, p)))
             A = json.load(open(os.path.join(a.out, src)))
             acts = {n: next((v["best"]["h"], v["best"]["q"], v["best"]["s"]) for k, v in A.items() if k.endswith("/" + n)) for n in PATTERNS}
         x0 = encode(F, acts)
-        es = cma.CMAEvolutionStrategy(list(x0), a.sigma0, dict(bounds=[0, 1], popsize=a.popsize, seed=5, verbose=-9))
+        es = cma.CMAEvolutionStrategy(list(x0), a.sigma0, dict(bounds=[0, 1], popsize=a.popsize, seed=a.seed, verbose=-9))
         hist, gen0 = [dict(gen=-1, J=None, src=src, x0=list(x0))], 0
     with Pool(4, maxtasksperchild=8) as pool:
         for gen in range(gen0, gen0 + a.gens):
             X = es.ask()
             cands = [decode(x, base) for x in X]
-            tag = "jc" if a.spec == "cell" else "v2c"
+            tag = "jc" if a.spec == "cell" else ("v2c" if a.name is None else a.name)
             jobs = [(f"{tag}{gen:02d}_{k:02d}", n, *acts[n], a.N, a.out, phys) for k, (phys, acts) in enumerate(cands) for n in PATTERNS]
             R = pool.map(run_one, jobs)
             Js, rows = [], []
