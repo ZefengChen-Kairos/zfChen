@@ -763,7 +763,7 @@ class Solver:
         g = self.g
         if self.P.closure == "skin":
             self._entrainment_flow()
-        if self.P.closure == "twolayer":
+        if self.P.closure in ("twolayer", "v2"):
             self._bulk_flow()
         lsafe = np.where(g.mask, self.l, 1.0)
         umax = float(np.max(np.hypot(self.qx, self.qy) / lsafe))
