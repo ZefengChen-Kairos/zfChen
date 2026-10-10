@@ -50,13 +50,16 @@ def tag_of(h, q, s):
 
 
 def run_one(job):
-    """job = (model, name, h, q, s, N, out[, over]) -> dict with loss, iou, ...; cached on disk under <out>/<model>.
-    over (optional) replaces MODELS[model] as the physics overrides (closure fits use their own model labels)."""
+    """job = (model, name, h, q, s, N, out[, over[, (tag, moves)]]) -> dict with loss, iou, ...; cached on disk under
+    <out>/<model>.  over (optional) replaces MODELS[model] as the physics overrides (closure fits use their own model
+    labels); (tag, moves) replaces the scaled V0.5 moves by an explicit move list cached under tag."""
     global _GEOM
     model, name, h, q, s, N, out = job[:7]
-    over = job[7] if len(job) > 7 else MODELS[model]
+    over = job[7] if len(job) > 7 and job[7] is not None else MODELS[model]
+    custom = job[8] if len(job) > 8 else None
+    tag = custom[0] if custom else tag_of(h, q, s)
     d = os.path.join(out, model); os.makedirs(d, exist_ok=True)
-    stem = os.path.join(d, f"{name}_{tag_of(h, q, s)}_N{N}")
+    stem = os.path.join(d, f"{name}_{tag}_N{N}")
     if os.path.exists(stem + ".json"):
         return json.load(open(stem + ".json"))
     from .pitcher import Pitcher, GridPitcherGeometry, Coupling, BaristaScript
@@ -69,10 +72,10 @@ def run_one(job):
     if closure == "v2":
         kQ = 1.0                                            # v2: S_eff = Q / D_L^3, the thickness scales H, H_f are physics
     cp = Coupling(c_S=kQ / D_L ** 3, c_U=1.0 / D_L, c_u=1.0 / D_L, footprint="physical")
-    script = BaristaScript(moves=scaled_moves(name, h, q, s), pitcher=Pitcher(geom=_GEOM, V0=250e-6), coupling=cp)
+    script = BaristaScript(moves=custom[1] if custom else scaled_moves(name, h, q, s), pitcher=Pitcher(geom=_GEOM, V0=250e-6), coupling=cp)
     pd = dict(ph, D=1e-7, kappa_Q=125.0, return_law="v05"); pd.update(over)
     num = Numerics(N=N); sol = Solver(Params(**pd), num); t0 = time.time()
-    res = dict(model=model, name=name, h=h, q=q, s=s, N=N, closure=closure)
+    res = dict(model=model, name=name, h=h, q=q, s=s, N=N, closure=closure, tag=tag)
     try:
         while sol.t < script.T - 1e-9:
             probe, _ = script.sample(sol.t); fdt = num.frame_dt

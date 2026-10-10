@@ -45,7 +45,7 @@ def objective(r, N):
     mask = np.hypot(*np.meshgrid(*(2 * [(np.arange(N) + 0.5) / N - 0.5]))) < 0.49
     if not r.get("ok"):
         return 10.0, {}
-    c = np.load(os.path.join(r["out"], r["model"], f"{r['name']}_{tag_of(r['h'], r['q'], r['s'])}_N{N}.npy"))
+    c = np.load(os.path.join(r["out"], r["model"], f"{r['name']}_{r.get('tag') or tag_of(r['h'], r['q'], r['s'])}_N{N}.npy"))
     gs, gt = gap_stats(visible(c, mask, r.get("closure")), mask, N), gap_stats(target_at(r["name"], N), mask, N)
     return r["loss"] + abs(gs["gap_frac"] - gt["gap_frac"]), gs
 
@@ -91,7 +91,7 @@ def objective_struct(r, N):
     if (r["name"], N) not in _ST:
         _ST[(r["name"], N)] = struct_stats(target_at(r["name"], N), mask, N)
     et, qt, gt = _ST[(r["name"], N)]
-    c = np.load(os.path.join(r["out"], r["model"], f"{r['name']}_{tag_of(r['h'], r['q'], r['s'])}_N{N}.npy"))
+    c = np.load(os.path.join(r["out"], r["model"], f"{r['name']}_{r.get('tag') or tag_of(r['h'], r['q'], r['s'])}_N{N}.npy"))
     ed, q, gf = struct_stats(visible(c, mask, r.get("closure")), mask, N)
     t_gap, t_edge, t_w1 = abs(gf - gt), 0.5 * abs(math.log((ed + 0.01) / (et + 0.01))), float(np.abs(q - qt).mean())
     return r["loss"] + t_gap + t_edge + t_w1, dict(gap_frac=gf, edge=ed, t_gap=t_gap, t_edge=t_edge, t_w1=t_w1)
