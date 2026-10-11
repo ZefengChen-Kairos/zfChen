@@ -1,0 +1,41 @@
+== (1) bulk dispersed gas: time for canvas Kynch layer to reach h_* (own formula K3 + nucleation) ==
+R=45um phi_B=0.002: v_b=4.40 mm/s  t_nuc=21.8 s
+R=45um phi_B=0.005: v_b=4.33 mm/s  t_nuc=8.8 s
+R=45um phi_B=0.010: v_b=4.23 mm/s  t_nuc=4.5 s
+R=45um phi_B=0.020: v_b=4.04 mm/s  t_nuc=2.3 s
+R=45um phi_B=0.050: v_b=3.50 mm/s  t_nuc=1.0 s
+R=20um phi_B=0.002: v_b=0.87 mm/s  t_nuc=110.2 s
+R=20um phi_B=0.005: v_b=0.86 mm/s  t_nuc=44.5 s
+R=20um phi_B=0.010: v_b=0.84 mm/s  t_nuc=22.6 s
+R=20um phi_B=0.020: v_b=0.80 mm/s  t_nuc=11.7 s
+R=20um phi_B=0.050: v_b=0.69 mm/s  t_nuc=5.1 s
+R=10um phi_B=0.002: v_b=0.22 mm/s  t_nuc=440.9 s
+R=10um phi_B=0.005: v_b=0.21 mm/s  t_nuc=178.0 s
+R=10um phi_B=0.010: v_b=0.21 mm/s  t_nuc=90.4 s
+R=10um phi_B=0.020: v_b=0.20 mm/s  t_nuc=46.6 s
+R=10um phi_B=0.050: v_b=0.17 mm/s  t_nuc=20.5 s
+F_white=0.1 pour 5s: G_B=16.9 mL, phi_B(mixed)=0.075, gas column G/A=3.36 mm vs b_*=0.192 mm
+F_white=0.1 pour 10s: G_B=33.8 mL, phi_B(mixed)=0.149, gas column G/A=6.71 mm vs b_*=0.192 mm
+F_white=0.2 pour 5s: G_B=15.0 mL, phi_B(mixed)=0.066, gas column G/A=2.98 mm vs b_*=0.192 mm
+F_white=0.2 pour 10s: G_B=30.0 mL, phi_B(mixed)=0.133, gas column G/A=5.97 mm vs b_*=0.192 mm
+F_white=0.3 pour 5s: G_B=13.1 mL, phi_B(mixed)=0.058, gas column G/A=2.61 mm vs b_*=0.192 mm
+F_white=0.3 pour 10s: G_B=26.2 mL, phi_B(mixed)=0.116, gas column G/A=5.22 mm vs b_*=0.192 mm
+== (2) post-stop creep when canvas pressure relaxes: raft built at h_pi spreads to h_m ==
+k=1.732 pi-S0=5 mN/m: h_pi=4.44 mm, h_m=3.35 mm, area gain after relaxation = 33%
+k=1.732 pi-S0=10 mN/m: h_pi=5.20 mm, h_m=3.35 mm, area gain after relaxation = 55%
+k=1.732 pi-S0=15 mN/m: h_pi=5.83 mm, h_m=3.35 mm, area gain after relaxation = 74%
+k=2.000 pi-S0=5 mN/m: h_pi=4.86 mm, h_m=3.86 mm, area gain after relaxation = 26%
+k=2.000 pi-S0=10 mN/m: h_pi=5.59 mm, h_m=3.86 mm, area gain after relaxation = 45%
+k=2.000 pi-S0=15 mN/m: h_pi=6.20 mm, h_m=3.86 mm, area gain after relaxation = 60%
+canvas strain needed: white fraction f_w=0.23..0.42 -> canvas area loss f_w/(1)~; eps_c=dPi_c/E= 0.33333333333333337
+== (3) E13 scaling if h_* = n bubble layers (prop. to R32) ==
+R=35: t_K(h_* fixed)=0.99s, t_K(h_* ~ R)=0.77s
+R=60: t_K(h_* fixed)=0.34s, t_K(h_* ~ R)=0.45s
+ratio 35/60 fixed h_*: 2.9387755102040822  h_*~R: 1.7142857142857144
+== (4) C3 sensitivity: raft drift if zeta_R != zeta_C ==
+U_N=3 cm/s mismatch 10%: drift ~ 0.3 cm/s = 0.04 D/s
+U_N=3 cm/s mismatch 30%: drift ~ 0.9 cm/s = 0.11 D/s
+U_N=6 cm/s mismatch 10%: drift ~ 0.6 cm/s = 0.07 D/s
+U_N=6 cm/s mismatch 30%: drift ~ 1.8 cm/s = 0.22 D/s
+U_N=12 cm/s mismatch 10%: drift ~ 1.2 cm/s = 0.15 D/s
+U_N=12 cm/s mismatch 30%: drift ~ 3.6 cm/s = 0.45 D/s

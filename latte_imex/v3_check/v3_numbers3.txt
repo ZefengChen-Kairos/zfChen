@@ -1,0 +1,231 @@
+=== 0. basics
+rho_f=302 g'=6.87  b_*=phi_J h_*=0.192 mm  phi_f h_*=0.210 mm
+
+=== 1. (F1) bulk gas: canvas nucleation time without loss, t = b_*/(db/dt)
+R=45 um: phi_B=0.002: 21.8 s; phi_B=0.005: 8.8 s; phi_B=0.01: 4.5 s; phi_B=0.02: 2.3 s; phi_B=0.05: 1.0 s
+R=20 um: phi_B=0.002: 110.2 s; phi_B=0.005: 44.5 s; phi_B=0.01: 22.6 s; phi_B=0.02: 11.7 s; phi_B=0.05: 5.1 s
+R=10 um: phi_B=0.002: 440.9 s; phi_B=0.005: 178.0 s; phi_B=0.01: 90.4 s; phi_B=0.02: 46.6 s; phi_B=0.05: 20.5 s
+V3 bound (no loss, 20 s window): mean bulk Kynch rate < b_*/20 s = 0.0096 mm/s
+  R=45 um: phi_B < 0.0022
+  R=30 um: phi_B < 0.0049
+  R=20 um: phi_B < 0.0113
+  R=10 um: phi_B < 0.0515
+well-mixed bulk gas from the jet (fraction not captured, 1-F_white) in 200 mL:
+  F_white=0.1: dphi_B/dt=0.0169 /s; after 5 s phi_B=0.084; steady exit flux if all leaves through cup surface = 0.67 mm/s
+  F_white=0.25: dphi_B/dt=0.0141 /s; after 5 s phi_B=0.070; steady exit flux if all leaves through cup surface = 0.56 mm/s
+
+=== 2. (F1/F2) flux-threshold nucleation with bare-canvas loss k_s: db/dt = r_K - k_s b
+phi_N=0.1: Kynch rate r_K=0.322 mm/s (source j=phi v_b=0.272; ratio 1.19)
+   k_s=0.00/s: k_s b_*=0.000 mm/s, t_K=0.60 s
+   k_s=0.25/s: k_s b_*=0.048 mm/s, t_K=0.65 s
+   k_s=0.50/s: k_s b_*=0.096 mm/s, t_K=0.71 s
+   k_s=1.00/s: k_s b_*=0.192 mm/s, t_K=0.91 s
+   k_s=1.50/s: k_s b_*=0.288 mm/s, t_K=1.50 s
+phi_N=0.06: Kynch rate r_K=0.220 mm/s (source j=phi v_b=0.200; ratio 1.10)
+   k_s=0.00/s: k_s b_*=0.000 mm/s, t_K=0.87 s
+   k_s=0.25/s: k_s b_*=0.048 mm/s, t_K=0.98 s
+   k_s=0.50/s: k_s b_*=0.096 mm/s, t_K=1.14 s
+   k_s=1.00/s: k_s b_*=0.192 mm/s, t_K=2.05 s
+   k_s=1.50/s: k_s b_*=0.288 mm/s, t_K=inf s
+k_s bounds: lower from bulk (j_B < k_s b_*), upper from first white (r_K(r_e) > k_s b_*):
+  bulk R=45 um phi_B=0.01: k_s > 0.22 /s
+  bulk R=45 um phi_B=0.03: k_s > 0.63 /s
+  bulk R=20 um phi_B=0.05: k_s > 0.20 /s
+  bulk R=10 um phi_B=0.05: k_s > 0.05 /s
+  near field phi_N=0.1: k_s < 1.68 /s
+  near field phi_N=0.06: k_s < 1.15 /s
+
+=== 3. (F2) flux-area budget: supply under rafts <= max_phi phi v_b(phi) x active area
+R=35 um: max flux 0.192 mm/s at phi=0.177
+R=45 um: max flux 0.317 mm/s at phi=0.177
+R=60 um: max flux 0.564 mm/s at phi=0.177
+R=80 um: max flux 1.003 mm/s at phi=0.177
+dA/dt=1.6 cm2/s, raft phi h=0.66 mm: gas 0.11 mL/s -> active area >= 3.3 cm2 (r=1.03 cm) at max flux; 3.9 cm2 at phi_N=0.1
+dA/dt=1.6 cm2/s, raft phi h=1.36 mm: gas 0.22 mL/s -> active area >= 6.9 cm2 (r=1.48 cm) at max flux; 8.0 cm2 at phi_N=0.1
+dA/dt=1.6 cm2/s, raft phi h=2.34 mm: gas 0.38 mL/s -> active area >= 11.8 cm2 (r=1.94 cm) at max flux; 13.8 cm2 at phi_N=0.1
+dA/dt=3.8 cm2/s, raft phi h=0.66 mm: gas 0.25 mL/s -> active area >= 7.9 cm2 (r=1.59 cm) at max flux; 9.2 cm2 at phi_N=0.1
+dA/dt=3.8 cm2/s, raft phi h=1.36 mm: gas 0.52 mL/s -> active area >= 16.3 cm2 (r=2.28 cm) at max flux; 19.0 cm2 at phi_N=0.1
+dA/dt=3.8 cm2/s, raft phi h=2.34 mm: gas 0.89 mL/s -> active area >= 28.1 cm2 (r=2.99 cm) at max flux; 32.8 cm2 at phi_N=0.1
+identity (same flux sets delay and supply, no loss): A_act = (dA/dt) t_K phi h / b_*
+   phi h=0.66 mm t_K=0.6: A_act=7.8 cm2
+   phi h=0.66 mm t_K=0.9: A_act=11.8 cm2
+   phi h=2.34 mm t_K=0.6: A_act=27.8 cm2
+   phi h=2.34 mm t_K=0.9: A_act=41.8 cm2
+
+=== 4. (F3) rigid old block (moves with undisturbed canvas velocity at its centre) vs material points
+S_raft=2.6 S_eff=2.6 s0=0.12D gap rigid/material: t=0: 0.070/0.070 | t=1: 0.025/0.053 | t=2: 0.007/0.053 | t=3: 0.000/0.055  closes at 2.66 s  block centre moved 0.080 D in 3 s
+S_raft=2.6 S_eff=2.6 s0=0.15D gap rigid/material: t=0: 0.100/0.100 | t=1: 0.052/0.075 | t=2: 0.032/0.071 | t=3: 0.020/0.071  block centre moved 0.073 D in 3 s
+S_raft=2.6 S_eff=2.6 s0=0.20D gap rigid/material: t=0: 0.150/0.150 | t=1: 0.098/0.116 | t=2: 0.075/0.106 | t=3: 0.059/0.102  block centre moved 0.062 D in 3 s
+S_raft=3.8 S_eff=3.8 s0=0.12D gap rigid/material: t=0: 0.070/0.070 | t=1: 0.016/0.052 | t=2: 0.000/0.054 | t=3: 0.000/0.058  closes at 1.82 s  block centre moved 0.111 D in 3 s
+S_raft=3.8 S_eff=3.8 s0=0.15D gap rigid/material: t=0: 0.100/0.100 | t=1: 0.042/0.073 | t=2: 0.021/0.071 | t=3: 0.008/0.072  block centre moved 0.101 D in 3 s
+S_raft=3.8 S_eff=3.8 s0=0.20D gap rigid/material: t=0: 0.150/0.150 | t=1: 0.086/0.110 | t=2: 0.060/0.102 | t=3: 0.044/0.099  block centre moved 0.087 D in 3 s
+S_raft=2.6 S_eff=1.6 s0=0.12D gap rigid/material: t=0: 0.070/0.070 | t=1: 0.014/0.033 | t=2: 0.000/0.020 | t=3: 0.000/0.011  closes at 1.47 s  block centre moved 0.052 D in 3 s
+S_raft=2.6 S_eff=1.6 s0=0.15D gap rigid/material: t=0: 0.100/0.100 | t=1: 0.042/0.058 | t=2: 0.014/0.041 | t=3: 0.000/0.031  closes at 2.66 s  block centre moved 0.047 D in 3 s
+S_raft=2.6 S_eff=1.6 s0=0.20D gap rigid/material: t=0: 0.150/0.150 | t=1: 0.090/0.101 | t=2: 0.059/0.080 | t=3: 0.037/0.066  block centre moved 0.040 D in 3 s
+S_raft=3.8 S_eff=2.8 s0=0.12D gap rigid/material: t=0: 0.070/0.070 | t=1: 0.005/0.034 | t=2: 0.000/0.026 | t=3: 0.000/0.022  closes at 1.16 s  block centre moved 0.085 D in 3 s
+S_raft=3.8 S_eff=2.8 s0=0.15D gap rigid/material: t=0: 0.100/0.100 | t=1: 0.032/0.056 | t=2: 0.003/0.044 | t=3: 0.000/0.038  closes at 2.16 s  block centre moved 0.078 D in 3 s
+S_raft=3.8 S_eff=2.8 s0=0.20D gap rigid/material: t=0: 0.150/0.150 | t=1: 0.078/0.097 | t=2: 0.045/0.079 | t=3: 0.023/0.068  block centre moved 0.067 D in 3 s
+
+=== 5. (F4/M1/M2) canvas pressure during and after the pour
+cone wall area source at dH/dt=2.2 mm/s: 0.48-0.97 cm2/s
+S=2.6 F_c=0.7 wall=0.48: |e_dot|=0.040/s; pi_ss=E|e|tau_d [mN/m] E=30,tau_d=1: 1.2; E=30,tau_d=3: 3.6; E=5,tau_d=3: 0.6; E=30,tau_d=10: 12.1
+S=2.6 F_c=0.7 wall=0.97: |e_dot|=0.026/s; pi_ss=E|e|tau_d [mN/m] E=30,tau_d=1: 0.8; E=30,tau_d=3: 2.4; E=5,tau_d=3: 0.4; E=30,tau_d=10: 7.9
+S=2.6 F_c=1.5 wall=0.48: |e_dot|=0.018/s; pi_ss=E|e|tau_d [mN/m] E=30,tau_d=1: 0.5; E=30,tau_d=3: 1.6; E=5,tau_d=3: 0.3; E=30,tau_d=10: 5.3
+S=2.6 F_c=1.5 wall=0.97: |e_dot|=0.004/s; pi_ss=E|e|tau_d [mN/m] E=30,tau_d=1: 0.1; E=30,tau_d=3: 0.3; E=5,tau_d=3: 0.1; E=30,tau_d=10: 1.1
+S=3.8 F_c=0.7 wall=0.48: |e_dot|=0.075/s; pi_ss=E|e|tau_d [mN/m] E=30,tau_d=1: 2.2; E=30,tau_d=3: 6.7; E=5,tau_d=3: 1.1; E=30,tau_d=10: 22.4
+S=3.8 F_c=0.7 wall=0.97: |e_dot|=0.061/s; pi_ss=E|e|tau_d [mN/m] E=30,tau_d=1: 1.8; E=30,tau_d=3: 5.5; E=5,tau_d=3: 0.9; E=30,tau_d=10: 18.2
+S=3.8 F_c=1.5 wall=0.48: |e_dot|=0.052/s; pi_ss=E|e|tau_d [mN/m] E=30,tau_d=1: 1.6; E=30,tau_d=3: 4.7; E=5,tau_d=3: 0.8; E=30,tau_d=10: 15.6
+S=3.8 F_c=1.5 wall=0.97: |e_dot|=0.038/s; pi_ss=E|e|tau_d [mN/m] E=30,tau_d=1: 1.1; E=30,tau_d=3: 3.4; E=5,tau_d=3: 0.6; E=30,tau_d=10: 11.4
+whole-pattern canvas strain (tau_d -> inf): eps_tot = (A_white - F_c t_low - dA_cone)/A_canvas_final
+  f_w=0.23 t_low=5s F_c=0.7 cone+0.066: eps_tot=+0.13 -> E eps (E=30)=4.0 mN/m, (E=10) 1.3
+  f_w=0.23 t_low=5s F_c=0.7 cone+0.136: eps_tot=+0.06 -> E eps (E=30)=1.9 mN/m, (E=10) 0.6
+  f_w=0.23 t_low=10s F_c=1.5 cone+0.066: eps_tot=-0.15 -> E eps (E=30)=0.0 mN/m, (E=10) 0.0
+  f_w=0.23 t_low=10s F_c=1.5 cone+0.136: eps_tot=-0.20 -> E eps (E=30)=0.0 mN/m, (E=10) 0.0
+  f_w=0.42 t_low=5s F_c=0.7 cone+0.066: eps_tot=+0.50 -> E eps (E=30)=15.1 mN/m, (E=10) 5.0
+  f_w=0.42 t_low=5s F_c=0.7 cone+0.136: eps_tot=+0.41 -> E eps (E=30)=12.4 mN/m, (E=10) 4.1
+  f_w=0.42 t_low=10s F_c=1.5 cone+0.066: eps_tot=+0.13 -> E eps (E=30)=4.0 mN/m, (E=10) 1.3
+  f_w=0.42 t_low=10s F_c=1.5 cone+0.136: eps_tot=+0.06 -> E eps (E=30)=1.9 mN/m, (E=10) 0.6
+h_m(axi)=3.35 mm
+pi_bar=0.5 mN/m: h_pi=3.48 mm, post-stop area gain 4%, line between two 0.03 D stripes narrows by 0.10 mm = 0.0012 D
+pi_bar=1.0 mN/m: h_pi=3.61 mm, post-stop area gain 8%, line between two 0.03 D stripes narrows by 0.19 mm = 0.0024 D
+pi_bar=1.5 mN/m: h_pi=3.73 mm, post-stop area gain 12%, line between two 0.03 D stripes narrows by 0.28 mm = 0.0035 D
+pi_bar=2.0 mN/m: h_pi=3.85 mm, post-stop area gain 15%, line between two 0.03 D stripes narrows by 0.36 mm = 0.0045 D
+pi_bar=3.0 mN/m: h_pi=4.06 mm, post-stop area gain 21%, line between two 0.03 D stripes narrows by 0.51 mm = 0.0064 D
+pi_bar=5.0 mN/m: h_pi=4.44 mm, post-stop area gain 33%, line between two 0.03 D stripes narrows by 0.78 mm = 0.0098 D
+pi_bar=10.0 mN/m: h_pi=5.20 mm, post-stop area gain 55%, line between two 0.03 D stripes narrows by 1.33 mm = 0.0166 D
+crush: pi_bar=1 mN/m crushes rafts thinner than 0.24 mm (k=2, 2 Pa) / 0.65 mm (k=sqrt3, fresh 0.5 Pa)
+crush: pi_bar=2 mN/m crushes rafts thinner than 0.45 mm (k=2, 2 Pa) / 1.03 mm (k=sqrt3, fresh 0.5 Pa)
+crush: pi_bar=5 mN/m crushes rafts thinner than 0.99 mm (k=2, 2 Pa) / 1.82 mm (k=sqrt3, fresh 0.5 Pa)
+crush: pi_bar=10 mN/m crushes rafts thinner than 1.73 mm (k=2, 2 Pa) / 2.72 mm (k=sqrt3, fresh 0.5 Pa)
+crush: pi_bar=15 mN/m crushes rafts thinner than 2.34 mm (k=2, 2 Pa) / 3.41 mm (k=sqrt3, fresh 0.5 Pa)
+
+=== 6. (F4b) expansion screening length l_a = sqrt(E tau_a / zeta), zeta=0.57
+E=5: tau_a=0.0001: 0.9 mm, tau_a=0.001: 3.0 mm, tau_a=0.03: 16.2 mm, tau_a=1: 93.7 mm
+E=30: tau_a=0.0001: 2.3 mm, tau_a=0.001: 7.3 mm, tau_a=0.03: 39.7 mm, tau_a=1: 229.4 mm
+self-consistent t_Pi = (L^2 mu /(E sqrt(pi nu)))^(2/3), L=4 cm:
+  E=60 mN/m: t_Pi=0.061 s, zeta(t_Pi)=2.29
+  E=30 mN/m: t_Pi=0.097 s, zeta(t_Pi)=1.82
+  E=10 mN/m: t_Pi=0.202 s, zeta(t_Pi)=1.26
+  E=5 mN/m: t_Pi=0.320 s, zeta(t_Pi)=1.00
+  E=2 mN/m: t_Pi=0.589 s, zeta(t_Pi)=0.74
+  E=1 mN/m: t_Pi=0.936 s, zeta(t_Pi)=0.58
+reservoir drag pressure drop across r_N: zeta U_N r_N = 0.34-1.37 mN/m; strain 0.023 (U_N=6 cm/s, E=30)
+inner-zone drag that holds the stagnation ring: zeta F_c/(2 pi) = 0.0091 mN/m
+
+=== 7. (M3) fresh-raft yield stress and stopping thickness
+phi=0.66 tau_y=0.25 Pa: rho_f g'=2212 N/m3, h_m(axi)=0.39 mm, gas column phi h=0.26 mm
+phi=0.66 tau_y=0.5 Pa: rho_f g'=2212 N/m3, h_m(axi)=0.78 mm, gas column phi h=0.52 mm
+phi=0.68 tau_y=1.0 Pa: rho_f g'=2145 N/m3, h_m(axi)=1.61 mm, gas column phi h=1.10 mm
+phi=0.7 tau_y=2.0 Pa: rho_f g'=2070 N/m3, h_m(axi)=3.35 mm, gas column phi h=2.34 mm
+Darcy drainage estimate: k_D=1.14e-12 m2, v_D=0.011 mm/s; compaction 0.64->0.70 of 1-3 mm: 5.3-16.0 s
+
+=== 8. (M4) h_* proportional to R_32
+R=35: z_e=0.7*3.5*2R=0.17 mm (c_z=4.9)
+R=45: z_e=0.7*3.5*2R=0.22 mm (c_z=4.9)
+R=60: z_e=0.7*3.5*2R=0.29 mm (c_z=4.9)
+t_K ratio R 35/60: fixed h_* 2.94; h_* = c_z R 1.71
+t_K at 45 um with h_* = 6.67 R: 0.60 s
+mu_l x2 (fixed R): t_K x2; t_w = t_r + t_K: 1.0 -> 1.6 s
+
+=== 9. (M7) inner-zone geometry
+low: r0=2.72 mm, r_c=r0+0.2=2.92 mm; sheath b_s=0.1-0.2 min(z_m,H)=4.5-9.0 mm; r_e in (2.9, 11.7) mm; hole diameter 0.073-0.293 D
+low: r0=2.72 mm, r_c=r0+1.0=3.72 mm; sheath b_s=0.1-0.2 min(z_m,H)=4.5-9.0 mm; r_e in (3.7, 11.7) mm; hole diameter 0.093-0.293 D
+low20: r0=2.98 mm, r_c=r0+0.2=3.18 mm; sheath b_s=0.1-0.2 min(z_m,H)=4.5-9.0 mm; r_e in (3.2, 12.0) mm; hole diameter 0.079-0.299 D
+low20: r0=2.98 mm, r_c=r0+1.0=3.98 mm; sheath b_s=0.1-0.2 min(z_m,H)=4.5-9.0 mm; r_e in (4.0, 12.0) mm; hole diameter 0.099-0.299 D
+cut: r0=0.88 mm, r_c=r0+0.2=1.08 mm; sheath b_s=0.1-0.2 min(z_m,H)=4.5-9.0 mm; r_e in (1.1, 9.9) mm; hole diameter 0.027-0.247 D
+cut: r0=0.88 mm, r_c=r0+1.0=1.88 mm; sheath b_s=0.1-0.2 min(z_m,H)=4.5-9.0 mm; r_e in (1.9, 9.9) mm; hole diameter 0.047-0.247 D
+inner residence pi(r_e^2-r_c^2)/F_c: r_e=3.5 r_c=3.0 F_c=1.0: 0.10 s
+inner residence pi(r_e^2-r_c^2)/F_c: r_e=5.4 r_c=3.0 F_c=1.0: 0.63 s
+inner residence pi(r_e^2-r_c^2)/F_c: r_e=5.4 r_c=3.0 F_c=0.7: 0.90 s
+
+=== 10. (M8) P_s prior form P_s=min(1, exp(-lam (z_m/H-1)))
+lam=0.5: z_m/H=0.96: 1.00, z_m/H=1.18: 0.91, z_m/H=1.37: 0.83, z_m/H=1.57: 0.75
+lam=1.4: z_m/H=0.96: 1.00, z_m/H=1.18: 0.78, z_m/H=1.37: 0.60, z_m/H=1.57: 0.45
+thin stream phi_N = P_s phi_j/(1+S) = 0.010 (P_s=0.46, S=10)
+thin stream phi_N = P_s phi_j/(1+S) = 0.037 (P_s=0.9, S=5)
+
+=== 11. (M10) delay-spread smearing of wiggle modulation, f=2.75 Hz
+sigma_t=0.03: 0.874
+sigma_t=0.06: 0.584
+sigma_t=0.1: 0.225
+sigma_t=0.2: 0.003
+arc incorporation: residence 1 s, raft gas column 0.66 mm: each line narrows by 0.98 mm
+arc incorporation: residence 1 s, raft gas column 2.35 mm: each line narrows by 0.28 mm
+arc incorporation: residence 2 s, raft gas column 0.66 mm: each line narrows by 1.96 mm
+arc incorporation: residence 2 s, raft gas column 2.35 mm: each line narrows by 0.55 mm
+
+=== 12. (M11) stripe spacing, one arc per half-cycle
+U_rel=0.08 D/s: half-cycle 0.015 D, cycle 0.029 D; retreat (U+0.16)/(2f)=0.044 D
+U_rel=0.12 D/s: half-cycle 0.022 D, cycle 0.044 D; retreat (U+0.16)/(2f)=0.051 D
+U_rel=0.16 D/s: half-cycle 0.029 D, cycle 0.058 D; retreat (U+0.16)/(2f)=0.058 D
+
+=== 13. (M12) cut: prompt line, stem, notch
+Q3 z7 Pi_coh=400: r_sub=1.61 r_d=0.53 mm; prompt line 2r_d=0.013 D; stem 2r_sub(1-f)=2.87 mm=0.036 D; notch r_sub=0.020 D
+Q3 z7 Pi_coh=200: r_sub=1.61 r_d=0.92 mm; prompt line 2r_d=0.023 D; stem 2r_sub(1-f)=2.17 mm=0.027 D; notch r_sub=0.020 D
+Q5 z9 Pi_coh=400: r_sub=2.04 r_d=0.84 mm; prompt line 2r_d=0.021 D; stem 2r_sub(1-f)=3.39 mm=0.042 D; notch r_sub=0.025 D
+Q5 z9 Pi_coh=200: r_sub=2.04 r_d=1.24 mm; prompt line 2r_d=0.031 D; stem 2r_sub(1-f)=2.56 mm=0.032 D; notch r_sub=0.025 D
+sink convergence behind the jet, F=0.4 cm2/s at 1 cm over 0.3 s: 0.19 mm
+
+=== 14. (M13) translational mobility and vortex-dipole bound
+net edge line force 0.01 mN/m on 1 cm raft -> U~F L/(2 zeta A) = 0.11 cm/s
+net edge line force 0.10 mN/m on 1 cm raft -> U~F L/(2 zeta A) = 1.12 cm/s
+net edge line force 0.50 mN/m on 1 cm raft -> U~F L/(2 zeta A) = 5.58 cm/s
+eta_h=0.03: impulse 0.043 mN s, dipole U at r=1.2 cm ~ 0.20 cm/s -> 1.3 s displacement 0.032 D
+eta_h=0.03: impulse 0.043 mN s, dipole U at r=2.4 cm ~ 0.02 cm/s -> 1.3 s displacement 0.004 D
+eta_h=0.1: impulse 0.143 mN s, dipole U at r=1.2 cm ~ 0.66 cm/s -> 1.3 s displacement 0.106 D
+eta_h=0.1: impulse 0.143 mN s, dipole U at r=2.4 cm ~ 0.08 cm/s -> 1.3 s displacement 0.013 D
+eta_h=1.0: impulse 1.430 mN s, dipole U at r=1.2 cm ~ 6.55 cm/s -> 1.3 s displacement 1.065 D
+eta_h=1.0: impulse 1.430 mN s, dipole U at r=2.4 cm ~ 0.82 cm/s -> 1.3 s displacement 0.133 D
+form drag U_N=3 cm/s x0.3: 0.041 mN/m
+form drag U_N=3 cm/s x1.0: 0.455 mN/m
+form drag U_N=12 cm/s x0.3: 0.654 mN/m
+form drag U_N=12 cm/s x1.0: 7.272 mN/m
+
+=== 15. (m12) consistency
+F_white=0.083: dA/dt=1.33 cm2/s (h=3.35 mm)
+F_white=0.2: dA/dt=3.20 cm2/s (h=3.35 mm)
+F_white=0.3: dA/dt=4.80 cm2/s (h=3.35 mm)
+thin stream Q=3 S=5: Hz=0.37, f_loc=0.27
+thin stream Q=3 S=10: Hz=0.20, f_loc=0.17
+neck F_white=0.1 Q=2 V_p=1.6 cm/s: w=0.017 D
+neck F_white=0.15 Q=3 V_p=0.8 cm/s: w=0.075 D
+
+=== 16. (senior #6) cup-diameter sensitivity, D in [7, 10] cm, reference 8 cm
+D=7 cm: absolute-length features in D units x1.14; area-flux features (line widths, push, dA/dt in D^2) x1.31; video 3.8 cm2/s at D=8 means 2.9 cm2/s
+D=10 cm: absolute-length features in D units x0.80; area-flux features (line widths, push, dA/dt in D^2) x0.64; video 3.8 cm2/s at D=8 means 5.9 cm2/s
+hole 2r_e 5.4-10.8 mm: D=7 0.077-0.154 D; D=10 0.054-0.108 D
+
+=== 17. revised t_K table: h_* = c_z R_32 (c_z = 6.67, anchored to h_* = 0.30 mm at 45 um), Kynch source, loss k_s
+R=35 um h_*=0.233 mm P_s=1.0 phi_N=0.10 v_b=1.64 mm/s: k_s=0.0: t_K=0.77 s, t_w=1.16-1.56 s; k_s=0.5: t_K=0.97 s, t_w=1.36-1.76 s
+R=35 um h_*=0.233 mm P_s=0.6 phi_N=0.06 v_b=2.01 mm/s: k_s=0.0: t_K=1.12 s, t_w=1.51-1.91 s; k_s=0.5: t_K=1.64 s, t_w=2.03-2.43 s
+R=45 um h_*=0.300 mm P_s=1.0 phi_N=0.10 v_b=2.72 mm/s: k_s=0.0: t_K=0.60 s, t_w=0.99-1.39 s; k_s=0.5: t_K=0.71 s, t_w=1.10-1.50 s
+R=45 um h_*=0.300 mm P_s=0.6 phi_N=0.06 v_b=3.33 mm/s: k_s=0.0: t_K=0.87 s, t_w=1.26-1.66 s; k_s=0.5: t_K=1.14 s, t_w=1.53-1.93 s
+R=60 um h_*=0.400 mm P_s=1.0 phi_N=0.10 v_b=4.83 mm/s: k_s=0.0: t_K=0.45 s, t_w=0.84-1.24 s; k_s=0.5: t_K=0.51 s, t_w=0.90-1.30 s
+R=60 um h_*=0.400 mm P_s=0.6 phi_N=0.06 v_b=5.92 mm/s: k_s=0.0: t_K=0.65 s, t_w=1.04-1.44 s; k_s=0.5: t_K=0.79 s, t_w=1.18-1.58 s
+
+=== 18. growth with fresh (thin) rafts: dA/dt = F_white phi_j Q/(phi h)
+F_white=0.083, Q=15: dA/dt [cm2/s] phi h=0.51 mm: 6.0; phi h=1.09 mm: 2.8; phi h=2.34 mm: 1.3
+F_white=0.125, Q=15: dA/dt [cm2/s] phi h=0.51 mm: 9.1; phi h=1.09 mm: 4.3; phi h=2.34 mm: 2.0
+F_white=0.2, Q=15: dA/dt [cm2/s] phi h=0.51 mm: 14.6; phi h=1.09 mm: 6.9; phi h=2.34 mm: 3.2
+F_white needed for 3.8 cm2/s (Q=15): phi h=0.51 mm: 0.052; phi h=1.09 mm: 0.111; phi h=2.34 mm: 0.238
+pale first white: R=h/(h+z_e) for h=0.39/0.78/1.61 mm: 0.57/0.72/0.84
+
+=== 19. rigid gap after the push_heart stage-2 feed (white 7.2 s -> lift 9.8 s, 2.6 s)
+S=2.6 s0=0.15 D: rigid gap at 2.6 s = 0.024 D
+S=2.6 s0=0.20 D: rigid gap at 2.6 s = 0.065 D
+S=3.8 s0=0.15 D: rigid gap at 2.6 s = 0.012 D
+S=3.8 s0=0.20 D: rigid gap at 2.6 s = 0.049 D
+
+=== 20. post-stop reservoir residue: gas left in reservoir, white added if a fraction f_cov lies under rafts
+f_cov=0.3, raft gas column 0.52 mm: +6.3 cm2
+f_cov=0.3, raft gas column 2.34 mm: +1.4 cm2
+f_cov=0.7, raft gas column 0.52 mm: +14.8 cm2
+f_cov=0.7, raft gas column 2.34 mm: +3.3 cm2
+
+=== 21. high pour / thin stream t_K with the v3.1 P_s range (phi_N 0.007-0.04), 45 um, h_* = 0.30 mm
+phi_N=0.007: r_K=0.030 mm/s; k_s=0.0: t_K=6.32 s; k_s=0.5: t_K=inf s
+phi_N=0.01: r_K=0.043 mm/s; k_s=0.0: t_K=4.46 s; k_s=0.5: t_K=inf s
+phi_N=0.02: r_K=0.083 mm/s; k_s=0.0: t_K=2.30 s; k_s=0.5: t_K=inf s
+phi_N=0.03: r_K=0.121 mm/s; k_s=0.0: t_K=1.58 s; k_s=0.5: t_K=3.14 s
+phi_N=0.037: r_K=0.146 mm/s; k_s=0.0: t_K=1.31 s; k_s=0.5: t_K=2.14 s
+phi_N=0.04: r_K=0.157 mm/s; k_s=0.0: t_K=1.23 s; k_s=0.5: t_K=1.90 s
