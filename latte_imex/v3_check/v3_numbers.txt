@@ -1,0 +1,167 @@
+=== 0. geometry
+A = 50.27 cm2
+
+=== 1. jets
+Q=  10 mL/s z=1.0 cm: v=0.56 m/s d=4.7 mm Re=2694 We=25 p_st=120 Pa M=4.3 mN Fr0=7.4 z_m=4.3 cm z_m/H=0.96 T_f=0.23 s
+Q=  15 mL/s z=1.5 cm: v=0.65 m/s d=5.4 mm Re=3529 We=38 p_st=157 Pa M=7.3 mN Fr0=7.9 z_m=5.3 cm z_m/H=1.18 T_f=0.26 s
+Q=  20 mL/s z=2.0 cm: v=0.72 m/s d=6.0 mm Re=4296 We=51 p_st=194 Pa M=10.8 mN Fr0=8.4 z_m=6.2 cm z_m/H=1.37 T_f=0.29 s
+Q=   2 mL/s z=5.0 cm: v=1.05 m/s d=1.6 mm Re=1644 We=29 p_st=416 Pa M=1.6 mN Fr0=24.0 z_m=4.6 cm z_m/H=1.02 T_f=0.43 s
+Q=   3 mL/s z=7.0 cm: v=1.22 m/s d=1.8 mm Re=2172 We=44 p_st=564 Pa M=2.8 mN Fr0=26.3 z_m=5.7 cm z_m/H=1.27 T_f=0.50 s
+Q=   5 mL/s z=9.0 cm: v=1.37 m/s d=2.2 mm Re=2973 We=68 p_st=712 Pa M=5.2 mN Fr0=26.7 z_m=7.1 cm z_m/H=1.57 T_f=0.56 s
+
+=== 2. bubbles and Kynch delay
+R32=35 um: v_St=2.68 mm/s (mu=1.0); 4.13 (mu=0.65); 1.79 (mu=1.5)
+R32=45 um: v_St=4.44 mm/s (mu=1.0); 6.83 (mu=0.65); 2.96 (mu=1.5)
+R32=50 um: v_St=5.48 mm/s (mu=1.0); 8.43 (mu=0.65); 3.65 (mu=1.5)
+R32=60 um: v_St=7.89 mm/s (mu=1.0); 12.13 (mu=0.65); 5.26 (mu=1.5)
+R32=35 um P_s=1.0: phi_N=0.100 v_b=1.64 mm/s j=0.164 mm/s Kynch shock 0.30 mm/s t_K=0.99 s t_r=0.39-0.79 s -> t_w=1.38-1.77 s
+R32=35 um P_s=0.6: phi_N=0.060 v_b=2.01 mm/s j=0.121 mm/s Kynch shock 0.21 mm/s t_K=1.44 s t_r=0.39-0.79 s -> t_w=1.84-2.23 s
+R32=45 um P_s=1.0: phi_N=0.100 v_b=2.72 mm/s j=0.272 mm/s Kynch shock 0.50 mm/s t_K=0.60 s t_r=0.39-0.79 s -> t_w=0.99-1.39 s
+R32=45 um P_s=0.6: phi_N=0.060 v_b=3.33 mm/s j=0.200 mm/s Kynch shock 0.34 mm/s t_K=0.87 s t_r=0.39-0.79 s -> t_w=1.27-1.66 s
+R32=60 um P_s=1.0: phi_N=0.100 v_b=4.83 mm/s j=0.483 mm/s Kynch shock 0.89 mm/s t_K=0.34 s t_r=0.39-0.79 s -> t_w=0.73-1.12 s
+R32=60 um P_s=0.6: phi_N=0.060 v_b=5.92 mm/s j=0.355 mm/s Kynch shock 0.61 mm/s t_K=0.49 s t_r=0.39-0.79 s -> t_w=0.89-1.28 s
+cut stream (P_s 0.3, S 4): phi_N=0.015 t_K=3.0 s, t_r=0.75-1.50 s
+
+=== 3. raft (membrane / SSA regime)
+rho_f=302 kg/m3, g'=6.87 m/s2, rho_f g' = 2070 N/m3; emergent fraction 0.70
+tau_y=1.0 Pa: h_m plane=1.93 mm axisym=1.67 mm; margin s_c=1.0 mN/m
+tau_y=2.0 Pa: h_m plane=3.86 mm axisym=3.35 mm; margin s_c=3.9 mN/m
+tau_y=3.0 Pa: h_m plane=5.80 mm axisym=5.02 mm; margin s_c=8.7 mN/m
+tau_y=4.0 Pa: h_m plane=7.73 mm axisym=6.69 mm; margin s_c=15.5 mN/m
+central h_m (axisym) = 3.35 mm
+compressive capacity of a raft h=3 mm, tau_y=2: 2 tau_y h + N = 21 mN/m
+compressive capacity of a raft h=4 mm, tau_y=2: 2 tau_y h + N = 33 mN/m
+free gravity current sqrt(g' h) at h=3.4 mm: 0.153 m/s = 1.9 D/s
+physics_prior lubrication h_stop sqrt(2 tau R/(drho g)) R=2cm tau=2: 3.4 mm
+Rayleigh layer t=0.3s: delta=0.97 mm zeta=mu/delta=1.03 Pa s/m
+Rayleigh layer t=1.0s: delta=1.77 mm zeta=mu/delta=0.57 Pa s/m
+Rayleigh layer t=3.0s: delta=3.06 mm zeta=mu/delta=0.33 Pa s/m
+drag Bingham number zeta dU L/(2 tau h) (dU 5 mm/s, L 3 cm) = 0.006
+low: stagnation p=157 Pa; footprint line force p*h=526 mN/m vs yield 2 tau h=13 mN/m; submergence resistance drho g h=23 Pa
+cut: stagnation p=564 Pa; footprint line force p*h=1887 mN/m vs yield 2 tau h=13 mN/m; submergence resistance drho g h=23 Pa
+
+=== 4. canvas film
+E=5 mN/m: D_Pi=E/zeta=0.009 m2/s, t_Pi=L^2 zeta/E=0.181 s (L=4cm, zeta=0.57)
+E=10 mN/m: D_Pi=E/zeta=0.018 m2/s, t_Pi=L^2 zeta/E=0.090 s (L=4cm, zeta=0.57)
+E=30 mN/m: D_Pi=E/zeta=0.053 m2/s, t_Pi=L^2 zeta/E=0.030 s (L=4cm, zeta=0.57)
+E=60 mN/m: D_Pi=E/zeta=0.106 m2/s, t_Pi=L^2 zeta/E=0.015 s (L=4cm, zeta=0.57)
+isobaric strain perturbation to resist 5 mm/s underflow over 4 cm with E=30 mN/m: 0.38 %
+
+=== 5. near-field area fluxes
+low: laminar capture flux 8 pi nu = 0.25 cm2/s; turbulent bound 2 pi alpha r0 v = 8.8 cm2/s
+cut: laminar capture flux 8 pi nu = 0.25 cm2/s; turbulent bound 2 pi alpha r0 v = 5.4 cm2/s
+PE mobile-surface source Q/H: low 3.33 cm2/s, cut 0.67 cm2/s
+trail width F_c/V_p, V_p=0.30 D/s, F_c=0.25 cm2/s: 1.04 mm = 0.0130 D
+trail width F_c/V_p, V_p=0.30 D/s, F_c=0.35 cm2/s: 1.46 mm = 0.0182 D
+trail width F_c/V_p, V_p=0.30 D/s, F_c=0.50 cm2/s: 2.08 mm = 0.0260 D
+trail width F_c/V_p, V_p=0.45 D/s, F_c=0.25 cm2/s: 0.69 mm = 0.0087 D
+trail width F_c/V_p, V_p=0.45 D/s, F_c=0.35 cm2/s: 0.97 mm = 0.0122 D
+trail width F_c/V_p, V_p=0.45 D/s, F_c=0.50 cm2/s: 1.39 mm = 0.0174 D
+trail width F_c/V_p, V_p=0.60 D/s, F_c=0.25 cm2/s: 0.52 mm = 0.0065 D
+trail width F_c/V_p, V_p=0.60 D/s, F_c=0.35 cm2/s: 0.73 mm = 0.0091 D
+trail width F_c/V_p, V_p=0.60 D/s, F_c=0.50 cm2/s: 1.04 mm = 0.0130 D
+cut: Pi_coh=200 Pa We_coh=2.82; dispersed slot 2 r_fp sqrt(ln We) (r_fp=d/2) = 1.80 mm; low pour We_coh=0.79
+cut: Pi_coh=300 Pa We_coh=1.88; dispersed slot 2 r_fp sqrt(ln We) (r_fp=d/2) = 1.40 mm; low pour We_coh=0.52
+cut: Pi_coh=400 Pa We_coh=1.41; dispersed slot 2 r_fp sqrt(ln We) (r_fp=d/2) = 1.04 mm; low pour We_coh=0.39
+
+=== 6. delay-free pre-white displacement (film regime, area sources only)
+PE mobile limit Q/H (Q15,H4.5): area source 3.33 cm2/s for 1.3 s -> 0.10D:0.095  0.15D:0.077  0.20D:0.063  0.25D:0.053  0.30D:0.045  0.40D:0.032  0.55D:0.018
+film regime stationary jet F_net<=0.1: area source 0.10 cm2/s for 1.3 s -> 0.10D:0.004  0.15D:0.003  0.20D:0.002  0.25D:0.002  0.30D:0.001  0.40D:0.001  0.55D:0.001
+film regime F_net=0.3: area source 0.30 cm2/s for 1.3 s -> 0.10D:0.011  0.15D:0.008  0.20D:0.006  0.25D:0.005  0.30D:0.004  0.40D:0.003  0.55D:0.002
+film regime moving jet F_up=1.0: area source 1.00 cm2/s for 1.4 s -> 0.10D:0.037  0.15D:0.028  0.20D:0.022  0.25D:0.018  0.30D:0.015  0.40D:0.011  0.55D:0.006
+after white: raft growth 2.6 cm2/s, per second: area source 2.60 cm2/s for 1.0 s -> 0.10D:0.063  0.15D:0.049  0.20D:0.040  0.25D:0.033  0.30D:0.028  0.40D:0.020  0.55D:0.011
+after white: raft growth 2.6 cm2/s, 2 s stage: area source 2.60 cm2/s for 2.0 s -> 0.10D:0.110  0.15D:0.090  0.20D:0.074  0.25D:0.063  0.30D:0.053  0.40D:0.038  0.55D:0.021
+after white: raft growth 3.8 cm2/s, per second: area source 3.80 cm2/s for 1.0 s -> 0.10D:0.086  0.15D:0.069  0.20D:0.056  0.25D:0.047  0.30D:0.040  0.40D:0.028  0.55D:0.016
+after white: raft growth 3.8 cm2/s, 2 s stage: area source 3.80 cm2/s for 2.0 s -> 0.10D:0.146  0.15D:0.121  0.20D:0.103  0.25D:0.087  0.30D:0.075  0.40D:0.054  0.55D:0.031
+
+=== 7. white growth (supply limited)
+Q=10 F_white=0.1: dA/dt=1.07 cm2/s
+Q=10 F_white=0.2: dA/dt=2.13 cm2/s
+Q=10 F_white=0.3: dA/dt=3.20 cm2/s
+Q=15 F_white=0.1: dA/dt=1.60 cm2/s
+Q=15 F_white=0.2: dA/dt=3.20 cm2/s
+Q=15 F_white=0.3: dA/dt=4.80 cm2/s
+Q=20 F_white=0.1: dA/dt=2.13 cm2/s
+Q=20 F_white=0.2: dA/dt=4.27 cm2/s
+Q=20 F_white=0.3: dA/dt=6.40 cm2/s
+F_white required for 3.8 cm2/s at Q=15: 0.24
+Hazen R32=45 r_N=2.0cm: V_h=2.72 mm/s Hz=0.091 f_loc(CSTR)=0.083
+Hazen R32=45 r_N=2.5cm: V_h=2.72 mm/s Hz=0.142 f_loc(CSTR)=0.125
+Hazen R32=60 r_N=2.0cm: V_h=4.83 mm/s Hz=0.162 f_loc(CSTR)=0.139
+Hazen R32=60 r_N=2.5cm: V_h=4.83 mm/s Hz=0.253 f_loc(CSTR)=0.202
+heart: area 4.5 -> 21.2 cm2 over 4.4 s: 3.80 cm2/s
+edge speed at R=0.09 D with 3.8 cm2/s: 0.105 D/s
+edge speed at R=0.15 D with 3.8 cm2/s: 0.063 D/s
+edge speed at R=0.25 D with 3.8 cm2/s: 0.038 D/s
+
+=== 8. stripes
+lateral spout speed 4af = 8.8 cm/s
+brown line F_c/(4af) F_c=0.25: 0.28 mm = 0.0036 D
+brown line F_c/(4af) F_c=0.50: 0.57 mm = 0.0071 D
+brown line F_c/(4af) F_c=1.00: 1.14 mm = 0.0142 D
+brown line F_c/(4af) F_c=1.50: 1.70 mm = 0.0213 D
+dA/dt=2.6 L_s=3cm: U_rel=0.87 cm/s=0.108 D/s; pitch/half-cycle 0.0197 D; per period 0.0394 D; with retreat 0.16 D/s: half 0.0488 D
+dA/dt=2.6 L_s=4cm: U_rel=0.65 cm/s=0.081 D/s; pitch/half-cycle 0.0148 D; per period 0.0295 D; with retreat 0.16 D/s: half 0.0439 D
+dA/dt=3.8 L_s=3cm: U_rel=1.27 cm/s=0.158 D/s; pitch/half-cycle 0.0288 D; per period 0.0576 D; with retreat 0.16 D/s: half 0.0579 D
+dA/dt=3.8 L_s=4cm: U_rel=0.95 cm/s=0.119 D/s; pitch/half-cycle 0.0216 D; per period 0.0432 D; with retreat 0.16 D/s: half 0.0507 D
+video layered stack growth 0.35 D/2.9 s = 0.121 D/s
+arc width per half cycle (all area into arcs) L_s=3: 0.0288 D
+arc width per half cycle (all area into arcs) L_s=4: 0.0216 D
+stripe self-support needs tau_y >= rho_f g' h/4 = 1.04 Pa (h=2 mm)
+stripe self-support needs tau_y >= rho_f g' h/4 = 1.55 Pa (h=3 mm)
+
+=== 9. neck / head
+neck F=0.1 Q=2 V_p=0.8cm/s: width 2.7 mm = 0.033 D
+neck F=0.1 Q=3 V_p=0.8cm/s: width 4.0 mm = 0.050 D
+neck F=0.1 Q=3 V_p=1.6cm/s: width 2.0 mm = 0.025 D
+neck F=0.15 Q=2 V_p=0.8cm/s: width 4.0 mm = 0.050 D
+neck F=0.15 Q=3 V_p=0.8cm/s: width 6.0 mm = 0.075 D
+neck F=0.15 Q=3 V_p=1.6cm/s: width 3.0 mm = 0.038 D
+neck F=0.25 Q=2 V_p=0.8cm/s: width 6.7 mm = 0.083 D
+neck F=0.25 Q=3 V_p=0.8cm/s: width 10.0 mm = 0.125 D
+neck F=0.25 Q=3 V_p=1.6cm/s: width 5.0 mm = 0.063 D
+head F=0.14 t=0.5s: area 1.12 cm2 diameter 0.15 D
+head F=0.14 t=1.0s: area 2.24 cm2 diameter 0.21 D
+head F=0.25 t=0.5s: area 2.00 cm2 diameter 0.20 D
+head F=0.25 t=1.0s: area 4.00 cm2 diameter 0.28 D
+
+=== 10. level, taper, tilt
+Q=10: level rise rate (1-phi_j)Q/A = 1.49 mm/s
+Q=15: level rise rate (1-phi_j)Q/A = 2.24 mm/s
+Q=20: level rise rate (1-phi_j)Q/A = 2.98 mm/s
+pour 50 mL: dH=0.75 cm; taper 5 deg: dR=0.65 mm, area +3.3 %
+pour 50 mL: dH=0.75 cm; taper 10 deg: dR=1.32 mm, area +6.7 %
+pour 100 mL: dH=1.49 cm; taper 5 deg: dR=1.31 mm, area +6.6 %
+pour 100 mL: dH=1.49 cm; taper 10 deg: dR=2.63 mm, area +13.6 %
+tilt 15 deg: mobile-limit drift 0.72 R tan coth(kH) = 0.100 D; PB coefficient 0.86 -> 0.119 D; film-limit affine shortening 1-cos = 3.4 %; low-side extra depth R sin = 1.04 cm
+tilt 20 deg: mobile-limit drift 0.72 R tan coth(kH) = 0.135 D; PB coefficient 0.86 -> 0.162 D; film-limit affine shortening 1-cos = 6.0 %; low-side extra depth R sin = 1.37 cm
+tilt 25 deg: mobile-limit drift 0.72 R tan coth(kH) = 0.173 D; PB coefficient 0.86 -> 0.207 D; film-limit affine shortening 1-cos = 9.4 %; low-side extra depth R sin = 1.69 cm
+sloshing period 2pi/sqrt(g k tanh kH) = 0.30 s; kH=2.07
+
+=== 11. canvas strain budget over a pattern
+white fraction 0.23, taper area gain 0.0: canvas areal strain ~0.23; E*eps (E=30) = 6.9 mN/m
+white fraction 0.23, taper area gain 0.09: canvas areal strain ~0.14; E*eps (E=30) = 4.2 mN/m
+white fraction 0.42, taper area gain 0.0: canvas areal strain ~0.42; E*eps (E=30) = 12.6 mN/m
+white fraction 0.42, taper area gain 0.09: canvas areal strain ~0.33; E*eps (E=30) = 9.9 mN/m
+
+=== 12. gaps
+gap w0=0.15 D, canvas strain 0.2, arc stretch x1.5: w = 0.080 D
+gap w0=0.12 D, canvas strain 0.3, arc stretch x1.3: w = 0.065 D
+gap w0=0.15 D, canvas strain 0.1, arc stretch x1.0: w = 0.135 D
+
+=== 13. resolution / time step
+N=256: dx=0.312 mm; 0.01 D line = 2.6 cells; cut d=1.8mm = 5.8 cells; dt<=dx/|x_dot|: wiggle 3.55 ms, cut 0.6D/s 6.51 ms
+N=384: dx=0.208 mm; 0.01 D line = 3.8 cells; cut d=1.8mm = 8.6 cells; dt<=dx/|x_dot|: wiggle 2.37 ms, cut 0.6D/s 4.34 ms
+N=512: dx=0.156 mm; 0.01 D line = 5.1 cells; cut d=1.8mm = 11.5 cells; dt<=dx/|x_dot|: wiggle 1.78 ms, cut 0.6D/s 3.26 ms
+U_N at r=5 mm (Q_r 37.5 mL/s, g_N 1 cm) = 11.9 cm/s; at 1 cm 6.0; at 2 cm 3.0 cm/s
+
+=== 14. post-stop growth and crescent area loss
+gas in near-field reservoir at stop ~ phi_j Q * 0.6 s * 0.5 = 1.12 mL; if 0.3 floats locally: area 1.44 cm2
+block area 5.47 cm2; plowed channel 6 mm x 12 mm = 0.72 cm2 = 13 %
+block area 5.47 cm2; plowed channel 10 mm x 12 mm = 1.20 cm2 = 22 %
+
+=== 15. Marangoni closure of fresh slots
+slot w0=1.8 mm closure Gamma_fresh/Gamma=0.2: 0.36 mm = 0.0045 D
+slot w0=3.6 mm closure Gamma_fresh/Gamma=0.2: 0.72 mm = 0.0090 D
+slot w0=1.8 mm closure Gamma_fresh/Gamma=0.5: 0.90 mm = 0.0112 D
+slot w0=3.6 mm closure Gamma_fresh/Gamma=0.5: 1.80 mm = 0.0225 D
