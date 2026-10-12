@@ -460,3 +460,28 @@ if __name__ == "__main__":
         out = selftest(args or VE.PATTERNS, N)
         os.makedirs(os.path.join(HERE, "runs", "calib"), exist_ok=True)
         json.dump(out, open(os.path.join(HERE, "runs", "calib", f"selftest_N{N}.json"), "w"), indent=1)
+
+
+# =========================================================================== figures
+def contact_sheet(clip, wT, path, n=10, title=""):
+    """Video whiteness (top) vs model whiteness through the same operator (bottom), T frame, invalid pixels red."""
+    import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
+    res = clip["res"]
+    t = res["t"]
+    disk = res["disk"].astype(bool)
+    idx = np.unique(np.linspace(0, len(t) - 1, n).round().astype(int))
+    fig, axes = plt.subplots(2, len(idx), figsize=(1.9 * len(idx), 4.2), dpi=100, squeeze=False)
+    for col, j in enumerate(idx):
+        for row, w in enumerate((res["white"][j].astype(float), wT[j].astype(float))):
+            img = np.stack([w, w, w], -1) * 0.85 + 0.08
+            img[~res["valid"][j]] = [0.7, 0.3, 0.3]
+            img[~disk] = 1.0
+            ax = axes[row, col]
+            ax.imshow(img, origin="lower")
+            ax.axis("off")
+            if row == 0:
+                ax.set_title(f"{t[j]:.1f}s" + ("" if clip["shape_ok"][j] else " (q0)"), fontsize=7)
+    fig.suptitle(f"{clip['name']}: video (top) / model (bottom), physical time; {title}", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
