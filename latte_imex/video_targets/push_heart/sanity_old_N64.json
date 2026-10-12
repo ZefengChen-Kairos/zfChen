@@ -1,0 +1,175 @@
+{
+ "what": "sanity run of latte_imex/stage_scripts/push_heart.json -> video_extract.stages_to_moves -> pitcher.BaristaScript -> OLD solver (action_opt physics9, model 'old', physical footprint), N=64; not a model test",
+ "sim_T_s": 15.7,
+ "wall_s": 148,
+ "finite": true,
+ "V_end_mL": 73,
+ "per_stage": [
+  {
+   "kind": "low_pour",
+   "t0": 0.0,
+   "t1": 1.8,
+   "impact_err_mean_D": 0.0098,
+   "impact_err_max_D": 0.0573,
+   "Q_mean_mLs": 10.42,
+   "Q_want_mLs": 14.25
+  },
+  {
+   "kind": "low_pour",
+   "t0": 1.8,
+   "t1": 2.3,
+   "impact_err_mean_D": 0.0085,
+   "impact_err_max_D": 0.0125,
+   "Q_mean_mLs": 13.1,
+   "Q_want_mLs": 15.0
+  },
+  {
+   "kind": "low_pour",
+   "t0": 2.3,
+   "t1": 3.5,
+   "impact_err_mean_D": 0.0041,
+   "impact_err_max_D": 0.0069,
+   "Q_mean_mLs": 13.2,
+   "Q_want_mLs": 15.0
+  },
+  {
+   "kind": "low_pour",
+   "t0": 3.5,
+   "t1": 4.45,
+   "impact_err_mean_D": 0.0044,
+   "impact_err_max_D": 0.0063,
+   "Q_mean_mLs": 13.66,
+   "Q_want_mLs": 15.0
+  },
+  {
+   "kind": "lift",
+   "t0": 4.45,
+   "t1": 4.9,
+   "impact_err_mean_D": 0.0143,
+   "impact_err_max_D": 0.0587,
+   "Q_mean_mLs": 8.08,
+   "Q_want_mLs": 4.5
+  },
+  {
+   "kind": "reposition",
+   "t0": 4.9,
+   "t1": 5.65,
+   "impact_err_mean_D": 0.037,
+   "impact_err_max_D": 0.0499,
+   "Q_mean_mLs": 0.25,
+   "Q_want_mLs": 0.0
+  },
+  {
+   "kind": "low_pour",
+   "t0": 5.65,
+   "t1": 6.75,
+   "impact_err_mean_D": 0.0109,
+   "impact_err_max_D": 0.0338,
+   "Q_mean_mLs": 14.84,
+   "Q_want_mLs": 18.0
+  },
+  {
+   "kind": "push",
+   "t0": 6.75,
+   "t1": 7.35,
+   "impact_err_mean_D": 0.0076,
+   "impact_err_max_D": 0.0106,
+   "Q_mean_mLs": 19.37,
+   "Q_want_mLs": 21.75
+  },
+  {
+   "kind": "push",
+   "t0": 7.35,
+   "t1": 8.05,
+   "impact_err_mean_D": 0.0047,
+   "impact_err_max_D": 0.0056,
+   "Q_mean_mLs": 20.33,
+   "Q_want_mLs": 22.5
+  },
+  {
+   "kind": "lift",
+   "t0": 8.05,
+   "t1": 8.33,
+   "impact_err_mean_D": 0.0151,
+   "impact_err_max_D": 0.0575,
+   "Q_mean_mLs": 12.44,
+   "Q_want_mLs": 4.5
+  },
+  {
+   "kind": "reposition",
+   "t0": 8.33,
+   "t1": 9.07,
+   "impact_err_mean_D": 0.0321,
+   "impact_err_max_D": 0.0697,
+   "Q_mean_mLs": 0.6,
+   "Q_want_mLs": 0.0
+  },
+  {
+   "kind": "low_pour",
+   "t0": 9.07,
+   "t1": 9.6,
+   "impact_err_mean_D": 0.0108,
+   "impact_err_max_D": 0.0214,
+   "Q_mean_mLs": 9.56,
+   "Q_want_mLs": 17.25
+  },
+  {
+   "kind": "low_pour",
+   "t0": 9.6,
+   "t1": 11.85,
+   "impact_err_mean_D": 0.0024,
+   "impact_err_max_D": 0.0176,
+   "Q_mean_mLs": 19.19,
+   "Q_want_mLs": 21.0
+  },
+  {
+   "kind": "push",
+   "t0": 11.85,
+   "t1": 12.4,
+   "impact_err_mean_D": 0.016,
+   "impact_err_max_D": 0.0251,
+   "Q_mean_mLs": 19.79,
+   "Q_want_mLs": 21.0
+  },
+  {
+   "kind": "push",
+   "t0": 12.4,
+   "t1": 12.75,
+   "impact_err_mean_D": 0.0096,
+   "impact_err_max_D": 0.0113,
+   "Q_mean_mLs": 17.96,
+   "Q_want_mLs": 18.0
+  },
+  {
+   "kind": "high_cut",
+   "t0": 12.75,
+   "t1": 13.1,
+   "impact_err_mean_D": 0.0186,
+   "impact_err_max_D": 0.0303,
+   "Q_mean_mLs": 11.3,
+   "Q_want_mLs": 7.5
+  },
+  {
+   "kind": "high_cut",
+   "t0": 13.1,
+   "t1": 13.4,
+   "impact_err_mean_D": 0.0455,
+   "impact_err_max_D": 0.0764,
+   "Q_mean_mLs": 5.72,
+   "Q_want_mLs": 3.38
+  },
+  {
+   "kind": "stop",
+   "t0": 13.4,
+   "t1": 13.7,
+   "impact_err_mean_D": 0.0274,
+   "impact_err_max_D": 0.0496,
+   "Q_mean_mLs": 3.91,
+   "Q_want_mLs": 0.0
+  }
+ ],
+ "final_white_frac_sim": 0.424,
+ "final_white_frac_target": 0.248,
+ "iou_sim_T_vs_target": 0.374,
+ "figure": "sanity_old_N64.png (left: M-frame intended path vs solver inlet x_hit; right: frames.npz white vs solver snapshot, both in the T frame)"
+}

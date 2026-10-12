@@ -1,0 +1,508 @@
+{
+ "name": "leaf",
+ "frame": "M",
+ "Q_ref": 1.5e-05,
+ "t_clip0": 0.0,
+ "barista_yaw_rad": 1.5708,
+ "frame_note": "ORIENTATION: this script is in the M frame of video_extract / frames.npz / targets/leaf.npz, i.e. (x, y)_M = (x, -y)_T with targets.FRAMES['leaf']['rot'] = +45 deg.  For the leaf that rotation puts the B side (spout / pitcher, where the pour starts and the leaf's heart-shaped head ends up) at -y_M (= +y_T) and the D side (broad base, cut exit) at +y_M, i.e. 180 deg from the convention used by the other five clips (B at +y_M, V0.5 pours at +y).  Positions here therefore start at -y and the cut runs toward +y.  Run the moves with the pitcher on the -y side: pitcher.BaristaScript(..., yaw=+pi/2) (spout pointing +y) -- with the default yaw=-pi/2 the jet's horizontal momentum and footprint point the wrong way (toward the B rim).  Alternative: rotate every p0/p1/bezier point by 180 deg ((x, y) -> (-x, -y)), keep yaw=-pi/2, and compare the solver field as c_M[:, ::-1] (instead of c_M[::-1, :]) with frames.npz / targets/leaf.npz.",
+ "clip": "ref/reference_leaf.mp4 (480x640, 15 fps, 17.0 s; refclips/leaf.mp4 absent); clip starts mid-pour; reference frame (targets/leaf.npz) 12.2 s; outro from 14.9 s",
+ "method": "Stream foot = lowest image point of the milk column, picked by eye on native-resolution 2-4x crops with pixel ticks (tiles/pixcrop.py, footpick.py; picks in tiles/picks.txt, +-5 px) and mapped to the M frame with video_extract.image_to_cup.  t >= 4.65 s: the extractor's 15 fps ellipse track (quality 2).  t < 4.65 s (cup tilted toward the pitcher, track quality 0): the extractor's propagated ellipse covers the far inner wall (centre 35-45 px too high), so a hand-fitted liquid-surface ellipse is used instead (far edge of the crema against the far wall, left/right extremes, near edge from 2.7 s; phi fixed to the level value; tiles/_common.py TILT_KEYS, check sheets tiles/ellc_*.png, rectM_tilt.png); positions there are +-0.05 D.  Wiggle frequency and amplitude from the column's lateral image position at a row just above the foot (tiles/colwiggle.py, spectrum + zero crossings; image-horizontal amplitude / 16.6 px per 0.1 D of x_M).  Heights from the visible vertical drop lip -> foot (camera elevation asin(b/a) = 35-51 deg, 29-32 px/cm), flows from the column width ~15-20 px above the foot and v = sqrt(v0^2 + 2 g z); both +-50 %.",
+ "tilt_ellipses_px": {
+  "keys": [
+   [
+    0.0,
+    231.0,
+    302.0,
+    116.0,
+    65.0,
+    -3.02
+   ],
+   [
+    1.53,
+    231.0,
+    302.0,
+    116.0,
+    65.0,
+    -3.02
+   ],
+   [
+    2.0,
+    237.0,
+    310.0,
+    117.0,
+    66.0,
+    -3.02
+   ],
+   [
+    2.67,
+    227.0,
+    308.0,
+    116.0,
+    67.0,
+    -3.02
+   ],
+   [
+    3.33,
+    217.0,
+    309.0,
+    116.0,
+    70.0,
+    -3.02
+   ],
+   [
+    4.0,
+    210.0,
+    308.0,
+    116.0,
+    75.0,
+    -3.02
+   ],
+   [
+    4.67,
+    203.2,
+    312.05,
+    116.06,
+    81.71,
+    -3.02
+   ]
+  ],
+  "format": "t [s], cx, cy, a, b [px], phi [rad] (targets.py convention); linear interpolation; extractor track from 4.65 s"
+ },
+ "landmarks_M": {
+  "B": [
+   0.08,
+   -0.18
+  ],
+  "C": [
+   0.02,
+   0.05
+  ],
+  "D": [
+   -0.04,
+   0.3
+  ],
+  "note": "instructor's red dots in the frozen overlay frames 1-23 (0.07-1.53 s), mapped with the t=0 hand-fitted tilt ellipse (+-0.06 D); the dots are schematic (D is drawn on the near rim, outside the visible liquid).  B->D points along +y_M (14 deg off).  The dashed white line shown live at 3.4-4.4 s (形成半圆形后向前摆动两下) runs along x_M (-178 deg): it is the wiggle axis, perpendicular to B->D."
+ },
+ "freeze_note": "The format is clip time, so the freeze is kept as an explicit stage (\"freeze\": true) that continues the action at the frozen state; with sim time = clip time the simulation pours ~1.4 s longer at B than the barista did.  For physical timing use stage_scripts/leaf_physical.json (written with video_targets/tulip/freeze_tools.drop_freezes; compare with frames.npz at phys_to_clip(t)).  No other freeze in this clip (live frame differences 2-16 everywhere else, including the dashed-line overlay at 3.4-4.4 s).",
+ "timing_vs_video_obs": "0-1.53 s is a freeze-frame, not 1.6 s of pouring: the first white (a pale disc ~0.05 D at the foot) appears at 1.80 s clip time, i.e. ~0.27 s of real time after the first frame; the pour started before the clip, so no delay can be measured.  The wiggle starts at ~2.1 s clip (~0.6 s real), not 0.8 s.  No net forward displacement during 形成半圆形后向前摆动两下 (3.0-5.3 s): the foot stays at (-0.01+-0.04, -0.03+-0.02).  The retreat runs 5.33-7.40 s (0.38 D, 0.18 D/s, faster in the first 0.9 s), the spout then sits at the B rim without wiggling 7.4-8.8 s.  There is no separate lift-in-place and later cut: from 8.8 s the spout rises (vertical drop ~1 cm at 8.8 s, ~4 cm at 9.8 s, ~6-7 cm from 10.4 s) while the thinning stream already travels toward D, through the centre at 10.35 s, and stops at (0.06, +0.30) at 11.55 s; the heart-shaped head forms at the B end 8.8-10.0 s.",
+ "first_white_by_eye": {
+  "pour1": 1.8,
+  "physical_after_clip_start": 0.27,
+  "note": "onset before the clip start (stream already established in frame 0); clip-time first white is inflated by the 0.07-1.53 s freeze"
+ },
+ "foot_measurements_M": {
+  "0.00": [
+   0.025,
+   -0.102
+  ],
+  "0.14": [
+   0.007,
+   -0.076
+  ],
+  "0.21": [
+   0.006,
+   -0.052
+  ],
+  "0.54": [
+   0.01,
+   -0.026
+  ],
+  "0.87": [
+   0.016,
+   -0.03
+  ],
+  "1.21": [
+   0.014,
+   -0.018
+  ],
+  "1.54": [
+   0.025,
+   -0.021
+  ],
+  "1.87": [
+   0.026,
+   -0.051
+  ],
+  "2.21": [
+   0.046,
+   -0.048
+  ],
+  "2.41": [
+   -0.053,
+   -0.009
+  ],
+  "2.54": [
+   -0.027,
+   -0.028
+  ],
+  "2.67": [
+   -0.071,
+   -0.032
+  ],
+  "2.81": [
+   -0.031,
+   -0.029
+  ],
+  "2.94": [
+   -0.023,
+   -0.026
+  ],
+  "3.21": [
+   0.011,
+   -0.048
+  ],
+  "3.54": [
+   -0.033,
+   -0.021
+  ],
+  "3.87": [
+   -0.041,
+   -0.043
+  ],
+  "4.21": [
+   0.002,
+   -0.11
+  ],
+  "4.47": [
+   0.023,
+   -0.185
+  ],
+  "4.74": [
+   0.02,
+   -0.242
+  ],
+  "4.94": [
+   -0.02,
+   -0.252
+  ],
+  "5.14": [
+   -0.085,
+   -0.298
+  ],
+  "5.34": [
+   -0.019,
+   -0.353
+  ],
+  "5.54": [
+   -0.03,
+   -0.369
+  ],
+  "5.74": [
+   -0.07,
+   -0.381
+  ],
+  "5.94": [
+   -0.032,
+   -0.424
+  ],
+  "6.14": [
+   -0.054,
+   -0.402
+  ],
+  "6.34": [
+   -0.056,
+   -0.4
+  ],
+  "6.54": [
+   -0.076,
+   -0.372
+  ],
+  "6.74": [
+   -0.056,
+   -0.407
+  ],
+  "6.94": [
+   -0.043,
+   -0.42
+  ],
+  "7.14": [
+   -0.037,
+   -0.433
+  ],
+  "7.34": [
+   -0.058,
+   -0.391
+  ],
+  "7.54": [
+   -0.028,
+   -0.387
+  ],
+  "7.74": [
+   -0.018,
+   -0.357
+  ],
+  "7.94": [
+   -0.015,
+   -0.304
+  ],
+  "8.14": [
+   0.009,
+   -0.257
+  ],
+  "8.34": [
+   0.023,
+   -0.187
+  ],
+  "8.54": [
+   0.027,
+   -0.107
+  ],
+  "8.74": [
+   0.036,
+   -0.05
+  ],
+  "8.94": [
+   0.048,
+   0.029
+  ],
+  "9.14": [
+   0.067,
+   0.087
+  ],
+  "9.34": [
+   0.087,
+   0.12
+  ],
+  "9.54": [
+   0.066,
+   0.189
+  ],
+  "9.67": [
+   0.059,
+   0.236
+  ],
+  "9.81": [
+   0.077,
+   0.26
+  ],
+  "9.94": [
+   0.056,
+   0.284
+  ],
+  "10.01": [
+   0.055,
+   0.295
+  ],
+  "10.07": [
+   0.064,
+   0.301
+  ]
+ },
+ "stages": [
+  {
+   "t0": 0.0,
+   "t1": 0.07,
+   "kind": "low_pour",
+   "p0": [
+    0.02,
+    -0.1
+   ],
+   "p1": [
+    0.01,
+    -0.08
+   ],
+   "z0": 0.02,
+   "z1": 0.02,
+   "flow0": 1.0,
+   "flow1": 1.0,
+   "wiggle": null,
+   "confidence": 0.15,
+   "physical_s": 0.07,
+   "note": "(freeze 0.0-1.53 s clip time shortened to its physical 0.07 s) 在b点注入流量: FREEZE-FRAME (frames 1-23 = frame 0 + B/C/D overlay), ~0.07 s of real time.  Stream already established at frame 0 (onset before the clip), lands next to the B dot; cup tilted ~20 deg toward the pitcher, surface still all brown; drop lip->foot ~2.3 cm.  Kept as a continuation so that sim time = clip time; drop it for physical timing (stage_scripts/leaf_physical.json)."
+  },
+  {
+   "t0": 0.07,
+   "t1": 0.64,
+   "kind": "low_pour",
+   "p0": [
+    0.01,
+    -0.08
+   ],
+   "p1": [
+    0.01,
+    -0.03
+   ],
+   "z0": 0.02,
+   "z1": 0.02,
+   "flow0": 1.0,
+   "flow1": 1.0,
+   "wiggle": null,
+   "confidence": 0.3,
+   "note": "cup being righted (b/a of the liquid ellipse 0.56 -> 0.65 over 1.5-4 s); column steady (no lateral oscillation until ~2.1 s); the foot drifts ~0.05 D toward C in surface coordinates while the stream stays fixed in the image (feet 1.60 (0.01,-0.08), 1.67 (0.01,-0.05), 2.00 (0.01,-0.03)); first white at the foot at 1.80 s (pale disc, then a C open toward the spout by 2.0 s); column ~0.4 cm wide",
+   "t_clip": [
+    1.53,
+    2.1
+   ]
+  },
+  {
+   "t0": 0.64,
+   "t1": 3.87,
+   "kind": "wiggle",
+   "p0": [
+    0.01,
+    -0.03
+   ],
+   "p1": [
+    -0.04,
+    -0.04
+   ],
+   "z0": 0.02,
+   "z1": 0.017,
+   "flow0": 1.0,
+   "flow1": 1.0,
+   "wiggle": {
+    "amp": 0.035,
+    "amp1": 0.06,
+    "freq": 3.2,
+    "axis": "x"
+   },
+   "confidence": 0.35,
+   "note": "保持流量开始摆动纹路 / 形成半圆形后向前摆动两下: wiggle in place, column lateral oscillation 3.0-3.4 Hz (spectrum peaks 2.8-3.4 Hz, zero crossings 3.2-3.4 Hz), half-amplitude growing from ~6 px (0.04 D) at 2-3 s to ~10 px (0.06 D) at 3-5 s, axis = x_M (the instructor's dashed line at 3.4-4.4 s); arcs ~0.03 D apart, convex toward D (+y), concentric about the foot; the semicircle reaches ~0.45 D wide by 3.7 s and 0.8 D by 5.3 s; no net forward motion measurable (< 0.03 D); cup level from ~4.6 s (track quality 2 from 4.67 s)",
+   "t_clip": [
+    2.1,
+    5.33
+   ]
+  },
+  {
+   "t0": 3.87,
+   "t1": 4.74,
+   "kind": "retreat",
+   "p0": [
+    -0.04,
+    -0.04
+   ],
+   "p1": [
+    0.01,
+    -0.24
+   ],
+   "z0": 0.017,
+   "z1": 0.015,
+   "flow0": 1.0,
+   "flow1": 1.0,
+   "wiggle": {
+    "amp": 0.055,
+    "freq": 3.2,
+    "axis": "x"
+   },
+   "confidence": 0.45,
+   "note": "然后再快速的往后退: fast retreat toward B while wiggling (3.1-3.2 Hz, half-amplitude ~9 px = 0.055 D); feet 5.67 (0.00,-0.11), 5.93 (0.02,-0.19), 6.20 (0.02,-0.24): 0.23 D/s; one chevron per swing, deposited behind the moving foot",
+   "t_clip": [
+    5.33,
+    6.2
+   ]
+  },
+  {
+   "t0": 4.74,
+   "t1": 5.94,
+   "kind": "retreat",
+   "p0": [
+    0.01,
+    -0.24
+   ],
+   "p1": [
+    -0.04,
+    -0.41
+   ],
+   "z0": 0.015,
+   "z1": 0.012,
+   "flow0": 1.0,
+   "flow1": 1.0,
+   "wiggle": {
+    "amp": 0.055,
+    "freq": 3.2,
+    "axis": "x"
+   },
+   "confidence": 0.45,
+   "note": "retreat continues, slower (0.15 D/s): feet 6.40 (-0.02,-0.25), 6.60 (-0.09,-0.30), 6.80 (-0.02,-0.35), 7.00 (-0.03,-0.37), 7.20 (-0.07,-0.38), 7.40 (-0.03,-0.42); wiggle 3.0-3.4 Hz, ~9 px; the chevron band reaches the B rim; vertical drop ~1 cm (split from the previous stage only to reproduce the speed profile: the foot pauses briefly at 6.2-6.4 s)",
+   "t_clip": [
+    6.2,
+    7.4
+   ]
+  },
+  {
+   "t0": 5.94,
+   "t1": 7.34,
+   "kind": "low_pour",
+   "p0": [
+    -0.04,
+    -0.41
+   ],
+   "p1": [
+    -0.06,
+    -0.39
+   ],
+   "z0": 0.012,
+   "z1": 0.012,
+   "flow0": 1.0,
+   "flow1": 0.9,
+   "wiggle": null,
+   "confidence": 0.35,
+   "note": "退到杯子的边缘: spout at the B rim almost touching the surface (drop ~0.5-1 cm), no lateral oscillation (spectrum: no 3 Hz peak, drift only); feet (-0.04..-0.08, -0.37..-0.43); a short thick column feeds the tip end of the chevron stack",
+   "t_clip": [
+    7.4,
+    8.8
+   ]
+  },
+  {
+   "t0": 7.34,
+   "t1": 10.09,
+   "kind": "high_cut",
+   "p0": [
+    -0.06,
+    -0.39
+   ],
+   "p1": [
+    0.06,
+    0.3
+   ],
+   "z0": 0.012,
+   "z1": 0.07,
+   "flow0": 0.8,
+   "flow1": 0.25,
+   "wiggle": null,
+   "confidence": 0.5,
+   "note": "变小流量拉高收尾 + cut, one continuous motion: the spout rises (drop ~1 cm 8.8 s, 2 cm 9.4 s, 3.7 cm 9.8 s, 4.5 cm 10.0 s, 6 cm 10.4 s, 6.5-7 cm 10.8-11.1 s) while the thinning stream (column ~0.35 cm at 10.4-10.9 s, ~0.18 cm at 11.0-11.5 s) travels from the B rim through the centre (10.35 s) to (0.06, +0.30) and stops at ~11.55 s (the pitcher is pulled away up-left; no stream at 11.60 s).  Feet 9.00 (-0.03,-0.39), 9.40 (-0.02,-0.30), 9.80 (0.02,-0.19), 10.00 (0.03,-0.11), 10.40 (0.05,0.03), 10.80 (0.09,0.12), 11.13 (0.06,0.24), 11.53 (0.06,0.30): one cosine-eased stage reproduces them within 0.06 D (peak 0.39 D/s at 10.2 s).  The heart-shaped head forms at the B end 8.8-10.0 s; the cut leaves a ~0.01 D brown midrib, drags the chevrons into V's pointing to D and ends inside the base at y=+0.30 (no stem to the D rim).  z linear in e underestimates the drop by ~1 cm at 9.8-10.4 s.",
+   "t_clip": [
+    8.8,
+    11.55
+   ]
+  },
+  {
+   "t0": 10.09,
+   "t1": 10.74,
+   "kind": "stop",
+   "p0": [
+    0.06,
+    0.3
+   ],
+   "p1": [
+    0.45,
+    0.1
+   ],
+   "z0": 0.07,
+   "z1": 0.1,
+   "flow0": 0.0,
+   "flow1": 0.0,
+   "wiggle": null,
+   "confidence": 0.4,
+   "note": "pitcher pulled away sideways and up (lip moves image up-left = +x_M, slightly -y, out of view by 11.8 s); dry.  Kept explicit so that the simulated pitcher's residual stream (~0.5 s after the flow command drops) leaves sideways as in the video instead of trailing back over the leaf: the converter's appended 'move away' heads to -y (pitcher.away_point), which in this flipped frame is back across the pattern.",
+   "t_clip": [
+    11.55,
+    12.2
+   ]
+  }
+ ],
+ "time_base": "physical clip time: clip time with the freeze-frames removed (freezes shortened to physical_s); compare with frames.npz at freeze_tools.phys_to_clip(t)",
+ "freezes_removed": [
+  {
+   "t0": 0.07,
+   "t1": 1.53,
+   "physical_s": 0.07,
+   "physical_s_range": [
+    0.0,
+    0.13
+   ],
+   "evidence": "frames 1-23 are copies of frame 0 plus the B/C/D overlay (consecutive |diff| < 0.31 except the overlay animation at frames 10-11); frame 24 (1.60 s) differs from frame 0 by 5.1 (crop mean |diff|), the same as one live frame step (5.4), so about one frame (0.07 s) of real time is hidden behind the 1.47 s freeze"
+  }
+ ]
+}

@@ -1,0 +1,141 @@
+"""Writes stage_scripts/layered_heart.json (clip time) and video_targets/layered_heart/stages.json (copy), and the
+freeze-free variant video_targets/layered_heart/stages_realtime.json."""
+import json, copy, os
+R = "/home/user/zfChen/latte_imex"
+FREEZES = [[0.0667, 1.2, "frames 1-17 duplicate frame 0 (instructor B/C/D overlay)"],
+           [5.2667, 6.6, "frames 79-98 duplicate frame 78 (instructor dashed guide line)"]]
+S = []
+def st(t0, t1, kind, p0, p1, z0, z1, f0, f1, wig, conf, note):
+    S.append(dict(t0=t0, t1=t1, kind=kind, p0=p0, p1=p1, z0=z0, z1=z1, flow0=f0, flow1=f1, wiggle=wig,
+                  confidence=conf, note=note))
+
+st(0.0, 1.2, "low_pour", [-0.13, 0.18], [-0.13, 0.18], 0.02, 0.02, 1.0, 1.0, None, 0.3,
+   "在B点注入流量. FREEZE FRAME: clip frames 0-17 are one still image (frame 0) with the B/C/D overlay, so this "
+   "stage stands in for the unknown real pre-roll (the stream already lands at B in frame 0, surface uniformly brown). "
+   "Foot under the B dot, camera px (238,283); cup tilted ~20 deg toward the pitcher, ellipse quality 0: position from "
+   "a hand-fitted liquid ellipse (cx,cy)=(220,318), a,b=112.5,86 px (the near ~35 % of the surface is hidden by the "
+   "near rim), +-0.07 D. Spout ~2-2.5 cm above the surface (vertical stream extent ~43 px), thick stream (~0.06 D).")
+st(1.2, 1.5, "low_pour", [-0.13, 0.18], [-0.09, 0.08], 0.02, 0.02, 1.0, 1.0, None, 0.35,
+   "video resumes at frame 18 (1.2 s): the stream foot slides ~20 px down-left in the image (toward D) in 0.3 s "
+   "while the first white appears as a pale bulb at the foot (1.27 s, 0.04 D) that opens into a crescent by 1.47 s "
+   "(feet: 1.20 (-0.12,0.14), 1.27 (-0.11,0.12), 1.33 (-0.10,0.08), 1.40 (-0.09,0.055)). Cup still tilted "
+   "(hand-fit ellipse). Stream width at the foot ~12 px.")
+st(1.5, 3.924, "wiggle", [-0.09, 0.08], [-0.02, 0.09], 0.02, 0.018, 1.0, 1.0,
+   {"amp": 0.025, "amp1": 0.035, "freq": 3.3, "axis": "x"}, 0.4,
+   "看到白色的线条出现后开始摆动 (subtitle from 1.47 s): lateral wiggle starts ~1.5 s (first stream maximum 1.60 s, "
+   "first cycle slower ~2 Hz), then steady: stream peaks at 2.13 2.47 2.80 3.13 3.40 3.73 4.00 4.33 4.67 4.93 s -> "
+   "3.3 Hz (FFT 3.28 Hz; 15 fps sampling, +-0.3 Hz). Amplitude from the lateral excursion of the stream just above the "
+   "foot: peak-to-peak 9-12 px in image x -> half-amplitude ~0.035 D along x_M (range 0.025-0.045 D); the deposited arcs "
+   "are much wider (fan 0.2 D at 2.2 s, 0.6 D at 4.4 s). Each half-cycle leaves an arc convex toward -y_M (D). The foot "
+   "stays near (-0.08,0.09) and drifts to (-0.02,0.09) as the cup is righted (feet 2.0 (-0.08,0.10), 2.5 (-0.055,0.11), "
+   "3.0 (-0.05,0.10), 3.5 (-0.04,0.10)); hand-fit ellipses until 4.4 s (track quality 0/1), so x is uncertain by ~0.05 D. Stage end chosen at 1.5 + 8/3.3 s so that the Move wobble (phase restarts at every Move) stays continuous into the next stage; with phase 0 at 1.5 s the wobble maxima (+x_M) fall at 2.18 2.48 2.79 3.09 3.39 3.70 4.00 4.30 4.60 4.90 s, within 0.05 s of the observed stream maxima. In the old-solver check the Barista delivers ~70 % of the commanded amplitude at 3.3 Hz (inlet half-amplitude ~0.024 D).")
+st(3.924, 5.2, "wiggle", [-0.02, 0.09], [-0.02, 0.02], 0.018, 0.013, 1.0, 1.0,
+   {"amp": 0.035, "freq": 3.3, "axis": "x"}, 0.5,
+   "摆动的纹路形成半圆形后向前移动 (subtitle from 4.5 s): wiggling continues while the impact moves forward toward C "
+   "(strip end in the rectified frame: 3.8 (0.0,0.08), 4.2 (0.02,0.07), 4.4 (0.0,0.05), 4.6 (0.0,0.05), "
+   "4.8 (-0.05,0.02), 5.0 (-0.02,0.02); x oscillates +-0.03); spout lowered to ~1-1.5 cm. Arcs fan ~0.6 D wide by 4.4 s, "
+   "older arcs pushed toward D and wrapping laterally.")
+st(5.2, 6.533, "wiggle", [-0.02, 0.02], [-0.02, 0.02], 0.013, 0.013, 0.0, 0.0, None, 1.0,
+   "VIDEO FREEZE, NOT AN ACTION: clip frames 78-98 (5.20-6.53 s) are one still image (frame 78) with the instructor's "
+   "dashed guide line; no real time passes and the barista keeps pouring/wiggling without interruption. Encoded as a "
+   "zero-flow hold so that the converted moves stay aligned with clip time and do not pour extra milk; the kind is kept "
+   "a pour kind so that the extractor does not count a new pour onset at 6.53 s. For a physically continuous pour use "
+   "video_targets/layered_heart/stages_realtime.json (this stage removed, later stages shifted by -1.333 s).")
+st(6.533, 7.4, "wiggle", [-0.02, 0.02], [-0.025, -0.01], 0.012, 0.012, 1.0, 1.0,
+   {"amp": 0.035, "amp1": 0.02, "freq": 3.7, "axis": "x"}, 0.5,
+   "video resumes at 6.60 s: still wiggling (stream peaks 6.60 6.87 7.13 s, 3.7 Hz), still creeping forward "
+   "(6.6 (0.0,0.02), 6.8 (0.0,0.0), 7.0 (-0.01,0.0), 7.2 (-0.02,-0.0), 7.4 (-0.03,-0.01)); spout ~1 cm, thick stream "
+   "(18-20 px). Pattern is a closed disc ~0.65 D of concentric arcs; wiggle damps out by ~7.5 s.")
+st(7.4, 8.0, "low_pour", [-0.025, -0.01], [-0.01, -0.07], 0.012, 0.015, 1.0, 0.9, None, 0.55,
+   "拉花缸最后小流量拉高收尾 (subtitle from 7.4 s): wiggle stopped, pitcher still low, impact creeps toward D through "
+   "the arc centre at ~0.1 D/s (7.6 (-0.015,-0.03), 7.8 (-0.014,-0.054), 8.0 (-0.011,-0.071)); stream 16-18 px.")
+st(8.0, 9.4, "lift", [-0.01, -0.07], [-0.035, -0.21], 0.015, 0.025, 0.85, 0.6, None, 0.55,
+   "spout raised (stream ~50 px long from 8.2 s, ~2.5 cm), stream thins (14 px at 8.4 s, 12 px at 9.2 s), impact keeps "
+   "creeping toward D at ~0.1 D/s through the lower half of the disc (8.4 (-0.017,-0.11), 8.8 (-0.03,-0.15), "
+   "9.0 (-0.034,-0.184), 9.2 (-0.035,-0.19), 9.4 (-0.025..-0.05,-0.20..-0.22)): the arcs it passes are overwritten by "
+   "smooth white (the V-region between the lobes); the arcs on both sides are pulled toward the path.")
+st(9.4, 9.8, "high_cut", [-0.035, -0.21], [0.0, -0.32], 0.025, 0.025, 0.6, 0.45, None, 0.6,
+   "cut: the stream accelerates to ~0.3 D/s and runs to the D edge of the disc (9.53 (-0.012,-0.245), 9.6 (-0.008,-0.27), "
+   "9.73 (-0.004,-0.30), 9.8 (0.0,-0.317)), pulling the D edge into the heart tip at (0,-0.33). Spout ~2.5 cm (not "
+   "7-9 cm).")
+st(9.8, 10.07, "high_cut", [0.0, -0.32], [-0.005, -0.345], 0.025, 0.025, 0.45, 0.4, None, 0.6,
+   "stream lingers at the tip (9.93 (-0.002,-0.329), 10.07 (-0.005,-0.344)); stream ~10 px.")
+st(10.07, 10.7, "high_cut", [-0.005, -0.345], [0.01, -0.445], 0.025, 0.03, 0.4, 0.12, None, 0.6,
+   "stem: thin stream dragged to the D rim at ~0.18 D/s (10.2 (-0.008,-0.381), 10.4 (-0.009,-0.413), "
+   "10.6 (0.01,-0.446)); stream 8 px at 10.27 s, 5-6 px at 10.6 s (flow ~0.1); last stream frame 10.67 s, gone 10.73 s. "
+   "Final stem from (0,-0.33) to (-0.01,-0.43), ~0.02 D wide.")
+st(10.7, 11.8, "stop", [0.01, -0.445], [0.01, -0.445], 0.09, 0.09, 0.0, 0.0, None, 0.9,
+   "pitcher withdrawn (10.73-11.0 s), cup shown; reference frame (targets/layered_heart.npz) at 11.8 s; scene cut to the "
+   "next pattern's teaser at 12.27 s.")
+
+FEET = {"0.00": [-0.13, 0.18], "1.20": [-0.12, 0.14], "1.27": [-0.11, 0.12], "1.33": [-0.10, 0.08], "1.40": [-0.09, 0.055],
+        "1.47": [-0.09, 0.08], "2.00": [-0.08, 0.10], "2.50": [-0.055, 0.11], "3.00": [-0.05, 0.10], "3.50": [-0.04, 0.10],
+        "3.80": [0.0, 0.08], "4.00": [0.02, 0.08], "4.20": [0.02, 0.07], "4.40": [0.0, 0.05], "4.60": [0.0, 0.05],
+        "4.80": [-0.05, 0.02], "5.00": [-0.02, 0.02], "6.60": [0.0, 0.02], "6.80": [0.0, 0.0], "7.00": [-0.01, 0.0],
+        "7.20": [-0.02, 0.0], "7.40": [-0.026, -0.012], "7.60": [-0.015, -0.03], "7.80": [-0.014, -0.054],
+        "8.00": [-0.011, -0.071], "8.20": [-0.017, -0.096], "8.40": [-0.017, -0.11], "8.60": [-0.03, -0.131],
+        "8.80": [-0.028, -0.149], "9.00": [-0.034, -0.184], "9.20": [-0.035, -0.19], "9.40": [-0.04, -0.21],
+        "9.53": [-0.012, -0.245], "9.60": [-0.008, -0.27], "9.73": [-0.004, -0.299], "9.80": [0.0, -0.317],
+        "9.93": [-0.002, -0.329], "10.07": [-0.005, -0.344], "10.20": [-0.008, -0.381], "10.33": [0.001, -0.39],
+        "10.40": [-0.009, -0.413], "10.53": [-0.009, -0.425], "10.60": [0.01, -0.446], "10.67": [0.008, -0.444]}
+
+D = {"name": "layered_heart", "frame": "M", "Q_ref": 1.5e-05, "t_clip0": 0.0,
+     "clip": "reference_layered_heart.mp4 (480x640, 15 fps, 14.0 s; not in refclips/, read from targets.REF); "
+             "reference frame 11.8 s; scene cut to an outro at 12.27 s",
+     "time_base": "clip time. The clip contains two FREEZE FRAMES (see 'freezes'); real pour time = clip time - "
+                  "1.133 s (t >= 1.2) - 1.333 s (t >= 6.6). The freeze at 5.20-6.53 s is encoded as a zero-flow hold "
+                  "stage; video_targets/layered_heart/stages_realtime.json is the same script with it cut out.",
+     "freezes": FREEZES,
+     "method": "Stream foot read on native-resolution camera crops with a pixel grid (tiles/pix_*.png) and on "
+               "rectified M-frame tiles with a 0.05 D grid (tiles/zoomM_*.png, the stream column projects as a strip "
+               "toward the upper-left in M, the foot is its lower-right end), mapped with video_extract.image_to_cup on "
+               "frames.npz track_ell (rot -130 deg, y_M = -y_T). Ellipse quality is 0/1 until 4.4 s (cup tilted toward "
+               "the pitcher, near part of the surface hidden by the near rim): for t < 4.4 s a hand-fitted liquid "
+               "ellipse is used instead (fixed a,b,phi = 112.5, 86 px, -3.0 rad; centre (220,318) until 1.2 s -> "
+               "(218,320) 1.8 s -> (215,322) 2.4 s -> (213,325) 3.0 s -> (212,327) 3.6 s -> (212,328) 4.0 s -> track at "
+               "4.4 s; tiles/ellcheck_tilt_v1.png); the propagated track there is off by ~0.25 D. Wiggle frequency and "
+               "amplitude from the lateral position of the stream 18-26 px above the foot at 15 fps. Heights from the "
+               "vertical image extent of the stream minus its forward travel (camera elevation ~50 deg from b/a = 0.76, "
+               "28-31 px/cm), +-50 %. Flows from the stream width at the foot (13-18 px during the pour, 8-10 px at "
+               "10.1-10.3 s, 5-6 px at 10.6 s) with v = sqrt(v0^2 + 2 g z), +-40 %.",
+     "landmarks_M": {"B": [-0.16, 0.21], "C": [-0.11, 0.02], "D": [-0.08, -0.20],
+                     "note": "instructor dots in the frozen frame 0 (tilted cup, hand-fit ellipse, +-0.07 D); the dashed "
+                             "guide line of the second freeze runs from (-0.46,0.07) to (0.38,0.22) (track ellipse, q2): "
+                             "+10 deg from x_M, i.e. across the pattern axis (the wiggle direction / the semicircle's "
+                             "diameter). Final heart: lobes and notch at +y_M (notch ~(0,0.15)), tip (0,-0.33), stem to "
+                             "(-0.01,-0.43)."},
+     "tilt_phase_liquid_ellipses": {
+         "note": "hand-fitted liquid-surface ellipses (cx, cy, a, b, phi) [px, rad], targets.py axis convention, used for "
+                 "the positions at t < 4.4 s (linear in time between the keys; from 4.4 s frames.npz track_ell). "
+                 "frames.npz itself uses the propagated track in these frames (quality 0/1), which is offset by ~0.25 D "
+                 "(e.g. its first-white centroid_M (0.14,-0.25) vs the foot (-0.09,0.08) here), so frames.npz white maps "
+                 "before ~4 s are NOT in the same cup frame as these stage positions.",
+         "0.0": [220, 318, 112.5, 86.0, -3.0], "1.2": [220, 318, 112.5, 86.0, -3.0], "1.8": [218, 320, 112.5, 86.0, -3.0],
+         "2.4": [215, 322, 112.5, 86.0, -3.0], "3.0": [213, 325, 112.5, 86.0, -3.0], "3.6": [212, 327, 112.5, 86.0, -3.0],
+         "4.0": [212, 328, 112.5, 86.0, -3.0], "4.4": [211.2, 329.0, 112.9, 86.2, -3.0]},
+     "foot_measurements_M": FEET,
+     "stages": S}
+
+for p in (os.path.join(R, "stage_scripts", "layered_heart.json"), os.path.join(R, "video_targets", "layered_heart", "stages.json")):
+    with open(p, "w") as f:
+        json.dump(D, f, indent=1, ensure_ascii=False)
+# real-time variant: drop the freeze stage, shift everything after it
+RT = copy.deepcopy(D)
+shift = 6.533 - 5.2
+st2 = []
+for s in RT["stages"]:
+    if s["t0"] == 5.2 and s["flow0"] == 0.0 and s["kind"] == "wiggle":
+        continue
+    if s["t0"] >= 6.533 - 1e-6:
+        s["t0"] = round(s["t0"] - shift, 3); s["t1"] = round(s["t1"] - shift, 3)
+    st2.append(s)
+RT["stages"] = st2
+RT["time_base"] = ("REAL pour time (NOT clip time): the clip-time script stage_scripts/layered_heart.json with the "
+                   "5.20-6.53 s freeze cut out; t_real = t_clip for t_clip <= 5.2, t_real = t_clip - 1.333 for t_clip >= 6.533. "
+                   "Use for physically continuous moves only; the extractor's observables are in clip time. "
+                   "(The frame-0 freeze is kept as the 1.2 s pre-roll stand-in, as in the clip-time script.)")
+RT["foot_measurements_M"] = {k: v for k, v in FEET.items()}
+RT["foot_measurements_note"] = "keys are CLIP times"
+with open(os.path.join(R, "video_targets", "layered_heart", "stages_realtime.json"), "w") as f:
+    json.dump(RT, f, indent=1, ensure_ascii=False)
+print("ok", len(S), len(st2))

@@ -1,0 +1,18 @@
+{
+ "N": 64,
+ "profile_corr_identity": 0.953952853982358,
+ "profile_corr_rows_flipped": 0.9718190022760579,
+ "iou_identity": 0.5832614322691976,
+ "iou_rows_flipped": 0.6096491228070176,
+ "skew_y_sim_M": -0.17097175556760114,
+ "skew_y_target_T": 0.08010849217661219,
+ "verdict": "tip/stem of the simulated heart at -y in the solver (M) frame, at +y in targets (T): (x, y)_M = (x, -y)_T",
+ "run": "action_opt.run_one(('old','heart',1,1,1,64,...)): V0.5 heart moves (pitcher.v05_moves) through the old solver, 89 s",
+ "moves": "v05 heart: low pour (0,0.20)->(0,0.16), approach (0,0.16)->(0,0), high cut (0,0)->(0,-0.27) [M frame]",
+ "convention": {
+  "T": "frames.npz / targets/<name>.npz: arrays [iy, ix], x=(ix+0.5)/M-0.5, y=(iy+0.5)/M-0.5 [cup diameters]; pattern axis y, pours start on the B side (y<0), cut exits at +y; image->T as targets.warp (e_x = major axis to image-left, e_y = (e_x[1], -e_x[0])), then rotation targets.FRAMES[name]['rot']; mirror image of the physical top view",
+  "M": "pitcher.Move / solver Inlet / solver arrays c[iy, ix]: right-handed top view, spout toward -y (Barista yaw=-pi/2), pitcher handle at +y; V0.5 pours start at +y and cut toward -y",
+  "T_to_M": "(x, y)_M = (x, -y)_T ; solver field to T: c_M[::-1, :]",
+  "stage_positions": "stage scripts give p0/p1 in the M frame (cup diameters)"
+ }
+}

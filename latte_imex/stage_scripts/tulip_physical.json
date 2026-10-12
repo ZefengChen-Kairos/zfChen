@@ -1,0 +1,776 @@
+{
+ "name": "tulip",
+ "frame": "M",
+ "Q_ref": 1.5e-05,
+ "t_clip0": 0.0,
+ "clip": "ref/reference_tulip.mp4 (480x640, 15 fps, 20.0 s; clip starts mid-pour); reference frame (targets/tulip.npz) 17.75 s",
+ "method": "Stream foot = lowest image point of the stream column (or the dark impact hole next to it), picked on native-resolution 3-5x crops with a pixel grid (tiles/footpick.py, pixcrop.py) and mapped to the M frame with video_extract.image_to_cup on the extractor's 15 fps ellipse track (rot -165 deg, (x,y)_M = (x,-y)_T). For t < 3.95 s the track is a near-circular fit whose major axis is arbitrary; positions there use the same centre/size with phi chosen so that +y_M has the same image direction as in the level phase at 4.0 s (tiles/_common.py fixed_ell; see orientation_fix). Wiggle frequency from the spectrum of the column's lateral position in the rectified frame (tiles/wiggle_track.py) and the arc count of the finished base; heights from the visible column length (b/a = sin(elevation) ~0.76-0.84, 25-30 px/cm), flows from the column width at the foot; both +-50 %. Reading the sheared projected grid by eye was off by up to 0.1 D and was not used.",
+ "landmarks_M": {
+  "B": [
+   0.05,
+   0.3
+  ],
+  "C": [
+   -0.03,
+   0.06
+  ],
+  "D": [
+   -0.1,
+   -0.19
+  ],
+  "note": "instructor's red dots in the frozen overlay frames (6.53-8.40 s, ellipse of frame 98). The B->D axis points to -107 deg in M (17 deg off -y_M); registration of the late white maps against the reference frame finds no cup rotation (< 3 deg from 10 s on). The dashed white line shown in freeze 1 (3.37-4.30 s) is the wiggle axis: about -12 deg in M, i.e. perpendicular to B->D; the stages use axis -15."
+ },
+ "freeze_note": "The format is clip time, so each freeze is kept as an explicit stage (\"freeze\": true) that continues the action at the frozen state; sim time = clip time, but the simulation pours ~2.6 s longer than the barista did. For physical timing use video_targets/tulip/freeze_tools.py (drop_freezes -> stage_scripts/tulip_physical.json, clip_to_phys / phys_to_clip to compare with frames.npz). All six reference clips contain such freeze-frames during the instructor overlays.",
+ "orientation_fix": "video_extract's ellipse track switches at 3.85 s (inside freeze 1, i.e. on an identical image) from a near-circular fit (a/b = 1.02, phi = 2.43 rad) to the level fit (b/a = 0.82, phi = -2.88 rad). With a ~ b the major axis, hence the T/M frame orientation, is arbitrary: +y_M points to image angle -116 deg before and -57 deg after (59 deg rotation). The level orientation is the one continuous with the final/target frame. frames.npz white maps for t < 3.85 s are therefore rotated by ~60 deg about the disc centre (the extractor was not changed); stage positions below are in the corrected frame.",
+ "timing_vs_video_obs": "first white is visible at 0.33 s (not 0.9 s); the first pour ends at 5.33 s with a flow cut (not a lift at 6.5 s); the second pour starts at 6.33 s at the far rim and ends at 10.45 s; there is no 'low at the centre with bigger flow' at 10.9-12.3 s (the spout sits dry at the far rim 10.5-11.8 s; the subtitle 将底纹压开 refers to 9.7-10.1 s); the third pour starts at 11.8 s and is a single plain disc (no separate striped element) that becomes the top heart; the cut runs 14.85-16.37 s and ends at the 2nd element's V apex at (-0.13,-0.20): there is no stem to the rim.",
+ "first_white_by_eye": {
+  "pour1": 0.33,
+  "pour2": 8.75,
+  "pour3": 11.9,
+  "note": "pour 1: onset before the clip start; pour 2: onset 6.33 s, delay 2.4 s in clip time but ~0.5-0.9 s physically (freeze 2); pour 3: the white disc forms at once under the nearly touching spout"
+ },
+ "foot_measurements_M": {
+  "0.00": [
+   -0.028,
+   0.084
+  ],
+  "0.20": [
+   -0.035,
+   0.051
+  ],
+  "0.40": [
+   -0.051,
+   -0.005
+  ],
+  "0.60": [
+   -0.06,
+   0.009
+  ],
+  "0.80": [
+   -0.094,
+   -0.018
+  ],
+  "1.00": [
+   -0.125,
+   0.004
+  ],
+  "1.40": [
+   -0.053,
+   0.047
+  ],
+  "1.80": [
+   -0.056,
+   0.053
+  ],
+  "2.20": [
+   -0.05,
+   0.072
+  ],
+  "2.60": [
+   -0.074,
+   0.091
+  ],
+  "3.27": [
+   -0.04,
+   0.02
+  ],
+  "3.47": [
+   -0.003,
+   0.005
+  ],
+  "3.67": [
+   -0.045,
+   -0.059
+  ],
+  "3.80": [
+   -0.074,
+   -0.043
+  ],
+  "3.94": [
+   -0.024,
+   -0.134
+  ],
+  "4.07": [
+   -0.034,
+   -0.189
+  ],
+  "4.20": [
+   -0.042,
+   -0.199
+  ],
+  "4.34": [
+   -0.067,
+   -0.186
+  ],
+  "5.40": [
+   0.089,
+   0.382
+  ],
+  "5.47": [
+   0.108,
+   0.325
+  ],
+  "5.54": [
+   0.092,
+   0.284
+  ],
+  "5.81": [
+   0.074,
+   0.305
+  ],
+  "5.94": [
+   0.113,
+   0.213
+  ],
+  "6.07": [
+   0.113,
+   0.171
+  ],
+  "6.21": [
+   0.089,
+   0.191
+  ],
+  "6.34": [
+   0.126,
+   0.175
+  ],
+  "6.47": [
+   0.135,
+   0.165
+  ],
+  "6.74": [
+   0.095,
+   0.143
+  ],
+  "6.87": [
+   0.099,
+   0.13
+  ],
+  "7.01": [
+   0.077,
+   0.104
+  ],
+  "7.14": [
+   0.101,
+   0.105
+  ],
+  "7.27": [
+   0.054,
+   0.078
+  ],
+  "7.34": [
+   0.047,
+   0.076
+  ],
+  "7.41": [
+   0.04,
+   0.057
+  ],
+  "7.61": [
+   0.007,
+   0.027
+  ],
+  "7.74": [
+   0.018,
+   0.055
+  ],
+  "9.21": [
+   0.175,
+   0.339
+  ],
+  "9.34": [
+   0.168,
+   0.35
+  ],
+  "9.61": [
+   0.15,
+   0.345
+  ],
+  "9.87": [
+   0.142,
+   0.346
+  ],
+  "10.14": [
+   0.134,
+   0.34
+  ],
+  "10.41": [
+   0.139,
+   0.357
+  ],
+  "10.67": [
+   0.136,
+   0.366
+  ],
+  "10.81": [
+   0.158,
+   0.337
+  ],
+  "10.94": [
+   0.152,
+   0.312
+  ],
+  "11.07": [
+   0.13,
+   0.301
+  ],
+  "11.21": [
+   0.118,
+   0.284
+  ],
+  "11.34": [
+   0.102,
+   0.259
+  ],
+  "11.47": [
+   0.095,
+   0.243
+  ],
+  "11.61": [
+   0.079,
+   0.22
+  ],
+  "11.74": [
+   0.071,
+   0.184
+  ],
+  "11.87": [
+   0.035,
+   0.143
+  ],
+  "12.01": [
+   0.021,
+   0.104
+  ],
+  "12.14": [
+   0.001,
+   0.078
+  ],
+  "12.27": [
+   -0.008,
+   0.062
+  ],
+  "12.41": [
+   -0.023,
+   0.019
+  ],
+  "12.54": [
+   -0.039,
+   -0.01
+  ],
+  "12.67": [
+   -0.04,
+   -0.011
+  ],
+  "12.94": [
+   -0.033,
+   -0.104
+  ],
+  "13.07": [
+   -0.102,
+   -0.171
+  ],
+  "13.21": [
+   -0.106,
+   -0.167
+  ],
+  "13.34": [
+   -0.13,
+   -0.205
+  ],
+  "13.47": [
+   -0.125,
+   -0.207
+  ],
+  "13.61": [
+   -0.138,
+   -0.182
+  ]
+ },
+ "stages": [
+  {
+   "t0": 0.0,
+   "t1": 0.85,
+   "kind": "low_pour",
+   "p0": [
+    -0.03,
+    0.08
+   ],
+   "p1": [
+    -0.07,
+    0.01
+   ],
+   "z0": 0.018,
+   "z1": 0.018,
+   "flow0": 1.0,
+   "flow1": 1.0,
+   "wiggle": null,
+   "confidence": 0.3,
+   "note": "pour 1 (base), clip starts mid-pour (true onset < 0 s, first-white delays are lower bounds); cup tilted toward the pitcher until ~2-3 s, tilt-phase geometry +-0.06 D; thick stream (~0.04 D); first white at the foot at 0.33 s, a C opening toward the spout (+y)",
+   "t_clip": [
+    0.0,
+    0.85
+   ]
+  },
+  {
+   "t0": 0.85,
+   "t1": 3.37,
+   "kind": "wiggle",
+   "p0": [
+    -0.07,
+    0.01
+   ],
+   "p1": [
+    -0.04,
+    0.03
+   ],
+   "z0": 0.018,
+   "z1": 0.018,
+   "flow0": 1.0,
+   "flow1": 1.0,
+   "wiggle": {
+    "amp": 0.04,
+    "freq": 3.1,
+    "axis": -15
+   },
+   "confidence": 0.35,
+   "note": "看到白色的线条出现后开始摆动 / 纹路形成半圆形后摆动: wiggle in place from 0.85 s (column lateral oscillation 3.0-3.4 Hz, half-amplitude 0.03-0.05 D); arcs ~0.03 D apart, convex toward D (-y), semicircle ~0.4 D by 3.3 s; foot stays at (-0.05+-0.04, 0.05+-0.04) relative to the moving cup",
+   "t_clip": [
+    0.85,
+    3.37
+   ]
+  },
+  {
+   "t0": 3.37,
+   "t1": 4.14,
+   "kind": "wiggle",
+   "p0": [
+    -0.02,
+    0.01
+   ],
+   "p1": [
+    -0.04,
+    -0.19
+   ],
+   "z0": 0.02,
+   "z1": 0.02,
+   "flow0": 1.15,
+   "flow1": 1.15,
+   "wiggle": {
+    "amp": 0.035,
+    "freq": 3.1,
+    "axis": -15
+   },
+   "confidence": 0.45,
+   "note": "向前移动: forward toward D while wiggling (feet 4.40 (0.00,0.01), 4.60 (-0.05,-0.06), 4.87 (-0.02,-0.13), 5.00 (-0.03,-0.19)); ellipse quality 0 (propagated, level orientation); the arc stack extends toward D",
+   "t_clip": [
+    4.3,
+    5.07
+   ]
+  },
+  {
+   "t0": 4.14,
+   "t1": 4.4,
+   "kind": "lift",
+   "p0": [
+    -0.04,
+    -0.19
+   ],
+   "p1": [
+    -0.07,
+    -0.19
+   ],
+   "z0": 0.02,
+   "z1": 0.02,
+   "flow0": 0.6,
+   "flow1": 0.1,
+   "wiggle": null,
+   "confidence": 0.45,
+   "note": "让纹路形成回包: flow cut at low height (stream ~0.01 D wide at 5.2-5.27 s, column only ~1.5 cm long), gone at 5.33 s; the outer arcs then close around the sides into a round base 0.55 D with a brown cleft on the B side",
+   "t_clip": [
+    5.07,
+    5.33
+   ]
+  },
+  {
+   "t0": 4.4,
+   "t1": 5.4,
+   "kind": "reposition",
+   "p0": [
+    -0.07,
+    -0.19
+   ],
+   "p1": [
+    0.09,
+    0.38
+   ],
+   "z0": 0.03,
+   "z1": 0.015,
+   "flow0": 0.0,
+   "flow1": 0.0,
+   "wiggle": null,
+   "confidence": 0.5,
+   "note": "dry: spout carried to the far rim on the B side (lip at (0.08,0.44) at 6.13-6.27 s, touching down at 6.33 s)",
+   "t_clip": [
+    5.33,
+    6.33
+   ]
+  },
+  {
+   "t0": 5.4,
+   "t1": 5.57,
+   "kind": "low_pour",
+   "p0": [
+    0.09,
+    0.38
+   ],
+   "p1": [
+    0.09,
+    0.29
+   ],
+   "z0": 0.015,
+   "z1": 0.015,
+   "flow0": 1.0,
+   "flow1": 1.0,
+   "wiggle": null,
+   "confidence": 0.5,
+   "note": "第二段再退回B点注入: pour 2 starts at the far rim and lands just inside the B dot (6.40 (0.11,0.33), 6.47 (0.09,0.28)); B dot = (0.05,0.30)",
+   "t_clip": [
+    6.33,
+    6.5
+   ]
+  },
+  {
+   "t0": 5.57,
+   "t1": 5.77,
+   "kind": "low_pour",
+   "p0": [
+    0.09,
+    0.29
+   ],
+   "p1": [
+    0.07,
+    0.3
+   ],
+   "z0": 0.015,
+   "z1": 0.015,
+   "flow0": 1.0,
+   "flow1": 1.0,
+   "wiggle": null,
+   "confidence": 0.1,
+   "physical_s": 0.2,
+   "note": "(freeze 6.5-8.43 s clip time shortened to its physical 0.2 s) FREEZE-FRAME with the B/C/D overlay (frames 99-126 = frame 98): ~0.2 s (0.07-0.5 s) of physical time; the base is unchanged across it. Kept as a continuation so that sim time = clip time; shorten to physical_s for physical timing."
+  },
+  {
+   "t0": 5.77,
+   "t1": 6.09,
+   "kind": "low_pour",
+   "p0": [
+    0.07,
+    0.3
+   ],
+   "p1": [
+    0.11,
+    0.18
+   ],
+   "z0": 0.015,
+   "z1": 0.015,
+   "flow0": 1.2,
+   "flow1": 1.2,
+   "wiggle": null,
+   "confidence": 0.5,
+   "note": "pour at B moving in (8.47 (0.07,0.30), 8.60 (0.11,0.21), 8.73 (0.11,0.17)); brown around the foot, the new white (2nd element) appears at 8.73-8.87 s as a C around the foot opening toward +x/+y",
+   "t_clip": [
+    8.43,
+    8.75
+   ]
+  },
+  {
+   "t0": 6.09,
+   "t1": 7.04,
+   "kind": "wiggle",
+   "p0": [
+    0.11,
+    0.18
+   ],
+   "p1": [
+    0.09,
+    0.11
+   ],
+   "z0": 0.015,
+   "z1": 0.015,
+   "flow0": 1.3,
+   "flow1": 1.3,
+   "wiggle": {
+    "amp": 0.03,
+    "freq": 3.3,
+    "axis": -15
+   },
+   "confidence": 0.4,
+   "note": "摆动的同时往前推: wiggle (visible in the cup-frame kymograph 8.8-9.7 s, ~3.3-3.9 Hz, half-amplitude ~0.02-0.03 D) while pushing toward C (9.00 (0.13,0.18), 9.13 (0.13,0.17), 9.40 (0.10,0.14), 9.53 (0.10,0.13), 9.67 (0.08,0.10)); striped 2nd element, brown arc gap opens between it and the base",
+   "t_clip": [
+    8.75,
+    9.7
+   ]
+  },
+  {
+   "t0": 7.04,
+   "t1": 7.44,
+   "kind": "push",
+   "p0": [
+    0.09,
+    0.11
+   ],
+   "p1": [
+    0.04,
+    0.06
+   ],
+   "z0": 0.015,
+   "z1": 0.015,
+   "flow0": 1.4,
+   "flow1": 1.4,
+   "wiggle": null,
+   "confidence": 0.4,
+   "note": "将底纹压开 (subtitle at 11 s): big flow held near C (9.80 (0.10,0.11), 9.93 (0.05,0.08), 10.07 (0.04,0.06)); the 2nd element inflates to a ~0.3 D disc, the base is pushed out into a crescent with a 0.05-0.08 D brown gap",
+   "t_clip": [
+    9.7,
+    10.1
+   ]
+  },
+  {
+   "t0": 7.44,
+   "t1": 7.79,
+   "kind": "lift",
+   "p0": [
+    0.04,
+    0.06
+   ],
+   "p1": [
+    0.02,
+    0.05
+   ],
+   "z0": 0.015,
+   "z1": 0.02,
+   "flow0": 0.6,
+   "flow1": 0.1,
+   "wiggle": null,
+   "confidence": 0.45,
+   "note": "flow cut at low height: stream thin from 10.27 s (10.27 (0.01,0.03), 10.40 (0.02,0.06)), gone at 10.53 s; small notch on the B side of the 2nd element",
+   "t_clip": [
+    10.1,
+    10.45
+   ]
+  },
+  {
+   "t0": 7.79,
+   "t1": 9.14,
+   "kind": "reposition",
+   "p0": [
+    0.02,
+    0.05
+   ],
+   "p1": [
+    0.17,
+    0.36
+   ],
+   "z0": 0.03,
+   "z1": 0.01,
+   "flow0": 0.0,
+   "flow1": 0.0,
+   "wiggle": null,
+   "confidence": 0.5,
+   "note": "dry: spout carried to the far rim (10.8-11.7 s lip at ~(0.15-0.18, 0.38-0.42), occasional drip), lowered until it almost touches the surface",
+   "t_clip": [
+    10.45,
+    11.8
+   ]
+  },
+  {
+   "t0": 9.14,
+   "t1": 10.79,
+   "kind": "low_pour",
+   "p0": [
+    0.17,
+    0.35
+   ],
+   "p1": [
+    0.15,
+    0.35
+   ],
+   "z0": 0.01,
+   "z1": 0.01,
+   "flow0": 1.1,
+   "flow1": 1.1,
+   "wiggle": null,
+   "confidence": 0.5,
+   "note": "第三段回到B点: lip almost touching, thick short stream; a plain white disc grows around the foot at once (r ~0.05 D at 12.0 s, 0.12 D at 13.3 s), no wiggle, no visible delay; feet 11.87 (0.18,0.34), 12.27 (0.15,0.35), 12.80 (0.13,0.34), 13.33 (0.14,0.37) (the cup moves; +-0.03 D)",
+   "t_clip": [
+    11.8,
+    13.45
+   ]
+  },
+  {
+   "t0": 10.79,
+   "t1": 11.64,
+   "kind": "push",
+   "p0": [
+    0.15,
+    0.34
+   ],
+   "p1": [
+    0.08,
+    0.21
+   ],
+   "z0": 0.015,
+   "z1": 0.025,
+   "flow0": 1.1,
+   "flow1": 0.9,
+   "wiggle": null,
+   "confidence": 0.45,
+   "note": "注入一个爱心收尾: spout raised a little (column visible), still a thick stream; the foot travels through the disc toward D (13.47 (0.16,0.34), 13.73 (0.13,0.30), 14.00 (0.10,0.26), 14.27 (0.08,0.22)), opening the heart's notch on the B side and pressing the 2nd element into a V",
+   "t_clip": [
+    13.45,
+    14.3
+   ]
+  },
+  {
+   "t0": 11.64,
+   "t1": 12.19,
+   "kind": "lift",
+   "p0": [
+    0.08,
+    0.21
+   ],
+   "p1": [
+    0.0,
+    0.07
+   ],
+   "z0": 0.025,
+   "z1": 0.035,
+   "flow0": 0.7,
+   "flow1": 0.3,
+   "wiggle": null,
+   "confidence": 0.45,
+   "note": "stream thins, the foot draws the heart's point (14.40 (0.07,0.18), 14.53 (0.04,0.14), 14.67 (0.02,0.10), 14.80 (0.00,0.08))",
+   "t_clip": [
+    14.3,
+    14.85
+   ]
+  },
+  {
+   "t0": 12.19,
+   "t1": 12.74,
+   "kind": "high_cut",
+   "p0": [
+    0.0,
+    0.07
+   ],
+   "p1": [
+    -0.04,
+    -0.01
+   ],
+   "z0": 0.035,
+   "z1": 0.035,
+   "flow0": 0.3,
+   "flow1": 0.25,
+   "wiggle": null,
+   "confidence": 0.45,
+   "note": "cut: thin stream (~0.015 D, column ~3 cm long) through the heart's point into the 2nd element (14.93 (-0.01,0.06), 15.07 (-0.02,0.02), 15.20-15.33 (-0.04,-0.01))",
+   "t_clip": [
+    14.85,
+    15.4
+   ]
+  },
+  {
+   "t0": 12.74,
+   "t1": 13.14,
+   "kind": "high_cut",
+   "p0": [
+    -0.04,
+    -0.01
+   ],
+   "p1": [
+    -0.1,
+    -0.17
+   ],
+   "z0": 0.035,
+   "z1": 0.035,
+   "flow0": 0.25,
+   "flow1": 0.2,
+   "wiggle": null,
+   "confidence": 0.4,
+   "note": "cut continues toward D-left (15.60 (-0.03,-0.10), 15.73 (-0.10,-0.17)), dragging the 2nd element into a V (petal apex); the pitcher body sweeps over the left half of the cup from 15.6 s",
+   "t_clip": [
+    15.4,
+    15.8
+   ]
+  },
+  {
+   "t0": 13.14,
+   "t1": 13.71,
+   "kind": "high_cut",
+   "p0": [
+    -0.1,
+    -0.17
+   ],
+   "p1": [
+    -0.14,
+    -0.19
+   ],
+   "z0": 0.035,
+   "z1": 0.04,
+   "flow0": 0.2,
+   "flow1": 0.1,
+   "wiggle": null,
+   "confidence": 0.4,
+   "note": "thin stream lingers at the V apex (16.00 (-0.13,-0.21), 16.13 (-0.13,-0.21), 16.27 (-0.14,-0.18)) and stops at ~16.37 s as the pitcher is lifted away; no stem to the rim",
+   "t_clip": [
+    15.8,
+    16.37
+   ]
+  },
+  {
+   "t0": 13.71,
+   "t1": 15.09,
+   "kind": "stop",
+   "p0": [
+    -0.14,
+    -0.19
+   ],
+   "p1": [
+    -0.14,
+    -0.19
+   ],
+   "z0": 0.09,
+   "z1": 0.09,
+   "flow0": 0.0,
+   "flow1": 0.0,
+   "wiggle": null,
+   "confidence": 0.7,
+   "note": "pitcher gone (camera moves for the show-off shot from 16.47 s); reference frame 17.75 s",
+   "t_clip": [
+    16.37,
+    17.75
+   ]
+  }
+ ],
+ "time_base": "physical clip time: clip time with the freeze-frames removed (freezes shortened to physical_s); compare with frames.npz at freeze_tools.phys_to_clip(t)",
+ "freezes_removed": [
+  {
+   "t0": 3.37,
+   "t1": 4.3,
+   "physical_s": 0.0,
+   "evidence": "frames 51-64 are copies of frame 50 (3.33 s) with the dashed wiggle-axis line (mean |diff| < 0.15); frame 65 (4.33 s) differs from frame 50 like a 1-2 frame step (6.3 vs 4-7 for adjacent live frames), so no physical time passes"
+  },
+  {
+   "t0": 6.5,
+   "t1": 8.43,
+   "physical_s": 0.2,
+   "physical_s_range": [
+    0.07,
+    0.5
+   ],
+   "evidence": "frames 99-126 are copies of frame 98 (6.53 s, B/C/D overlay); the camera has jumped at 8.47 s (cup ~9 px higher, a 7 % smaller), but the rectified base pattern is unchanged between 6.47 and 8.67 s and the rectified frame difference across the freeze equals 5-10 live frames, so at most ~0.5 s of real time is skipped"
+  }
+ ]
+}
