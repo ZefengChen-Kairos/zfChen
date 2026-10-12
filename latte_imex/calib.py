@@ -485,3 +485,127 @@ def contact_sheet(clip, wT, path, n=10, title=""):
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
+
+
+# =========================================================================== calibration driver (CMA-ES)
+def make_model(spec):
+    """spec = dict(kind='v3min', code_dir=..., fixed={...}, space_extra={...}) -> model object."""
+    if spec["kind"] == "v3min":
+        from .v3min_adapter import V3MinModel
+        return V3MinModel(spec["code_dir"], fixed=spec.get("fixed"), space_extra=spec.get("space_extra"))
+    raise ValueError(spec["kind"])
+
+
+def to_unit(v, lo, hi, sc):
+    return math.log(v / lo) / math.log(hi / lo) if sc == "log" else (v - lo) / (hi - lo)
+
+
+def from_unit(u, lo, hi, sc):
+    u = min(max(float(u), 0.0), 1.0)
+    return lo * (hi / lo) ** u if sc == "log" else lo + (hi - lo) * u
+
+
+def decode(x, space):
+    return {k: from_unit(x[i], *space[k]) for i, k in enumerate(space)}
+
+
+def encode(p, space):
+    return [to_unit(p[k], *space[k]) for k in space]
+
+
+_W = {}
+
+
+def _winit(spec):
+    _W["model"] = make_model(spec)
+
+
+def compact(ev):
+    """The parts of an evaluation kept in the calibration log (no per-frame lists)."""
+    keep = {k: ev[k] for k in ("name", "loss", "coverage_mae", "iou", "dice", "boundary_D", "final")}
+    keep["first_white"] = ev["events"]["first_white"]
+    keep["profiles"] = ev["profiles"]
+    keep["push_blocks"] = ev["events"]["push_blocks"]
+    keep["cut"] = ev["events"]["cut"]
+    keep["ledger"] = ev.get("ledger")
+    return keep
+
+
+def _weval(args):
+    params, name, N = args
+    clip = load_clip(name)
+    try:
+        wT, led = simulate_clip(_W["model"], params, clip, N)
+        if led is not None and not led.get("ok", True):
+            return name, dict(name=name, loss=float("inf"), ledger=led, failed=True)
+        return name, compact(evaluate(clip, wT, led))
+    except Exception as e:                         # recorded as a failed forward call, scored +inf
+        return name, dict(name=name, loss=float("inf"), failed=True, error=f"{type(e).__name__}: {e}")
+
+
+def calibrate(spec, names, out_dir, x0s, gens=40, popsize=8, sigma0=0.25, N=128, procs=4, seed=0, log=print):
+    """CMA-ES on the mean pre-registered loss over `names` (equal pattern weights), one run per initial point in
+    x0s (dicts of physical values); same space, loss and budget for every call.  Writes calib.json in out_dir
+    after every generation (history, best per init, number of forward calls)."""
+    import cma
+    from multiprocessing import Pool
+    os.makedirs(out_dir, exist_ok=True)
+    space = make_model(spec).space
+    rec = dict(spec=spec, names=list(names), space=space, N=N, gens=gens, popsize=popsize, sigma0=sigma0,
+               preregistered=dict(SIGMA_CAM_D=SIGMA_CAM_D, THR=THR, Q_MIN=Q_MIN, FV_MIN=FV_MIN, BND_SCALE=BND_SCALE,
+                                  DELAY_SCALE=DELAY_SCALE, EMPTY_BND=EMPTY_BND, PREROLL=PREROLL,
+                                  SKIP_FIRST_ONSET=SKIP_FIRST_ONSET),
+               inits=[], n_forward=0, n_failed=0)
+    with Pool(procs, initializer=_winit, initargs=(spec,)) as pool:
+        for ii, x0p in enumerate(x0s):
+            es = cma.CMAEvolutionStrategy(encode(x0p, space), sigma0,
+                                          dict(bounds=[0, 1], popsize=popsize, seed=seed + ii, maxiter=gens, verbose=-9))
+            run = dict(x0=x0p, history=[], best=None)
+            rec["inits"].append(run)
+            g = 0
+            while not es.stop():
+                X = es.ask()
+                P = [decode(x, space) for x in X]
+                jobs = [(p, n, N) for p in P for n in names]
+                outs = pool.map(_weval, jobs, chunksize=1)
+                rec["n_forward"] += len(jobs)
+                L = []
+                for i, p in enumerate(P):
+                    evs = {n: e for (n, e) in outs[i * len(names):(i + 1) * len(names)]}
+                    rec["n_failed"] += sum(1 for e in evs.values() if e.get("failed"))
+                    li = float(np.mean([evs[n]["loss"] for n in names]))
+                    L.append(li if np.isfinite(li) else 1e6)
+                    if run["best"] is None or li < run["best"]["loss"]:
+                        run["best"] = dict(loss=li, params=p, gen=g, evals=evs)
+                es.tell(X, L)
+                run["history"].append(dict(gen=g, loss_min=float(min(L)), loss_med=float(np.median(L)),
+                                           mean=decode(es.mean, space), sigma=float(es.sigma)))
+                log(f"[{'+'.join(names)} init {ii}] gen {g}: min {min(L):.4f} med {np.median(L):.4f} "
+                    f"best {run['best']['loss']:.4f} sigma {es.sigma:.3f} fwd {rec['n_forward']}")
+                g += 1
+                json.dump(rec, open(os.path.join(out_dir, "calib.json"), "w"), indent=1, default=float)
+    best = min(rec["inits"], key=lambda r: r["best"]["loss"])
+    rec["best"] = dict(loss=best["best"]["loss"], params=best["best"]["params"],
+                       spread=[r["best"]["loss"] for r in rec["inits"]],
+                       params_by_init=[r["best"]["params"] for r in rec["inits"]])
+    json.dump(rec, open(os.path.join(out_dir, "calib.json"), "w"), indent=1, default=float)
+    return rec
+
+
+def run_protocol(spec, out_root, x0s, gens=40, popsize=8, N=128, procs=4):
+    """Senior 5.1: calibrate on A+B and on A only with the same budget, freeze, predict the four test patterns with
+    both parameter sets, report calibration fit and test prediction separately."""
+    rep = {}
+    for tag, names in (("AB", CAL_AB), ("A", CAL_A)):
+        rec = calibrate(spec, names, os.path.join(out_root, f"calib_{tag}"), x0s, gens, popsize, N=N, procs=procs)
+        rep[tag] = dict(params=rec["best"]["params"], calib_loss=rec["best"]["loss"], n_forward=rec["n_forward"],
+                        spread=rec["best"]["spread"])
+    model = make_model(spec)
+    for tag in ("AB", "A"):
+        evs = evaluate_model(model, rep[tag]["params"], CAL_AB + TEST, N)
+        rep[tag]["calibration_fit"] = summary({n: evs[n] for n in CAL_AB})
+        rep[tag]["test_prediction"] = summary({n: evs[n] for n in TEST})
+        json.dump({n: compact(e) for n, e in evs.items()}, open(os.path.join(out_root, f"eval_{tag}.json"), "w"),
+                  indent=1, default=float)
+    json.dump(rep, open(os.path.join(out_root, "protocol.json"), "w"), indent=1, default=float)
+    return rep
