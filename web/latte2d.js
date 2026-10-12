@@ -507,6 +507,54 @@
     return { active: true, x_hit: [x, y], S_eff: S, u_in: [ux, uy], U_perp: U, d_jet: d, r1, r2, phi, scan_speed: scanSpeed || 0 };
   }
 
-  const api = { Latte2D, coupleInlet, DEFAULT_PARAMS, DEFAULT_NUM, COUPLING };
+  /* Inlet replay (web/v05phys/<name>.json, one set): the inlet latte_imex fed the solver, sampled at 1/fps s and quantised
+     to uint16 (value = lo + (hi - lo) q / 65535).  replaySample interpolates linearly in time (phi along the short arc);
+     where only one neighbour is active the nearer sample decides.  replayAdvance runs the frame loop of latte_imex/run.run:
+     probe at t -> frame length (scan-speed limit) -> inlet at the frame middle -> advanceFrame, until t >= target (or T). */
+  function b64bytes(s) {
+    if (typeof atob === 'function') { const bin = atob(s), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+    return Uint8Array.from(Buffer.from(s, 'base64'));
+  }
+  function decodeReplay(set, fps) {
+    const n = set.n, cols = {};
+    for (const k of Object.keys(set.cols)) {
+      const e = set.cols[k], bytes = b64bytes(e.b64), a = new Float64Array(n);
+      if (e.u8) { for (let i = 0; i < n; i++) a[i] = bytes[i]; }
+      else { const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength); for (let i = 0; i < n; i++) a[i] = e.lo + (e.hi - e.lo) * dv.getUint16(2 * i, true) / 65535; }
+      cols[k] = a;
+    }
+    return { n, fps: fps || 120, T: set.T, cols, params: Object.assign({}, set.params), labels: set.labels || [] };
+  }
+  function replaySample(R, t) {
+    const c = R.cols, n = R.n;
+    let u = t * R.fps, k = Math.floor(u), f = u - k;
+    if (k < 0) { k = 0; f = 0; }
+    if (k >= n - 1) { k = n - 1; f = 0; }
+    const k1 = Math.min(k + 1, n - 1), lin = a => a[k] + (a[k1] - a[k]) * f;
+    const x = lin(c.x), y = lin(c.y), scan = lin(c.scan);
+    const a = c.active[k] > 0.5, b = c.active[k1] > 0.5;
+    let src;
+    if (t >= R.T) src = null; else if (a && b) src = -1; else if (a && f < 0.5) src = k; else if (b && f >= 0.5) src = k1; else src = null;
+    if (src === null) return { active: false, x_hit: [x, y], S_eff: 0, u_in: [0, 0], U_perp: 0, d_jet: 0.05, r1: 0.04, r2: 0.04, phi: 0, scan_speed: scan, k };
+    const g = a2 => (src < 0 ? lin(a2) : a2[src]);
+    let phi;
+    if (src < 0) { let dp = c.phi[k1] - c.phi[k]; if (dp > Math.PI) dp -= 2 * Math.PI; else if (dp < -Math.PI) dp += 2 * Math.PI; phi = c.phi[k] + dp * f; }
+    else phi = c.phi[src];
+    return { active: true, x_hit: [x, y], S_eff: g(c.S), u_in: [g(c.ux), g(c.uy)], U_perp: g(c.U), d_jet: g(c.d), r1: g(c.r1), r2: g(c.r2), phi, scan_speed: scan, k };
+  }
+  function replayAdvance(sol, R, tTarget) {
+    let frames = 0, chi = 0;
+    const tEnd = Math.min(tTarget, R.T);
+    while (sol.t < tEnd - 1e-9) {
+      const probe = replaySample(R, sol.t);
+      let fdt = sol.num.frame_dt;
+      if (probe.active && probe.S_eff > 0 && probe.scan_speed > 0)
+        fdt = Math.min(fdt, Math.max(sol.num.scan_safety * Math.min(sol.h, probe.r1, probe.r2) / probe.scan_speed, 1e-4));
+      const r = sol.advanceFrame(replaySample(R, sol.t + 0.5 * fdt), fdt); chi = r.chi; frames++;
+    }
+    return { frames, chi, done: sol.t >= R.T - 1e-9 };
+  }
+
+  const api = { Latte2D, coupleInlet, DEFAULT_PARAMS, DEFAULT_NUM, COUPLING, decodeReplay, replaySample, replayAdvance };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else global.Latte2D = api;
 })(typeof window !== 'undefined' ? window : globalThis);

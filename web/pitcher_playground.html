@@ -56,12 +56,32 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-b
 .overlay canvas,.overlay .cell img{width:min(42vmin,44vw);height:min(42vmin,44vw);border-radius:50%;box-shadow:0 2px 12px rgba(0,0,0,.25)}
 .overlay .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;font-size:12px;color:var(--muted)}
 .stage .hud b{color:var(--fg);font-weight:500}
-select{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:4px;padding:3px 6px}
+select{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:4px;padding:3px 6px;max-width:100%;min-width:0}
+/* V0.5 inlet replays: comparison row + explanation (shown only for that script group) */
+.rp{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px;margin-top:12px;min-width:0}
+.rp h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;font-weight:600}
+.rp h3{font-size:14px;font-weight:600;margin:14px 0 6px}
+.rp p,.rp li{font-size:13px;max-width:78ch;margin:0 0 6px}
+.rp ul{margin:0 0 6px;padding-inline-start:1.2em}
+.rp .imgs{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:6px}
+.rp figure{margin:0;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
+.rp figure img,.rp figure canvas{width:100%;max-width:200px;aspect-ratio:1/1;height:auto;border-radius:50%;border:1px solid var(--line);display:block;background:var(--coffee)}
+.rp figure.cur img{outline:2px solid var(--accent);outline-offset:2px}
+.rp figcaption{font-size:12px;color:var(--muted);text-align:center;line-height:1.35}
+.rp .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px 24px}
+@media (max-width:860px){.rp .cols{grid-template-columns:minmax(0,1fr)}}
+.rp .tw{overflow-x:auto;max-width:100%}
+.rp table{border-collapse:collapse;font-size:12px;width:100%;min-width:0}
+.rp th,.rp td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top}
+.rp th{color:var(--muted);font-weight:500}
+.rp td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.rp .bad{color:var(--warn)} .rp .good{color:var(--ok)}
+.rp .flag{display:inline-block;font-size:11px;border:1px solid var(--warn);color:var(--warn);border-radius:3px;padding:0 4px;margin-inline-start:4px}
 </style>
 
 <header>
   <h1>壶模型试验台</h1>
-  <p>第 0 层壶模型在浏览器里实时跑：拖动壶嘴、按住倒奶，液面、堰流流量和奶柱按物理公式实时算出。杯面上的图案由同一套 2D 表层求解器（IMEX+Rusanov）在浏览器里实时算出；双击杯子看杯面 2D 图。</p>
+  <p>第 0 层壶模型在浏览器里实时跑：拖动壶嘴、按住倒奶，液面、堰流流量和奶柱按物理公式实时算出。杯面上的图案由同一套 2D 表层求解器（IMEX+Rusanov）在浏览器里实时算出；双击杯子看杯面 2D 图。脚本里的两组「V0.5 入口回放」不走壶模型，直接把 Python 求解器收到的入口喂给 2D 求解器，并和真实视频末帧并排对照。</p>
 </header>
 
 <div class="app">
@@ -82,7 +102,9 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
         <button class="pour" id="pour">按住倒奶（倾斜手腕）</button>
         <button id="refill">重新装奶 200 mL</button>
         <button id="clear">擦掉杯面</button>
-        <select id="scriptsel"><option value="heart">大白心</option><option value="push_heart">推推乐</option><option value="layered_heart">千层心</option><option value="tulip">压纹郁金香</option><option value="leaf">树叶</option><option value="swan">天鹅</option><option value="heart_opt">大白心（优化动作）</option><option value="push_heart_opt">推推乐（优化动作）</option><option value="layered_heart_opt">千层心（优化动作）</option><option value="tulip_opt">压纹郁金香（优化动作）</option><option value="leaf_opt">树叶（优化动作）</option><option value="swan_opt">天鹅（优化动作）</option><option value="tulip_sweep9">郁金香（联合扫描 #9 的动作）</option><option value="heart_sweep9">心形（联合扫描 #9 的动作）</option></select>
+        <select id="scriptsel"><optgroup label="壶链脚本（咖啡师 → 壶 → 耦合）"><option value="heart">大白心</option><option value="push_heart">推推乐</option><option value="layered_heart">千层心</option><option value="tulip">压纹郁金香</option><option value="leaf">树叶</option><option value="swan">天鹅</option><option value="heart_opt">大白心（优化动作）</option><option value="push_heart_opt">推推乐（优化动作）</option><option value="layered_heart_opt">千层心（优化动作）</option><option value="tulip_opt">压纹郁金香（优化动作）</option><option value="leaf_opt">树叶（优化动作）</option><option value="swan_opt">天鹅（优化动作）</option><option value="tulip_sweep9">郁金香（联合扫描 #9 的动作）</option><option value="heart_sweep9">心形（联合扫描 #9 的动作）</option></optgroup>
+          <optgroup label="V0.5 原版（Codex 入口，不可倒）"><option value="rp:v05:heart">大白心 · V0.5 原版</option><option value="rp:v05:push_heart">推推乐 · V0.5 原版</option><option value="rp:v05:layered_heart">千层心 · V0.5 原版</option><option value="rp:v05:tulip">压纹郁金香 · V0.5 原版</option><option value="rp:v05:leaf">树叶 · V0.5 原版</option><option value="rp:v05:swan">天鹅 · V0.5 原版</option></optgroup>
+          <optgroup label="V0.5 全物理（入口全部可倒）"><option value="rp:phys:heart">大白心 · 全物理</option><option value="rp:phys:push_heart">推推乐 · 全物理</option><option value="rp:phys:layered_heart">千层心 · 全物理（相位事后再猜）</option><option value="rp:phys:tulip">压纹郁金香 · 全物理</option><option value="rp:phys:leaf">树叶 · 全物理</option><option value="rp:phys:swan">天鹅 · 全物理</option></optgroup></select>
         <button class="primary" id="auto">回放脚本</button>
         <button id="show2d">杯面 2D 图</button>
       </div>
@@ -113,8 +135,20 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
       <div class="row"><label for="cd">C_d</label><input type="range" id="cd" min="0.4" max="0.8" step="0.01" value="0.60"><span class="val" id="cdv">0.60</span></div>
     </div>
     <div>
-      <h2>读数</h2>
-      <dl class="read">
+      <h2 id="readh">读数</h2>
+      <dl class="read" id="rpread" hidden>
+        <dt>回放时间 t</dt><dd id="rpt">—</dd>
+        <dt>笔段</dt><dd id="rpph">—</dd>
+        <dt>接收流量 Q</dt><dd id="rpQ">—</dd>
+        <dt>壶嘴高 z</dt><dd id="rpz">—</dd>
+        <dt>冲击速度 U⊥</dt><dd id="rpU">—</dd>
+        <dt>水平速度 |u_h|</dt><dd id="rpuh">—</dd>
+        <dt>足迹半径 √(r₁r₂)</dt><dd id="rpr">—</dd>
+        <dt>沉积比例 χ</dt><dd id="rpchi">—</dd>
+        <dt>落点（杯坐标）</dt><dd id="rphit">—</dd>
+        <dt>杯面白区面积 / 已沉积</dt><dd id="rpwhite">—</dd>
+      </dl>
+      <dl class="read" id="pread">
         <dt>壶内剩余 V</dt><dd id="rV">200.0 mL</dd>
         <dt>液面高出壶嘴 h</dt><dd id="rh">—</dd>
         <dt>流量 出壶 / 落杯</dt><dd id="rQ">0.0 / 0.0 mL/s</dd>
@@ -134,8 +168,62 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
   </aside>
 </div>
 
+<section class="rp" id="rpPanel" hidden aria-labelledby="rpTitle">
+  <h2 id="rpTitle">V0.5 入口回放 · 末帧对照</h2>
+  <div class="imgs">
+    <figure><canvas id="rpLive" width="256" height="256" aria-label="本页实时模拟的杯面"></canvas><figcaption id="rpLiveCap">本页实时模拟</figcaption></figure>
+    <figure><img id="rpPhoto" alt="真实视频末帧，展平到正圆杯的照片"><figcaption>真实视频末帧<br>展平照片</figcaption></figure>
+    <figure><img id="rpRealw" alt="真实视频末帧的奶白度"><figcaption>真实视频末帧<br>奶白度</figcaption></figure>
+    <figure id="rpFigV05"><img id="rpV05" alt="V0.5 原版 256² 末帧"><figcaption>V0.5 原版<br>256² 末帧（Python）</figcaption></figure>
+    <figure id="rpFigPhys"><img id="rpPhys" alt="全物理 256² 末帧"><figcaption>全物理<br>256² 末帧（Python）</figcaption></figure>
+  </div>
+  <p class="note">五张图同一朝向：物理俯视，x 向右，+y 在上（壶把和咖啡师在 +y 一侧，拉花从上往下切）。蓝框是当前选的这一组。动作是 Codex 猜的，不是视频里咖啡师的动作，所以只能比末帧图案，不能比时间。</p>
+  <div class="cols">
+    <div>
+      <h3>这一组是什么</h3>
+      <p>入口回放，不是壶链脚本：把 Python 求解器（latte_imex，单层 IMEX，闭合 'chi'，回流律 v05）实际收到的入口按 1/120 s 一帧导出（落点 x_hit、S_eff、u_in、U⊥、d_jet、足迹椭圆 r₁ r₂ φ、扫描速度；全物理组另有壶嘴高 z、接收流量 Q、χ），在这里直接喂给同一个 2D 求解器。帧内线性插值，帧长规则与 <code>run.run</code> 相同，所以 128² 上和 Python 的末帧几乎逐位一致。虚拟咖啡师、壶模型和耦合都绕过；闭合参数用该组自己的一套（见下表）。3D 壶只是摆姿势：奶柱落在 x_hit、壶嘴在高度 z，壶里没有流动物理。</p>
+      <h3>入口量：原版和全物理</h3>
+      <div class="tw"><table>
+        <thead><tr><th>量</th><th>V0.5 原版</th><th>全物理</th><th>物理范围 / 依据</th></tr></thead>
+        <tbody>
+          <tr><td>接收流量 Q</td><td class="n bad">0.008–0.35 mL/s</td><td class="n">1.0–21.8 mL/s</td><td>连续奶柱 ≥ 1 mL/s，壶最大约 32 mL/s</td></tr>
+          <tr><td>壶嘴高 z</td><td class="bad">没有（U⊥ 太小，任何高度都倒不出）</td><td class="n">0.30–2.50 cm</td><td>每笔一个常数；低位/摆动 0.3–2.5 cm，切 1.2–7 cm</td></tr>
+          <tr><td>冲击速度 U⊥</td><td class="n bad">0.01–0.27 m/s（切 0.17–0.62）</td><td class="n">0.43–0.78 m/s</td><td>U⊥ = √(0.35² + 2gz)，壶嘴出口 0.35 m/s</td></tr>
+          <tr><td>水平速度 |u_h|</td><td class="n bad">0.011–0.16 m/s</td><td class="n">0.10–0.16 m/s</td><td>夹到 [0.10, min(0.40, U⊥)] m/s；摆动的横摆 = 手的横向速度</td></tr>
+          <tr><td>足迹半径</td><td class="n">0.10–1.76 mm</td><td class="n">0.67–3.2 mm</td><td>连续性 r = √(Q/(πU⊥))，按倾角拉成椭圆</td></tr>
+          <tr><td>零流量桥 / 起停</td><td class="bad">桥 0.18 s，起停突变</td><td>桥 ≥ 0.3 s，0.1 s 线性斜坡</td><td>手和壶嘴的反应时间</td></tr>
+          <tr><td>流量脉动深度</td><td class="n bad">0.60–0.85</td><td class="n">≤ 0.41</td><td>慢壶嘴，滞后 τ = 0.08 s</td></tr>
+          <tr><td>c_p</td><td class="n bad">0.3 D/s</td><td class="n">1.36 D/s</td><td>奶泡筏 √(g′h_f)/D 的名义值；β 3 /s、ν 1e-3 D²/s 两组相同，都在物理范围内</td></tr>
+        </tbody></table></div>
+      <h3>闭合参数</h3>
+      <div class="tw"><table id="rpParams"></table></div>
+    </div>
+    <div>
+      <h3>重新猜的（不是测量）</h3>
+      <ul>
+        <li><b>每一笔的壶嘴高度</b>：P2 反设计。在共享闭合 B_dep = 1550 D/s²、p_dep = 8、κ_r = 0.0373 下，逐笔解出高度，让该笔流量加权的 χ 等于 V0.5 同一笔的 χ；全部落在物理范围内。本图案的逐笔数值见下表。</li>
+        <li><b>流量脉动的相位</b>：郁金香、树叶、天鹅把峰从摆到两端（Codex，π）挪到过中线（0），沿用报告 P4f 的修补。千层心挪到回摆途中（π/2，strictfp90）<span class="flag">事后再猜</span>：这是看过 π 和 0 都不成形之后才改的动作，不是先验设定。</li>
+        <li>路径、时序、摆幅、摆频都沿用 Codex 的猜测；大白心、推推乐没有脉动。</li>
+      </ul>
+      <div class="tw"><table id="rpStrokes"></table></div>
+      <h3>注意</h3>
+      <ul>
+        <li><b>p_dep = 8</b>：沉积开关非常陡，几毫米高度就从全沉积切到不沉积。反设计顶到了上界，这是一个还没有实验验证的物理断言；p_dep = 2 时无论高度怎么取都配不上逐笔沉积比例。</li>
+        <li><b>大白心</b>：心形和尖都在，但下半有一条 25–32 mm 长、2–4 mm 宽的褐缝，从凹口一直劈到心中部以上（V0.5 只有 4 mm 的凹口）。</li>
+        <li><b>线条更宽</b>：足迹大 3–5 倍；郁金香、树叶的白底变成两根细条，树叶叶脉偏淡（对比约为 V0.5 的 0.8）。</li>
+        <li><b>天鹅</b>：头、颈和最后补白要压到 0.3–0.55 cm，近乎贴面倒；喙变短或卷成钩。</li>
+        <li><b>比的是 V0.5 自己的图</b>：IoU(c &gt; 0.4) 大白心 0.71、推推乐 0.82、千层心 0.68、郁金香 0.61、树叶 0.76、天鹅 0.75（256²）。IoU 不能当成形的证据，判断看结构（千层心 0.68 也成形）。</li>
+        <li>V0.5 原版按原样回放，这些数倒不出来；3D 壶的高度只是示意（低位 1.0 cm、切 2.5 cm）。</li>
+        <li>网页默认 96²，比 256² 粗，细线、叶脉、天鹅颈会更糊；看细节请选 256²（约 1/8 实时），或看上面 Python 预算的 256² 图。</li>
+      </ul>
+      <h3>和真实视频比</h3>
+      <p id="rpReal">与真实视频末帧的定量对比（v05real/compare_real.md）还没有完成，数字出来后补在这里。目前只能看上面的图：朝向一致，但 Codex 的动作不是视频里的动作，图案的位置、大小和层数本来就不会一一对上。</p>
+    </div>
+  </div>
+</section>
+
 <div class="chart">
-  <div class="legend"><span><i style="background:var(--accent)"></i>流量 Q [mL/s]</span><span><i style="background:var(--coffee)"></i>倾角 [°] ÷ 4</span><span><i style="background:var(--muted)"></i>液面高出壶嘴 h [mm]</span></div>
+  <div class="legend"><span><i style="background:var(--accent)"></i><span id="lg1">流量 Q [mL/s]</span></span><span><i style="background:var(--coffee)"></i><span id="lg2">倾角 [°] ÷ 4</span></span><span><i style="background:var(--muted)"></i><span id="lg3">液面高出壶嘴 h [mm]</span></span></div>
   <canvas id="strip"></canvas>
   <p class="note">网格越细越慢：求解器跟不上时模型时钟自动放慢，右侧"求解网格"旁的倍率就是当前模拟速度相对实时的比例；256² 以上建议只用来回放脚本后看 2D 杯面图。最近 20 s。曲线很陡是真实的：壶里 200 mL 时 8 到 22 mL/s 只差 2° 倾角，所以流量要靠手腕微调，倒得越久要越倾斜。</p>
 </div>
@@ -326,6 +414,8 @@ function requiredLift(R, tip){ const ct=Math.cos(CUP.tilt), st=Math.sin(CUP.tilt
 // coffee surface = painted canvas texture
 /* 2-D surface-layer solver (latte2d.js): the coffee surface texture is its milk fraction c = m/l */
 let PHYS={params:null, coupling:null}, SCRIPTS=null; const COUPLING_DEFAULT=Object.assign({}, Latte2D.COUPLING);
+// inlet replay of the V0.5 sets (null unless a "rp:<set>:<pattern>" script is loaded): {key, name, which, J, set, R, t, running, ...}
+let rp=null;
 let solN=96, fieldCanvas=document.createElement('canvas'), fctx=fieldCanvas.getContext('2d'), fieldImg=null, cField=null;
 const paint=document.createElement('canvas'); paint.width=paint.height=512; const pctx=paint.getContext('2d');
 const tex=new THREE.CanvasTexture(paint); tex.anisotropy=4;
@@ -338,39 +428,47 @@ const hits=[];   // recent hit points for the 2-D view
 const solver={t:0, deposited:0, area:1/(96*96), N:96, queue:[], inflight:false, worker:null, local:null, modelSec:0, wallT0:0, speed:0};
 function makeWorker(){
   try{
+    // frames: {inlet, dt} = one coupled control frame; {replayTo: t} = run the inlet replay (Latte2D.replayAdvance) up to model time t
     const src=`importScripts(${JSON.stringify(new URL('latte2d.js', location.href).href)});
-let sol=null; const {Latte2D}=self.Latte2D;
-function post(id){ const c=sol.concentration(); self.postMessage({type:'state', id, t:sol.t, deposited:sol.deposited, area:sol.area, N:sol.N, c}, [c.buffer]); }
+let sol=null, R=null, err=null; const L=self.Latte2D, {Latte2D}=L;
+function post(id){ const c=sol.concentration(); self.postMessage({type:'state', id, t:sol.t, deposited:sol.deposited, area:sol.area, N:sol.N, c, err}, [c.buffer]); err=null; }
 self.onmessage=e=>{ const m=e.data;
-  if(m.type==='init'){ sol=new Latte2D(m.N, m.params||{}, m.num||{cg_tol:1e-8}); post(m.id); }
+  if(m.type==='init'){ R=m.replay?L.decodeReplay(m.replay, m.fps):null; sol=new Latte2D(m.N, m.params||{}, m.num||{cg_tol:1e-8}); post(m.id); }
   else if(m.type==='reset'){ sol.reset(); post(m.id); }
-  else if(m.type==='frames'){ for(const f of m.frames){ try{ sol.advanceFrame(f.inlet, f.dt); }catch(err){ sol.reset(); } } post(m.id); } };`;
+  else if(m.type==='frames'){ for(const f of m.frames){ try{ if(f.replayTo!==undefined){ if(R) L.replayAdvance(sol, R, f.replayTo); } else sol.advanceFrame(f.inlet, f.dt); }
+      catch(x){ sol.reset(); if(f.replayTo!==undefined){ R=null; err=String(x&&x.message||x); } } } post(m.id); } };`;
     const w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
     w.onmessage=e=>{ const m=e.data; if(m.type!=='state') return; solver.inflight=false; solver.t=m.t; solver.deposited=m.deposited; solver.area=m.area;
+      if(m.err&&rp){ rp.running=false; rp.error=m.err; console.warn('replay failed:', m.err); }
       if(m.N===solN){ cField=m.c; paintField(); if(!overlay.hidden) drawTop(); } pump(); };
-    w.onerror=err=>{ console.warn('worker failed, falling back to the main thread', err.message); solver.worker=null; solver.local=new Latte2D.Latte2D(solN,{}, {cg_tol:1e-8}); };
+    w.onerror=err=>{ console.warn('worker failed, falling back to the main thread', err.message); solver.worker=null; solver.local=new Latte2D.Latte2D(solN,solverParams(), {cg_tol:1e-8}); solver.localR=rp?rp.R:null; };
     return w;
   }catch(e){ console.warn('no worker:', e.message); return null; }
 }
 function pump(){ if(solver.inflight||solver.queue.length===0) return;
   const frames=solver.queue.splice(0, solver.queue.length);
   if(solver.worker){ solver.inflight=true; solver.worker.postMessage({type:'frames', frames}); }
-  else if(solver.local){ for(const f of frames){ try{ solver.local.advanceFrame(f.inlet,f.dt); }catch(err){ solver.local.reset(); } } solver.t=solver.local.t; solver.deposited=solver.local.deposited; solver.area=solver.local.area; solver.local.concentration(cField); paintField(); if(!overlay.hidden) drawTop(); } }
+  else if(solver.local){ for(const f of frames){ try{ if(f.replayTo!==undefined){ if(solver.localR) Latte2D.replayAdvance(solver.local, solver.localR, f.replayTo); } else solver.local.advanceFrame(f.inlet,f.dt); }
+      catch(err){ solver.local.reset(); if(f.replayTo!==undefined){ solver.localR=null; if(rp){ rp.running=false; rp.error=String(err.message||err); } } } }
+    solver.t=solver.local.t; solver.deposited=solver.local.deposited; solver.area=solver.local.area; solver.local.concentration(cField); paintField(); if(!overlay.hidden) drawTop(); } }
 function solverPush(inlet, dt){ solver.queue.push({inlet, dt}); solver.modelSec+=dt; pump(); }
+function solverPushReplay(t){ solver.queue.push({replayTo:t}); pump(); }
 function solverBusy(){ return solver.queue.length>=4 || (solver.inflight && solver.queue.length>=2); }
 function solverReset(){ solver.queue.length=0; solver.t=0; solver.deposited=0; if(solver.worker){ solver.inflight=true; solver.worker.postMessage({type:'reset'}); } else if(solver.local){ solver.local.reset(); solver.local.concentration(cField); paintField(); } }
 // the 2-D closure parameters actually sent to the solver: the script's physics preset, with the delay closure switched by the checkbox
 // the model switch puts the fitted two-layer constants (scripts.json _twolayer_physics) on top of the preset
-function solverParams(){ const p=Object.assign({}, PHYS.params||{}); const on=document.getElementById('delay').checked; if(!on) p.tau_d=0; else if(!(p.tau_d>0)) Object.assign(p,{tau_d:0.2,sub_pressure:0.5,sub_advect:0.3});
+function solverParams(){ if(rp) return Object.assign({}, rp.R.params);   // replays: exactly the set's closure (no delay, no two-layer)
+  const p=Object.assign({}, PHYS.params||{}); const on=document.getElementById('delay').checked; if(!on) p.tau_d=0; else if(!(p.tau_d>0)) Object.assign(p,{tau_d:0.2,sub_pressure:0.5,sub_advect:0.3});
   const tl=SCRIPTS&&SCRIPTS._twolayer_physics; if(document.getElementById('modelsel').value==='twolayer'&&tl) Object.assign(p, tl.params, {tau_d:0}); return p; }
 function updateModelText(){ const tl=SCRIPTS&&SCRIPTS._twolayer_physics, two=document.getElementById('modelsel').value==='twolayer';
-  const mv=document.getElementById('modelv'); mv.textContent=two?(tl?'拟合':'未加载'):'#9';
+  const mv=document.getElementById('modelv'); mv.textContent=rp?'回放':two?(tl?'拟合':'未加载'):'#9';
   mv.title=two&&tl?`双层闭合，拟合常数：g′ ${tl.params.g_red.toFixed(0)}, Fr_c² ${tl.params.Fr_c2.toFixed(0)}, φ_foam ${tl.params.phi_foam.toFixed(2)}, β ${tl.params.beta.toFixed(2)}, κ_c ${tl.params.kappa_c.toFixed(2)}`:'旧闭合：联合扫描 #9 的 B_dep、κ_r 等';
-  document.getElementById('delay').disabled=two; }
+  document.getElementById('delay').disabled=two||!!rp; }
 function newSolver(N){ solN=N; solver.N=N; solver.area=1/(N*N); fieldCanvas.width=fieldCanvas.height=N; fieldImg=fctx.createImageData(N,N); cField=new Float32Array(N*N).fill(NaN); hits.length=0;
   solver.queue.length=0; solver.t=0; solver.deposited=0;
   if(!solver.worker && !solver.local) solver.worker=makeWorker();
-  if(solver.worker){ solver.inflight=true; const prm=solverParams(); solver.worker.postMessage({type:'init', N, params:prm, num:{cg_tol:1e-8}}); } else { solver.local=new Latte2D.Latte2D(N,solverParams(), {cg_tol:1e-8}); solver.local.concentration(cField); }
+  if(solver.worker){ solver.inflight=true; const prm=solverParams(); solver.worker.postMessage({type:'init', N, params:prm, num:{cg_tol:1e-8}, replay:rp?rp.set:null, fps:rp?rp.J.fps:120}); }
+  else { solver.local=new Latte2D.Latte2D(N,solverParams(), {cg_tol:1e-8}); solver.localR=rp?rp.R:null; solver.local.concentration(cField); }
   paintField(); }
 // brown -> white as render.py: v = clip(c/0.8)^0.8
 function paintField(){ if(!cField) return; const N=solN; const d=fieldImg.data;
@@ -381,7 +479,9 @@ function paintField(){ if(!cField) return; const N=solN; const d=fieldImg.data;
   fctx.putImageData(fieldImg,0,0);
   // cup units: field spans [-0.5,0.5] D_L; the coffee disc has radius CUP_R (0.043 m) = 0.5375 D_L -> scale
   const px=512*(D_L/(2*CUP_R)); pctx.fillStyle='#5a3a1e'; pctx.fillRect(0,0,512,512); pctx.imageSmoothingEnabled=true;
-  pctx.drawImage(fieldCanvas,256-px/2,256-px/2,px,px); tex.needsUpdate=true; }
+  pctx.drawImage(fieldCanvas,256-px/2,256-px/2,px,px); tex.needsUpdate=true;
+  const lv=document.getElementById('rpLive'); if(lv && !document.getElementById('rpPanel').hidden){ const lc=lv.getContext('2d'), W=lv.width;
+    lc.fillStyle='#5a3a1e'; lc.fillRect(0,0,W,W); lc.imageSmoothingEnabled=true; lc.drawImage(fieldCanvas,0,0,W,W); } }
 newSolver(96);
 // pitcher mesh from the (z, phi) grid: outer wall, inner (liquid) wall, bottom, rim band.  three local coords = (x, z, -y) of the body frame
 const pitcherGroup=new THREE.Group(); scene.add(pitcherGroup);
@@ -440,35 +540,37 @@ const ray=new THREE.Raycaster(), ndc=new THREE.Vector2();
 function pickPlane(ev){ const r=canvas.getBoundingClientRect(); ndc.set((ev.clientX-r.left)/r.width*2-1, -((ev.clientY-r.top)/r.height*2-1)); ray.setFromCamera(ndc,camera);
   const plane=new THREE.Plane(new THREE.Vector3(0,1,0), -pose.tip[2]); const p=new THREE.Vector3(); return ray.ray.intersectPlane(plane,p)?p:null; }
 let drag=null;
-canvas.addEventListener('pointerdown',ev=>{ canvas.setPointerCapture(ev.pointerId); if(ev.button===2||ev.ctrlKey){ drag={mode:'orbit',x:ev.clientX,y:ev.clientY}; return; }
+canvas.addEventListener('pointerdown',ev=>{ canvas.setPointerCapture(ev.pointerId); if(ev.button===2||ev.ctrlKey||rp){ drag={mode:'orbit',x:ev.clientX,y:ev.clientY}; return; }   // replay: the pitcher follows the replay, dragging orbits
   const p=pickPlane(ev); if(p){ drag={mode:'move',ox:p.x-pose.tip[0], oy:-p.z-pose.tip[1]}; auto=null; } });
 canvas.addEventListener('pointermove',ev=>{ if(!drag) return; if(drag.mode==='orbit'){ cam.az-=(ev.clientX-drag.x)*0.01; cam.el=Math.min(rad(80),Math.max(rad(5),cam.el+(ev.clientY-drag.y)*0.01)); drag.x=ev.clientX; drag.y=ev.clientY; placeCam(); syncCamUI(); return; }
   const p=pickPlane(ev); if(!p) return; pose.tip[0]=Math.max(-0.1,Math.min(0.1,p.x-drag.ox)); pose.tip[1]=Math.max(-0.1,Math.min(0.1,-p.z-drag.oy)); });
 canvas.addEventListener('pointerup',()=>{drag=null;}); canvas.addEventListener('pointercancel',()=>{drag=null;});
 canvas.addEventListener('contextmenu',ev=>ev.preventDefault());
-canvas.addEventListener('wheel',ev=>{ ev.preventDefault(); if(ev.shiftKey||ev.ctrlKey){ cam.dist=Math.max(0.2,Math.min(0.8,cam.dist+ev.deltaY*0.0005)); placeCam(); syncCamUI(); return; }
+canvas.addEventListener('wheel',ev=>{ ev.preventDefault(); if(ev.shiftKey||ev.ctrlKey||rp){ cam.dist=Math.max(0.2,Math.min(0.8,cam.dist+ev.deltaY*0.0005)); placeCam(); syncCamUI(); return; }
   const z=Math.max(0.005,Math.min(0.15,pose.tip[2]-ev.deltaY*0.0001)); pose.tip[2]=z; ui.height.value=(z*100).toFixed(1); auto=null; },{passive:false});
 const pourBtn=document.getElementById('pour');
-function setPour(on){ pouring=on; pourBtn.classList.toggle('active',on); if(on){auto=null; manualTilt=null;} }
+function setPour(on){ if(on&&rp) exitReplay(true); pouring=on; pourBtn.classList.toggle('active',on); if(on){auto=null; manualTilt=null;} }
 pourBtn.addEventListener('pointerdown',ev=>{ev.preventDefault(); pourBtn.setPointerCapture(ev.pointerId); setPour(true);});
 pourBtn.addEventListener('pointerup',()=>setPour(false)); pourBtn.addEventListener('pointercancel',()=>setPour(false));
-addEventListener('keydown',ev=>{ if(ev.repeat) return; if(ev.code==='Space'){ev.preventDefault(); setPour(true);} if(ev.code==='KeyW'){keyTilt=1;auto=null;manualTilt=null;} if(ev.code==='KeyS'){keyTilt=-1;auto=null;manualTilt=null;}
+addEventListener('keydown',ev=>{ if(ev.repeat) return;
+  if(ev.code==='Space'){ev.preventDefault(); setPour(true);} if(ev.code==='KeyW'||ev.code==='KeyS'){ if(rp) exitReplay(true); } if(ev.code==='KeyW'){keyTilt=1;auto=null;manualTilt=null;} if(ev.code==='KeyS'){keyTilt=-1;auto=null;manualTilt=null;}
   if(ev.code==='KeyQ'){pose.tip[2]=Math.min(0.15,pose.tip[2]+0.01);} if(ev.code==='KeyE'){pose.tip[2]=Math.max(0.005,pose.tip[2]-0.01);} });
 addEventListener('keyup',ev=>{ if(ev.code==='Space') setPour(false); if(ev.code==='KeyW'&&keyTilt>0) keyTilt=0; if(ev.code==='KeyS'&&keyTilt<0) keyTilt=0; });
-ui.tilt.addEventListener('input',()=>{ manualTilt=rad(+ui.tilt.value); pouring=false; auto=null; });
-ui.height.addEventListener('input',()=>{ pose.tip[2]=+ui.height.value/100; auto=null; });
+ui.tilt.addEventListener('input',()=>{ if(rp) exitReplay(true); manualTilt=rad(+ui.tilt.value); pouring=false; auto=null; });
+ui.height.addEventListener('input',()=>{ if(rp) exitReplay(true); pose.tip[2]=+ui.height.value/100; auto=null; });
 ui.yaw.addEventListener('input',()=>{ pose.yaw=rad(+ui.yaw.value); });
 ui.fill.addEventListener('input',()=>{ out('fillv').textContent=ui.fill.value+' mL'; });
 ui.cd.addEventListener('input',()=>{ law.Cd=+ui.cd.value; out('cdv').textContent=law.Cd.toFixed(2); });
 document.getElementById('cuptilt').addEventListener('input',ev=>{ CUP.tilt=rad(+ev.target.value); out('cuptiltv').textContent=ev.target.value+'°'; placeCup(pose.yaw); });
 function resetLedger(V){ st.V=V; st.Q=0; st.flowing=false; st.Vlip=0; st.Vjet=0; st.Vcup=0; st.Qfeed=0; st.Qhit=0; st.parcels=[]; }
 document.getElementById('refill').addEventListener('click',()=>{ resetLedger(+ui.fill.value*1e-6); });
-document.getElementById('clear').addEventListener('click',()=>{ solverReset(); hits.length=0; });
-document.getElementById('grid').addEventListener('change',ev=>{ newSolver(+ev.target.value); });
+// replays: wiping the surface or changing the grid restarts the replay from t = 0 (the solver clock is the replay clock)
+document.getElementById('clear').addEventListener('click',()=>{ if(rp){ restartReplay(); return; } solverReset(); hits.length=0; });
+document.getElementById('grid').addEventListener('change',ev=>{ solN=+ev.target.value; if(rp){ restartReplay(); return; } newSolver(+ev.target.value); });
 document.getElementById('delay').addEventListener('change',()=>{ newSolver(solN); });
 document.getElementById('modelsel').addEventListener('change',()=>{ updateModelText(); newSolver(solN); });
 let nxGrid=null;
-function usePitcher(which){ const g=(which==='nx'&&nxGrid)?nxGrid:parametricGrid(); buildGeometry(g); buildMeshes(); resetLedger(st.V+st.Vlip+st.Vjet); resetKin();
+function usePitcher(which){ const g=(which==='nx'&&nxGrid)?nxGrid:parametricGrid(); buildGeometry(g); buildMeshes(); resetLedger(st.V+st.Vlip+st.Vjet); resetKin(); if(rp) rp.tiltKey=null;
   out('pitcherv').textContent=(capacity*1e6).toFixed(0)+' mL'; }
 document.getElementById('pitchersel').addEventListener('change',ev=>usePitcher(ev.target.value));
 fetch('pitcher_nx.json').then(r=>r.json()).then(j=>{ nxGrid=gridFromJSON(j); if(document.getElementById('pitchersel').value==='nx') usePitcher('nx'); })
@@ -525,21 +627,121 @@ function startScript(moves, physics){ MOVES=moves; resetLedger((geom&&geom.name!
   resetKin(); auto={t:0, ierr:0, off:[0,0], Qseen:0}; }
 function resetKin(){ kin.tipPrev=null; kin.vel=[0,0,0]; kin.acc=[0,0,0]; kin.slope=[0,0]; kin.slopeRate=[0,0]; NRM=[0,0,1]; GEFF=G; }
 SCRIPTS={heart:{moves:MOVES_HEART}, layered_heart:{moves:MOVES_LAYERED}};
-fetch('scripts.json').then(r=>r.json()).then(j=>{ SCRIPTS=j; updateModelText(); const d=j._default_physics; if(d){ PHYS={params:d.params||null, coupling:d.coupling||null}; Object.assign(Latte2D.COUPLING, COUPLING_DEFAULT, PHYS.coupling||{}); newSolver(solN); } }).catch(e=>console.warn('scripts.json not available, built-in scripts only', e));
+fetch('scripts.json').then(r=>r.json()).then(j=>{ SCRIPTS=j; updateModelText(); const d=j._default_physics; if(d){ PHYS={params:d.params||null, coupling:d.coupling||null}; Object.assign(Latte2D.COUPLING, COUPLING_DEFAULT, PHYS.coupling||{}); if(!rp) newSolver(solN); } }).catch(e=>console.warn('scripts.json not available, built-in scripts only', e));
 const TARGET_CN={heart:'大白心',push_heart:'推推乐',layered_heart:'千层心',tulip:'压纹郁金香',leaf:'树叶',swan:'天鹅'};
-function updateTarget(){ const k=document.getElementById('scriptsel').value.replace(/_(sweep\d+|opt)$/,''); const src='targets/'+(TARGET_CN[k]?k:'heart')+'.png';
+function updateTarget(){ const sel=document.getElementById('scriptsel').value, pk=parseKey(sel);
+  if(pk){ const src='v05phys/img/'+pk.name+'_realw.webp'; document.getElementById('targetimg').src=src; document.getElementById('targetimg2').src=src;
+    document.getElementById('targettxt').textContent='视频目标：'+TARGET_CN[pk.name]+'（参考视频末帧展平到正圆杯的奶白度场，与模拟同一朝向）。下方「末帧对照」里还有真实照片和两组 256² 结果。';
+    showReplayPanel(pk); return; }
+  if(!rp) document.getElementById('rpPanel').hidden=true;
+  const k=sel.replace(/_(sweep\d+|opt)$/,''); const src='targets/'+(TARGET_CN[k]?k:'heart')+'.png';
   document.getElementById('targetimg').src=src; document.getElementById('targetimg2').src=src;
   document.getElementById('targettxt').textContent='视频目标：'+(TARGET_CN[k]||'大白心')+'（参考视频末帧展平到正圆杯的奶白度场）。回放脚本后双击杯子，杯面 2D 图会和它并排显示。'; }
+
+/* ---------------------------------------------------------------- V0.5 inlet replays (web/v05phys/<pattern>.json)
+   The 2-D solver is driven directly by the inlet the Python solver received (Latte2D.replayAdvance in the worker), with the
+   set's closure; the barista, the pitcher model and the coupling are bypassed.  The 3-D pitcher is only posed: spout at
+   height z above the stream foot (jet leaving the lip at 0.35 m/s downward plus the horizontal arrival velocity). */
+const RP_CACHE={}, RP_SETCN={v05:'V0.5 原版（Codex 入口，不可倒）', phys:'V0.5 全物理（入口全部可倒）'}, V_EXIT=0.35;
+function parseKey(k){ const m=/^rp:(v05|phys):([a-z_]+)$/.exec(k||''); return m&&TARGET_CN[m[2]]?{key:k, which:m[1], name:m[2]}:null; }
+function loadReplay(name){ if(RP_CACHE[name]) return Promise.resolve(RP_CACHE[name]);
+  return fetch('v05phys/'+name+'.json').then(r=>{ if(!r.ok) throw new Error('v05phys/'+name+'.json: HTTP '+r.status); return r.json(); }).then(j=>(RP_CACHE[name]=j)); }
+const fmtP=v=>typeof v==='string'?v:(Math.abs(v)>=100?v.toFixed(0):Math.abs(v)>=1?v.toFixed(2):Math.abs(v)>=0.01?v.toFixed(4):v.toExponential(0));
+function showReplayPanel(pk){ const P=document.getElementById('rpPanel'); P.hidden=false;
+  const im=(id,suf)=>{ document.getElementById(id).src='v05phys/img/'+pk.name+'_'+suf+'.webp'; };
+  im('rpPhoto','photo'); im('rpRealw','realw'); im('rpV05','v05'); im('rpPhys','phys');
+  document.getElementById('rpFigV05').classList.toggle('cur', pk.which==='v05'); document.getElementById('rpFigPhys').classList.toggle('cur', pk.which==='phys');
+  document.getElementById('rpTitle').textContent='V0.5 入口回放 · '+TARGET_CN[pk.name]+' · 末帧对照';
+  paintField();
+  loadReplay(pk.name).then(J=>{ const a=J.sets.v05, b=J.sets.phys;
+    const rows=[['c_p','cp','D/s'],['β','beta','/s'],['ν','nu','D²/s'],['D（混合）','D','D²/s'],['κ_t','kappa_t',''],['κ_c','kappa_c',''],['κ_r','kappa_r',''],['B_dep','B_dep','D/s²'],['p_dep','p_dep',''],['κ_Q','kappa_Q','/D'],['回流律','return_law','']];
+    document.getElementById('rpParams').innerHTML='<thead><tr><th>参数</th><th>V0.5 原版</th><th>全物理</th></tr></thead><tbody>'+rows.map(([n,k,u])=>
+      `<tr><td>${n}${u?' ['+u+']':''}</td><td class="n">${fmtP(a.params[k])}</td><td class="n${a.params[k]!==b.params[k]?' good':''}">${fmtP(b.params[k])}</td></tr>`).join('')+'</tbody>';
+    const v05chi={}; for(const s of a.strokes) v05chi[s.k]=s.chi_Qw;
+    const fp=b.meta&&b.meta.flow_phase, fpTxt=fp==null?'无脉动':(Math.abs(fp)<1e-9?'0（过中线）':(Math.abs(fp-Math.PI/2)<1e-9?'π/2（回摆途中）<span class="flag">事后再猜</span>':fp.toFixed(2)));
+    document.getElementById('rpStrokes').innerHTML=`<caption style="caption-side:top;text-align:left;font-size:12px;color:var(--muted);padding-bottom:4px">${TARGET_CN[pk.name]} · 全物理的逐笔入口（流量峰相位：${fpTxt}）</caption>`+
+      '<thead><tr><th>笔段</th><th>t [s]</th><th>z [cm]</th><th>Q [mL/s]</th><th>U⊥ [m/s]</th><th>r [mm]</th><th>χ</th><th>V0.5 χ</th></tr></thead><tbody>'+b.strokes.map(s=>
+      `<tr><td>${s.label.replace(/^第 (\d+) 笔 · /,'#$1 ')}</td><td class="n">${s.t0.toFixed(2)}–${s.t1.toFixed(2)}</td><td class="n">${s.z_cm.toFixed(2)}</td><td class="n">${s.Q[0].toFixed(1)}–${s.Q[1].toFixed(1)}</td><td class="n">${s.U_ms[0].toFixed(2)}${s.U_ms[1]-s.U_ms[0]>0.005?'–'+s.U_ms[1].toFixed(2):''}</td><td class="n">${s.r_mm[0].toFixed(1)}–${s.r_mm[1].toFixed(1)}</td><td class="n">${s.chi_Qw.toFixed(3)}</td><td class="n">${v05chi[s.k]!==undefined?v05chi[s.k].toFixed(3):'—'}</td></tr>`).join('')+'</tbody>';
+  }).catch(e=>{ console.warn(e); document.getElementById('rpStrokes').innerHTML='<caption>回放数据没有加载：'+String(e.message||e)+'</caption>'; }); }
+function setReplayUI(on){ document.getElementById('rpread').hidden=!on; document.getElementById('pread').hidden=on;
+  document.getElementById('readh').textContent=on?'读数（入口回放）':'读数';
+  document.getElementById('delay').disabled=on||document.getElementById('modelsel').value==='twolayer'; document.getElementById('modelsel').disabled=on;
+  out('modelv').textContent=on?'回放':(document.getElementById('modelsel').value==='twolayer'?'拟合':'#9');
+  const L=on?['接收流量 Q [mL/s]','壶嘴高 z [mm]','沉积比例 χ × 30']:['流量 Q [mL/s]','倾角 [°] ÷ 4','液面高出壶嘴 h [mm]'];
+  ['lg1','lg2','lg3'].forEach((id,i)=>{ document.getElementById(id).textContent=L[i]; }); hist2.length=0; }
+function startReplay(key){ const pk=parseKey(key); if(!pk) return;
+  loadReplay(pk.name).then(J=>{ const set=J.sets[pk.which];
+    auto=null; pouring=false; pourBtn.classList.remove('active'); manualTilt=null; keyTilt=0;
+    rp={key, name:pk.name, which:pk.which, J, set, R:Latte2D.decodeReplay(set, J.fps)};
+    setReplayUI(true); showReplayPanel(pk); restartReplay(); })
+  .catch(e=>{ console.warn('replay not available', e); out('hud').textContent='回放数据没有加载：'+String(e.message||e); }); }
+function restartReplay(){ if(!rp) return; const V0=(geom&&geom.name!=='参数化壶')?250:200;
+  Object.assign(rp, {t:0, running:true, done:false, error:null, Vml:V0, zDisp:null, tiltDisp:null, tiltKey:null, cur:null});
+  hits.length=0; hist2.length=0; newSolver(solN); rp.cur=replayState(0); }
+function exitReplay(reinit){ if(!rp) return; rp=null; setReplayUI(false); if(!parseKey(document.getElementById('scriptsel').value)) document.getElementById('rpPanel').hidden=true;
+  resetLedger((geom&&geom.name!=='参数化壶')?250e-6:200e-6); resetKin(); if(reinit) newSolver(solN); }
+// everything the readouts and the pose need at replay time t (inlet by the solver's own sampling; Q, chi, z interpolated)
+function replayState(t){ const R=rp.R, c=R.cols, inl=Latte2D.replaySample(R,t); let u=t*R.fps, k=Math.floor(u), f=u-k; if(k>=R.n-1){k=R.n-1; f=0;} const k1=Math.min(k+1,R.n-1);
+  const lin=a=>a[k]+(a[k1]-a[k])*f, near=f<0.5?k:k1, on=inl.active;
+  const Q=on?lin(c.Q):0, chi=on?lin(c.chi):0, label=R.labels[c.phase[near]]||'';
+  let z, zNominal=false;
+  if(c.z) z=lin(c.z);                                            // all-physical: per-stroke spout height [cm]
+  else { zNominal=true; const tgt=/细切/.test(label)?2.5:1.0;     // V0.5 has no spout height: display-only class height (P0: low 1.0, cut 2.5 cm)
+    const prev=rp.zDisp===null?tgt:rp.zDisp, step=25/R.fps; z=prev+Math.max(-step,Math.min(step,tgt-prev)); }
+  rp.zDisp=z;
+  return {t, inl, Q, chi, z, zNominal, label, U:on?inl.U_perp*D_L:0, uh:on?Math.hypot(inl.u_in[0],inl.u_in[1])*D_L:0, r:on?Math.sqrt(inl.r1*inl.r2)*D_L*1e3:0}; }
+function replayTick(){ rp.t=Math.min(rp.t+DT, rp.R.T); solverPushReplay(rp.t); const s=replayState(rp.t); rp.cur=s; rp.Vml=Math.max(0, rp.Vml-s.Q*DT);
+  hits.push({x:s.inl.x_hit[0], y:s.inl.x_hit[1], on:s.inl.active}); if(hits.length>2400) hits.splice(0,hits.length-2400);
+  hist2.push({t:rp.t, rQ:s.Q, rz:s.z*10, rchi:s.chi}); if(hist2.length>3000) hist2.splice(0,hist2.length-3000);
+  if(rp.t>=rp.R.T-1e-9){ rp.running=false; rp.done=true; } }
+// display tilt: the milk surface just at the spout lip (+1.5 mm while pouring, -3 mm between strokes); geometry only, cached per 5 mL
+function displayTilt(V, flowing){ const key=Math.round(V/5)+(flowing?'f':'s'); if(rp.tiltKey===key) return rp.tiltTarget;
+  const hT=flowing?0.0015:-0.003, Vm=Math.max(V,5)*1e-6; NRM=[0,0,1]; GEFF=G;
+  const h=tl=>{ const R=rot(pose.yaw,tl,0); const fs=freeSurface(R,pose.tip,Vm); return weir(R,pose.tip,fs.c,law.Cd,law.hk).h_max; };
+  let lo=0, hi=rad(150); if(h(hi)<hT) { rp.tiltKey=key; rp.tiltTarget=hi; return hi; }
+  for(let i=0;i<14;i++){ const m=.5*(lo+hi); if(h(m)<hT) lo=m; else hi=m; }
+  rp.tiltKey=key; rp.tiltTarget=.5*(lo+hi); return rp.tiltTarget; }
+function renderReplay(){ const s=rp.cur||replayState(rp.t), inl=s.inl;
+  const hit=[inl.x_hit[0]*D_L, inl.x_hit[1]*D_L], zm=Math.max(s.z,0.05)/100;
+  const uh=inl.active?[inl.u_in[0]*D_L, inl.u_in[1]*D_L]:[0,0];
+  const Uv=Math.sqrt(V_EXIT*V_EXIT+2*G*zm), tf=(Uv-V_EXIT)/G;      // fall time of a jet leaving the lip at 0.35 m/s downward
+  pose.yaw=rad(-90); ui.yaw.value=-90; pose.tip=[hit[0]-uh[0]*tf, hit[1]-uh[1]*tf, zm];
+  const tt=displayTilt(rp.Vml, inl.active); rp.tiltDisp=rp.tiltDisp===null?tt:rp.tiltDisp+(tt-rp.tiltDisp)*0.15; pose.tilt=rp.tiltDisp;
+  placeCup(pose.yaw); NRM=[0,0,1]; GEFF=G;
+  const R=rot(pose.yaw,pose.tilt,0), fs=freeSurface(R,pose.tip,Math.max(rp.Vml,5)*1e-6);
+  const m=new THREE.Matrix4(), Rt=new THREE.Matrix4().set(R[0],R[1],R[2],0, R[3],R[4],R[5],0, R[6],R[7],R[8],0, 0,0,0,1);
+  const swap=new THREE.Matrix4().set(1,0,0,0, 0,0,-1,0, 0,1,0,0, 0,0,0,1), tr=new THREE.Matrix4().makeTranslation(-tipB[0],-tipB[1],-tipB[2]);
+  const toThree=new THREE.Matrix4().set(1,0,0,0, 0,0,1,0, 0,-1,0,0, 0,0,0,1);
+  m.copy(new THREE.Matrix4().makeTranslation(pose.tip[0],pose.tip[2],-pose.tip[1])).multiply(toThree).multiply(Rt).multiply(tr).multiply(swap);
+  pitcherGroup.matrixAutoUpdate=false; pitcherGroup.matrix.copy(m);
+  milkMat.clippingPlanes[0].set(new THREE.Vector3(0,-1,0), fs.c);
+  if(inl.active){ const sp=Math.hypot(uh[0],uh[1],Uv), d0=inl.d_jet*D_L*Math.sqrt(sp/V_EXIT);
+    buildJet({origin:pose.tip.slice(), v0:[uh[0],uh[1],-V_EXIT], t_hit:tf, d0, u0:V_EXIT}); marker.visible=true; marker.position.set(hit[0],0.0006,-hit[1]); }
+  else { buildJet(null); marker.visible=false; }
+  ui.tilt.value=deg(pose.tilt).toFixed(1); out('tiltv').textContent=fmt(deg(pose.tilt),1)+'°'; ui.height.value=(zm*100).toFixed(1); out('heightv').textContent=fmt(zm*100,1)+' cm'; out('yawv').textContent='-90°';
+  const T=rp.R.T; out('rpt').textContent=fmt(s.t,2)+' / '+fmt(T,2)+' s'; out('rpph').textContent=s.label||'—';
+  out('rpQ').textContent=inl.active?fmt(s.Q,2)+' mL/s':'0（无流量）';
+  const zd=out('rpz'); zd.textContent=s.zNominal?'—（示意 '+fmt(s.z,1)+' cm）':fmt(s.z,2)+' cm'; zd.className=s.zNominal?'warn':''; zd.title=s.zNominal?'V0.5 没有壶嘴高度：它的 U⊥ 低于壶嘴出口速度 0.35 m/s，任何高度都倒不出；3D 壶按低位 1.0 cm、切 2.5 cm 示意':'U⊥ = √(0.35² + 2 g z)';
+  const Ud=out('rpU'); Ud.textContent=inl.active?fmt(s.U,3)+' m/s':'—'; Ud.className=inl.active&&s.U<V_EXIT?'warn':'';
+  out('rpuh').textContent=inl.active?fmt(s.uh,3)+' m/s':'—'; out('rpr').textContent=inl.active?fmt(s.r,2)+' mm':'—'; out('rpchi').textContent=inl.active?fmt(s.chi,3):'—';
+  out('rphit').textContent='('+fmt(inl.x_hit[0],3)+', '+fmt(inl.x_hit[1],3)+')';
+  out('rpwhite').textContent=whiteArea().toFixed(3)+' / '+solver.deposited.toFixed(3);
+  out('rpLiveCap').innerHTML='本页实时模拟<br>'+solN+'²，t = '+fmt(solver.t,2)+' s';
+  const lag=Math.max(0,rp.t-solver.t), lf=requiredLift(R, pose.tip);   // the replay keeps the spout at z; only report a body/rim overlap
+  out('hud').textContent=rp.error?('回放出错：'+rp.error):(rp.done&&lag<0.02?'回放结束 · ':'回放 · ')+RP_SETCN[rp.which]+' · '+TARGET_CN[rp.name]+'   t '+fmt(rp.t,2)+' s'+(lag>0.05?'（求解器 '+fmt(solver.t,2)+' s）':'')+'   '+s.label+
+    (lf>0.0005?'   壶嘴保持在 z，壶身与杯沿在图上重叠 '+fmt(lf*100,1)+' cm（示意）':'');
+  renderer.render(scene,camera); drawStrip(); }
 document.getElementById('scriptsel').addEventListener('change',updateTarget); updateTarget();
-document.getElementById('auto').addEventListener('click',()=>{ const k=document.getElementById('scriptsel').value; const sc=SCRIPTS[k]||SCRIPTS.heart; startScript(sc.moves, sc.physics); });
+document.getElementById('auto').addEventListener('click',()=>{ const k=document.getElementById('scriptsel').value; if(parseKey(k)){ startReplay(k); return; }
+  if(rp) exitReplay(false); const sc=SCRIPTS[k]||SCRIPTS.heart; startScript(sc.moves, sc.physics); });
 
 /* ---------------------------------------------------------------- strip chart */
 const strip=document.getElementById('strip'), sctx=strip.getContext('2d'); const hist2=[];
 function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 function drawStrip(){ const w=strip.clientWidth, h=150; if(strip.width!==w*2){strip.width=w*2; strip.height=h*2;} sctx.setTransform(2,0,0,2,0,0); sctx.clearRect(0,0,w,h);
-  const t1=st.t, t0=t1-20; sctx.strokeStyle=css('--line'); sctx.lineWidth=1; for(let q=0;q<=30;q+=10){ const y=h-8-(h-16)*q/30; sctx.beginPath(); sctx.moveTo(30,y); sctx.lineTo(w-6,y); sctx.stroke(); sctx.fillStyle=css('--muted'); sctx.font='11px '+css('--mono'); sctx.fillText(q,4,y+4); }
+  const t1=rp?rp.t:st.t, t0=t1-20; sctx.strokeStyle=css('--line'); sctx.lineWidth=1; for(let q=0;q<=30;q+=10){ const y=h-8-(h-16)*q/30; sctx.beginPath(); sctx.moveTo(30,y); sctx.lineTo(w-6,y); sctx.stroke(); sctx.fillStyle=css('--muted'); sctx.font='11px '+css('--mono'); sctx.fillText(q,4,y+4); }
   const X=t=>30+(w-36)*(t-t0)/20, Y=v=>h-8-(h-16)*Math.min(30,Math.max(0,v))/30;
-  const series=[['--accent',r=>r.Q*1e6],['--coffee',r=>deg(r.tilt)/4],['--muted',r=>r.h*1e3]];
+  const series=rp?[['--accent',r=>r.rQ],['--coffee',r=>r.rz],['--muted',r=>r.rchi*30]]:[['--accent',r=>r.Q*1e6],['--coffee',r=>deg(r.tilt)/4],['--muted',r=>r.h*1e3]];
   for(const [col,f] of series){ sctx.strokeStyle=css(col); sctx.lineWidth=1.6; sctx.beginPath(); let first=true; for(const r of hist2){ if(r.t<t0) continue; const x=X(r.t), y=Y(f(r)); if(first){sctx.moveTo(x,y); first=false;} else sctx.lineTo(x,y); } sctx.stroke(); } }
 
 /* ---------------------------------------------------------------- main loop */
@@ -547,8 +749,10 @@ const fmt=(v,n)=>v.toFixed(n);
 let last=performance.now(), acc=0; const DT=1/120; let prevTip=[0,0]; let lift=0; let speedT0=performance.now(), speedM0=0;
 function frame(now){ requestAnimationFrame(frame); let el=Math.min(0.1,(now-last)/1000); last=now; acc+=el; let rec=null; const budget=performance.now()+14;
   while(acc>=DT){
+    if(rp&&!rp.running){ acc=0; break; }                                           // replay finished (or failed): nothing to advance
     if(solverBusy()||performance.now()>budget){ acc=Math.min(acc,DT); break; }   // solver behind: the model clock waits for it
     acc-=DT;
+    if(rp){ replayTick(); continue; }                                              // inlet replay: no barista, pitcher model or coupling
     // barista intent (script) or user inputs
     if(auto){ const it=intent(auto.t); auto.t+=DT; pose.tip[0]=it.x*D_L-auto.off[0]; pose.tip[1]=it.y*D_L-auto.off[1];
       // the hand cannot jump: the spout height follows the intent at <= 0.25 m/s with a short low-pass (a jump kicks the slosh mode and bursts the flow)
@@ -576,6 +780,7 @@ function frame(now){ requestAnimationFrame(frame); let el=Math.min(0.1,(now-last
     hits.push({x:inl.active?inl.x_hit[0]:0,y:inl.active?inl.x_hit[1]:0,on:!!inl.active}); if(hits.length>2400) hits.splice(0,hits.length-2400);
     hist2.push({t:st.t,Q:rec.Q,tilt:pose.tilt,h:rec.h_max}); if(hist2.length>3000) hist2.splice(0,hist2.length-3000); }
   if(now-speedT0>1000){ out('speedv').textContent='×'+((solver.t-speedM0)/((now-speedT0)/1000)).toFixed(2); speedT0=now; speedM0=solver.t; }
+  if(rp){ renderReplay(); return; }
   if(!rec) return;
   out('rwhite').textContent=whiteArea().toFixed(3)+' / '+solver.deposited.toFixed(3);
   // pose the pitcher mesh: world = tip + R (P - tipB)
