@@ -2,7 +2,7 @@
  "name": "layered_heart",
  "frame": "M",
  "Q_ref": 1.5e-05,
- "t_clip0": 0.0,
+ "t_clip0": 0.0, "barista_yaw_rad": -1.5708,
  "clip": "reference_layered_heart.mp4 (480x640, 15 fps, 14.0 s; not in refclips/, read from targets.REF); reference frame 11.8 s; scene cut to an outro at 12.27 s",
  "time_base": "clip time. The clip contains two FREEZE FRAMES (see 'freezes'); real pour time = clip time - 1.133 s (t >= 1.2) - 1.333 s (t >= 6.6). The freeze at 5.20-6.53 s is encoded as a zero-flow hold stage; video_targets/layered_heart/stages_realtime.json is the same script with it cut out.",
  "freezes": [

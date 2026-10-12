@@ -1256,6 +1256,14 @@ def stages_to_moves(script, away=True, min_gap=0.02):
     return moves, d["t_clip0"]
 
 
+def script_yaw(script):
+    """Barista yaw of a stage script [rad] (azimuth of the spout in the M frame; pitcher body at yaw + pi).
+    Default -pi/2 (spout toward -y_M).  The leaf (+pi/2) and swan (+pi/4) clips are not rotated into that orientation;
+    check_stages.py verifies every script's yaw against the direction in which the first white grows from the foot."""
+    d = load_stages(script) if isinstance(script, str) else script
+    return float(d.get("barista_yaw_rad", -math.pi / 2))
+
+
 def stage_point(script, t):
     """Intended impact point (M frame) at clip time t (cosine easing like pitcher.Barista, wiggle not included)."""
     d = load_stages(script)

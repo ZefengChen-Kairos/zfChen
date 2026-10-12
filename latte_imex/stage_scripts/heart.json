@@ -2,6 +2,7 @@
  "frame": "M",
  "Q_ref": 1.5e-05,
  "t_clip0": 0.0,
+ "barista_yaw_rad": -1.5708,
  "clip": "refclips/heart.mp4 (480x640, 15 fps, 12.0 s); reference frame 11.6 s",
  "method": "Stream foot picked by eye on native-resolution camera crops (2-3x zoom, pixel ticks) and mapped to the M frame with video_extract.image_to_cup on the extractor's per-frame liquid-surface ellipse (track_ell, rot -125 deg, (x,y)_M = (x,-y)_T); cross-checked on rectified M-frame tiles (tiles/zoom_*.png, the stream column projects as a strip toward (-0.85, +0.52) from its foot). Quality-0 frames (cup tilted, t < 3.6 s) use hand-fitted liquid ellipses instead of the propagated track, which includes the far inner wall. Heights from the visible stream length (camera elevation ~48 deg, 32 px/cm), flows from the stream width at the foot and v = sqrt(v0^2 + 2 g z); both +-50 %. Instructor overlay at 5.3-6.6 s: B = (-0.11, +0.19), C = (-0.05, -0.03), D = (0.00, -0.28) in M. No wiggle anywhere in this clip.",
  "foot_measurements_M": {

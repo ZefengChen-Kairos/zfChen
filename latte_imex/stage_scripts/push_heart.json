@@ -1,4 +1,4 @@
-{"name": "push_heart", "frame": "M", "Q_ref": 1.5e-05, "t_clip0": 0.0,
+{"name": "push_heart", "frame": "M", "Q_ref": 1.5e-05, "t_clip0": 0.0, "barista_yaw_rad": -1.5708,
  "source": "refclips/push_heart.mp4 (480x640, 15 fps, 17 s); read from 15 fps camera crops with an image-pixel grid (stream foot in px) mapped to the M frame through the frames.npz ellipse track (video_extract.image_to_cup, rot -100, y_M = -y_T); tiles in video_targets/push_heart/tiles/",
  "landmarks_M": {"B": [-0.22, 0.18], "C": [-0.06, -0.02], "D": [0.10, -0.21],
                  "note": "instructor overlay dots in the reliable (ellipse quality 2) frames 10.3-10.9 s; the B->D axis points to about -51 deg in M (not -90 deg): the pitcher (handle at image top-right, spout toward D) is yawed ~40 deg from the Barista's fixed yaw -pi/2. Stream feet of stages 2 and 3 at B agree with the B dot within 0.03 D."},
