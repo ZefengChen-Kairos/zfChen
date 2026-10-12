@@ -609,3 +609,38 @@ def run_protocol(spec, out_root, x0s, gens=40, popsize=8, N=128, procs=4):
                   indent=1, default=float)
     json.dump(rep, open(os.path.join(out_root, "protocol.json"), "w"), indent=1, default=float)
     return rep
+
+
+# =========================================================================== synthetic recovery (senior E3)
+def synthetic_clip(clip, wT, noise=0.0, seed=0):
+    """A copy of `clip` whose observed whiteness is a model run wT (same frames, validity mask, time base, scripts),
+    optionally with Gaussian pixel noise; its observables are recomputed with the same code."""
+    rng = np.random.default_rng(seed)
+    res = dict(clip["res"])
+    w = wT.astype(np.float32)
+    if noise > 0:
+        w = np.clip(w + rng.normal(0.0, noise, w.shape).astype(np.float32), 0.0, 1.0)
+    res["white"] = w.astype(np.float16)
+    syn = dict(clip, res=res, name=clip["name"])
+    syn["obs"] = VE.compute_observables(res, clip["script"])
+    return syn
+
+
+def sensitivity(model, params, names, rel=0.2, N=128, procs=4):
+    """Finite-difference sensitivities (+-rel in each parameter) of the loss components on the calibration clips,
+    evaluated against SYNTHETIC targets generated at `params` (so the reference point has zero misfit).  Returns the
+    normalised sensitivity matrix rows = observables, columns = parameters, column cosines, condition number."""
+    from multiprocessing import Pool
+    keys = list(model.space)
+    base = {n: simulate_clip(model, params, load_clip(n), N)[0] for n in names}
+    syn = {n: synthetic_clip(load_clip(n), base[n]) for n in names}
+    rows = {}
+    for kname in keys:
+        for sgn in (+1, -1):
+            p = dict(params); p[kname] = params[kname] * (1 + sgn * rel)
+            for n in names:
+                ev = evaluate(syn[n], simulate_clip(model, p, syn[n], N)[0])
+                comp = dict(one_minus_dice=1 - (ev["dice"]["value"] or 0), bnd=ev["boundary_D"]["value"] or EMPTY_BND,
+                            fw=ev["events"]["first_white"]["value"] or 0.0)
+                rows.setdefault(kname, {}).setdefault(sgn, {})[n] = comp
+    return rows
