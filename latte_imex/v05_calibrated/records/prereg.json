@@ -1,0 +1,178 @@
+{
+ "date": "2026-10-13",
+ "spec": {
+  "kind": "v05",
+  "base": "FSp2",
+  "loss_delay": false,
+  "space_extra": {
+   "u_exit": [
+    0.1,
+    0.27,
+    "lin"
+   ],
+   "Q_scale": [
+    0.5,
+    2.0,
+    "log"
+   ]
+  }
+ },
+ "tags": {
+  "AB": [
+   "tulip",
+   "leaf"
+  ],
+  "A": [
+   "tulip"
+  ]
+ },
+ "order": [
+  "AB",
+  "A"
+ ],
+ "test": [
+  "heart",
+  "push_heart",
+  "layered_heart",
+  "swan"
+ ],
+ "loss": "calib.loss_of(ev, delay=False): <1-Dice>_t + <d_bnd>_t/BND_SCALE + stage-end fine-line count error; mean over the calibration patterns (equal weights)",
+ "cma": {
+  "N": 96,
+  "popsize": 12,
+  "sigma0": 0.25,
+  "gens": 20,
+  "procs": 4,
+  "seed": 1,
+  "inits": [
+   "FSp2 closure + u_exit 0.15 + Q_scale 1.0",
+   "FS closure + u_exit 0.15 + Q_scale 1.0",
+   "centre of the unit box"
+  ]
+ },
+ "selection": "best = lowest mean calibration loss over all CMA samples of the three inits (calib.calibrate); initial points evaluated as references only",
+ "failures": "exception / ledger ok=False / wall > 1200 s -> +inf (1e6 for CMA), counted",
+ "at_bound": "unit-box coordinate <= 0.02 or >= 0.98",
+ "evaluate": {
+  "N": 128,
+  "patterns": "all six",
+  "N_fig": 256,
+  "figure": "final frame"
+ },
+ "never": "test patterns are not used to choose initialisation, parameters, thresholds or time alignment",
+ "run_config": {
+  "gens": 20,
+  "popsize": 12,
+  "N": 96,
+  "procs": 4,
+  "sigma0": 0.25,
+  "seed": 1,
+  "label": "run"
+ },
+ "space": {
+  "B_dep": [
+   300.0,
+   6000.0,
+   "log"
+  ],
+  "p_dep": [
+   1.0,
+   8.0,
+   "lin"
+  ],
+  "kappa_r": [
+   0.005,
+   0.2,
+   "log"
+  ],
+  "kappa_Q": [
+   0.7,
+   5.0,
+   "log"
+  ],
+  "cp": [
+   0.68,
+   2.07,
+   "log"
+  ],
+  "beta": [
+   0.12,
+   7.5,
+   "log"
+  ],
+  "kappa_t": [
+   0.0,
+   1.0,
+   "lin"
+  ],
+  "kappa_c": [
+   0.0,
+   1.0,
+   "lin"
+  ],
+  "u_exit": [
+   0.1,
+   0.27,
+   "lin"
+  ],
+  "Q_scale": [
+   0.5,
+   2.0,
+   "log"
+  ]
+ },
+ "x0s": [
+  {
+   "B_dep": 2149.4432509690528,
+   "p_dep": 2.0,
+   "kappa_r": 0.04231228241693512,
+   "kappa_Q": 2.0,
+   "cp": 1.36,
+   "beta": 3.0,
+   "kappa_t": 0.7,
+   "kappa_c": 1.0,
+   "u_exit": 0.15,
+   "Q_scale": 1.0
+  },
+  {
+   "B_dep": 1550.4150287146037,
+   "p_dep": 8.0,
+   "kappa_r": 0.03725531625168605,
+   "kappa_Q": 2.0,
+   "cp": 1.36,
+   "beta": 3.0,
+   "kappa_t": 0.7,
+   "kappa_c": 1.0,
+   "u_exit": 0.15,
+   "Q_scale": 1.0
+  },
+  {
+   "B_dep": 1341.640786499874,
+   "p_dep": 4.5,
+   "kappa_r": 0.0316227766016838,
+   "kappa_Q": 1.8708286933869704,
+   "cp": 1.1864231959971112,
+   "beta": 0.9486832980505138,
+   "kappa_t": 0.5,
+   "kappa_c": 0.5,
+   "u_exit": 0.185,
+   "Q_scale": 1.0
+  }
+ ],
+ "timeout_s": 1200,
+ "numba_threads": "1",
+ "code": {
+  "git_head": "aea98cf9ed28851bc494d54563250f96f62d7e3f",
+  "sha1": {
+   "v05_calibrate.py": "f495ac35d2afbc619d94f6a4a76b40d3870aa3c4",
+   "calib.py": "32d01f0d2c3da6595c4ca4bfdaa5c70ccf0ab057",
+   "v05_adapter.py": "0a865cdc9ed5be218f70ec0d7041451fdc090618",
+   "solver.py": "17030c77de70f2c372b9097288baa2da4693e2c3",
+   "kernels.py": "62460653c8ff1ae678078cd47898cb3b98cd987d",
+   "v3min_adapter.py": "5725668190206e6c611732920ff2021c0e0cb0a6",
+   "video_extract.py": "588b1c57e8c8aac55754d799db2f5b918da631d4"
+  },
+  "cma": "4.5.0",
+  "numpy": "2.5.3"
+ }
+}

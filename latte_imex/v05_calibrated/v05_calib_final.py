@@ -427,7 +427,7 @@ def fd_rows(ev, keys, names, centre="centre", pre=""):
         return float(np.mean([ev[pre + lab][n]["loss"] for n in names]))
 
     def part(lab, q):
-        return float(np.mean([ev[pre + lab][n]["parts"][q] for n in names]))
+        return float(np.mean([ev[pre + lab][n].get("parts", ev[pre + lab][n])[q] for n in names]))
     L0 = L(centre)
     rows = []
     for k in keys:
@@ -731,6 +731,7 @@ def figs(a):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib import font_manager as fm
+    from matplotlib.lines import Line2D
     P = _paths(a)
     T = json.load(open(os.path.join(P["final"], "final_tables.json")))
     for f in ("Noto Sans CJK SC", "Noto Sans CJK JP", "WenQuanYi Zen Hei", "Droid Sans Fallback", "AR PL UMing CN"):
@@ -740,9 +741,14 @@ def figs(a):
     C = dict(FSp2="#2a78d6", AB="#eb6834", A="#1baf7a", other="#8a8984")
     INK, MUTED, GRID = "#0b0b0b", "#52514e", "#e4e3df"
     plt.rcParams.update({"axes.edgecolor": MUTED, "axes.labelcolor": INK, "xtick.color": MUTED, "ytick.color": MUTED,
-                         "axes.titlesize": 10.5, "axes.labelsize": 9.5, "xtick.labelsize": 9, "ytick.labelsize": 9.5})
-    fig, axes = plt.subplots(2, 2, figsize=(13.2, 9.6), dpi=100)
-    # (a) downstream offset
+                         "axes.titlesize": 10, "axes.labelsize": 9.5, "xtick.labelsize": 9, "ytick.labelsize": 9.5,
+                         "axes.unicode_minus": False})
+    fig, axes = plt.subplots(2, 3, figsize=(18.5, 10.2), dpi=96)
+
+    def clean(ax):
+        for sp in ("top", "right"):
+            ax.spines[sp].set_visible(False)
+    # (a) downstream offset, final frame
     ax = axes[0, 0]
     O = T["offsets"]
     ys = np.arange(len(PAT))[::-1]
@@ -750,73 +756,114 @@ def figs(a):
         ax.axhline(y, color=GRID, lw=0.8, zorder=0)
         for g in ("AB_i1", "AB_i3", "A_i2", "A_i3"):
             ax.plot(O[p][g + "_N128"]["final"]["along_mm"], y, "o", ms=5, mfc="none", mec=C["other"], mew=1.2, zorder=2)
-        for g, mk, dy in (("FSp2", "s", 0.0), ("AB", "o", 0.0), ("A", "D", 0.0)):
-            v = O[p][g + "_N256"]["final"]["along_mm"]
-            ax.plot(v, y + dy, mk, ms=8, color=C[g], mec="white", mew=1.0, zorder=3)
+        for g, mk in (("FSp2", "s"), ("AB", "o"), ("A", "D")):
+            ax.plot(O[p][g + "_N256"]["final"]["along_mm"], y, mk, ms=8, color=C[g], mec="white", mew=1.0, zorder=3)
     ax.axvline(0, color=MUTED, lw=1)
     ax.set_yticks(ys)
     ax.set_yticklabels([CN[p] + ("（校准）" if p in CB.CAL_AB else "（测试）") for p in PAT])
     ax.set_xlabel("末帧白质心沿 B→D 的偏移，模型 − 视频（mm，+ = 下游）")
     S = T["offset_summary"]
-    ax.set_title(f"(a) 下游偏移：平均 |d| 零调参 {S['FSp2_N256']['mean_abs_mm']:.1f} → AB {S['AB_N256']['mean_abs_mm']:.1f}"
-                 f" / A {S['A_N256']['mean_abs_mm']:.1f} mm（N = 256）", loc="left")
-    from matplotlib.lines import Line2D
+    ax.set_title(f"(a) 下游偏移。平均 |d|：零调参 {S['FSp2_N256']['mean_abs_mm']:.1f}，AB {S['AB_N256']['mean_abs_mm']:.1f}，"
+                 f"A {S['A_N256']['mean_abs_mm']:.1f} mm（N = 256）", loc="left")
     h = [Line2D([], [], ls="", marker="s", ms=8, color=C["FSp2"], label="零调参 FSp2（N256）"),
          Line2D([], [], ls="", marker="o", ms=8, color=C["AB"], label="AB 冻结（N256）"),
          Line2D([], [], ls="", marker="D", ms=7, color=C["A"], label="A 冻结（N256）"),
          Line2D([], [], ls="", marker="o", ms=5, mfc="none", mec=C["other"], label="其余四个起点最好点（N128）")]
-    ax.legend(handles=h, loc="lower right", fontsize=8.5, frameon=False)
+    ax.legend(handles=h, loc="lower center", fontsize=8.5, frameon=False, ncol=2, bbox_to_anchor=(0.5, -0.02))
     ax.set_xlim(-3, 17)
-    for sp in ("top", "right"):
-        ax.spines[sp].set_visible(False)
-    # (b), (c) finite differences at the AB best point, shape part and fine-line part
-    F = T["fd_AB"]["rows"]
-    lab = {"B_dep": "B_dep", "p_dep": "p_dep", "kappa_r": "κ_r", "kappa_Q": "κ_Q", "cp": "c_p", "beta": "β",
-           "kappa_t": "κ_t", "kappa_c": "κ_c", "u_exit": "u_exit", "Q_scale": "Q_scale"}
-    yk = np.arange(len(F))[::-1]
-    for ax, which, title in ((axes[0, 1], "shape", "(b) AB 最好点 ±10 %：形状部分 Δ(1 − Dice) + Δ边界项"),
-                             (axes[1, 0], "line", "(c) AB 最好点 ±10 %：细纹部分 Δ细纹项")):
-        for y, r in zip(yk, F):
-            ax.axhline(y, color=GRID, lw=0.8, zorder=0)
-            for s, col, mk in (("+", C["FSp2"], "o"), ("-", C["AB"], "s")):
-                d = r["d" + s]
-                v = d["one_minus_dice"] + d["bnd_term"] if which == "shape" else d["line_term"]
-                ax.plot([0, v], [y, y], color=col, lw=2, zorder=2, solid_capstyle="round")
-                ax.plot(v, y, mk, ms=7, color=col, mec="white", mew=1, zorder=3)
-        ax.axvline(0, color=MUTED, lw=1)
-        ax.set_yticks(yk)
-        ax.set_yticklabels([lab[r["k"]] for r in F])
-        ax.set_xlim(-0.06, 0.22)
-        ax.set_xlabel("ΔL（两图平均，N = 96）")
-        ax.set_title(title, loc="left")
-        for sp in ("top", "right"):
-            ax.spines[sp].set_visible(False)
-        h = [Line2D([], [], ls="-", marker="o", ms=7, color=C["FSp2"], lw=2, label="+10 %"),
-             Line2D([], [], ls="-", marker="s", ms=7, color=C["AB"], lw=2, label="−10 %")]
-        ax.legend(handles=h, loc="lower right", fontsize=8.5, frameon=False)
-    # (d) top-10 N96 -> N128
-    ax = axes[1, 1]
+    ax.set_ylim(-1.9, len(PAT) - 0.5)
+    clean(ax)
+    # (b) beta swap: loss vs offset on the calibration patterns (N = 128)
+    ax = axes[0, 1]
+    if "mech" in T:
+        M = T["mech"]
+
+        def pt(lab):
+            m = M[lab]
+            return (float(np.mean([m[n]["loss"] for n in CB.CAL_AB])), float(np.mean([m[n]["along_mm"] for n in CB.CAL_AB])))
+        arrows = (("FSp2", "FSp2|beta=1.556", C["FSp2"], "-", "零调参，只把 β 3.0 → 1.56"),
+                  ("AB", "AB|beta=3.0", C["AB"], "-", "AB，只把 β 1.56 → 3.0"),
+                  ("A", "A|beta=3.0", C["A"], "-", "A，只把 β 1.65 → 3.0"),
+                  ("AB", "AB|u_exit=0.15,kappa_t=0.7", C["other"], "--", "AB，u_exit、κ_t 换回零调参的值"))
+        hs = []
+        for a0, a1, col, ls, lab in arrows:
+            x0, y0 = pt(a0)
+            x1, y1 = pt(a1)
+            ax.annotate("", xy=(x1, y1), xytext=(x0, y0),
+                        arrowprops=dict(arrowstyle="-|>", color=col, lw=1.8, ls=ls, shrinkA=7, shrinkB=2))
+            hs.append(Line2D([], [], color=col, lw=1.8, ls=ls, label=lab))
+        for g, mk, dx, dy, ha in (("FSp2", "s", 0.02, -0.25, "left"), ("AB", "o", -0.02, 0.25, "left"),
+                                  ("A", "D", 0.02, 0.2, "left")):
+            x, y = pt(g)
+            ax.plot(x, y, mk, ms=9, color=C[g], mec="white", mew=1, zorder=3)
+            ax.text(x + dx, y + dy, {"FSp2": "零调参", "AB": "AB（冻结）", "A": "A（冻结）"}[g], fontsize=8.5,
+                    color=INK, ha=ha, va="center", bbox=dict(fc="white", ec="none", pad=0.5))
+        ax.legend(handles=hs, loc="lower left", fontsize=8.5, frameon=False)
+        ax.set_xlabel("校准损失 L（郁金香 + 树叶平均，N = 128）")
+        ax.set_ylabel("末帧下游偏移（两图平均，mm）")
+        ax.set_title("(b) 事后机制检验：β（阻尼）一个参数同时管着损失和下游偏移", loc="left")
+        ax.grid(color=GRID, lw=0.8)
+        ax.set_xlim(1.35, 2.15)
+        ax.set_ylim(4.5, 11.5)
+    clean(ax)
+    # (c) top-10 N96 -> N128
+    ax = axes[0, 2]
     if "topk" in T:
         for tag, col, mk in (("AB", C["AB"], "o"), ("A", C["A"], "D")):
             rows = T["topk"][tag]["rows"]
             x = [r["loss96"] for r in rows]
             y = [r["loss128"] for r in rows]
             ax.plot(x, y, mk, ms=7, color=col, mec="white", mew=1, ls="",
-                    label=f"{tag} 前 10（Spearman {T['topk'][tag]['spearman']:+.2f}）")
-            ax.annotate("冻结的最好点", (x[0], y[0]), xytext=(6, 6), textcoords="offset points", fontsize=8, color=INK)
+                    label=f"{tag} 前 10 名（Spearman {T['topk'][tag]['spearman']:+.2f}）")
+            ax.annotate(f"{tag} 冻结的最好点", (x[0], y[0]), xytext=(6, 4), textcoords="offset points", fontsize=8,
+                        color=INK)
         lo, hi = 1.40, 2.05
         ax.plot([lo, hi], [lo, hi], color=MUTED, lw=1, ls="--")
-        ax.text(hi - 0.01, hi - 0.03, "y = x", ha="right", va="top", fontsize=8, color=MUTED)
+        ax.text(1.60, 1.585, "y = x", ha="right", va="top", fontsize=8, color=MUTED)
         ax.set_xlim(lo, 1.62)
         ax.set_ylim(lo, hi)
-        ax.set_xlabel("校准损失 L，N = 96（选点时用的网格）")
+        ax.set_xlabel("校准损失 L，N = 96（选点用的网格）")
         ax.set_ylabel("同一点的校准损失 L，N = 128")
-        ax.set_title("(d) 事后诊断：N = 96 的前 10 名到 N = 128 还剩多少", loc="left")
+        ax.set_title("(c) 事后诊断：N = 96 的前 10 名到 N = 128 的排序", loc="left")
         ax.legend(loc="upper left", fontsize=8.5, frameon=False)
         ax.grid(color=GRID, lw=0.8)
-        for sp in ("top", "right"):
-            ax.spines[sp].set_visible(False)
-    fig.tight_layout()
+    clean(ax)
+    # (d), (e), (f) finite differences
+    lab = {"B_dep": "B_dep", "p_dep": "p_dep", "kappa_r": "κ_r", "kappa_Q": "κ_Q", "cp": "c_p", "beta": "β",
+           "kappa_t": "κ_t", "kappa_c": "κ_c", "u_exit": "u_exit", "Q_scale": "Q_scale"}
+    panels = [(axes[1, 0], "fd_AB", "shape", "(d) AB 最好点 ±10 %：形状部分 Δ(1 − Dice) + Δ边界项", (-0.06, 0.24)),
+              (axes[1, 1], "fd_AB", "line", "(e) AB 最好点 ±10 %：细纹部分 Δ细纹项", (-0.06, 0.24)),
+              (axes[1, 2], "fd_A", "both", "(f) A 最好点 ±10 %：ΔL（只用郁金香）", (-0.06, 0.48))]
+    for ax, key, which, title, xl in panels:
+        if key not in T:
+            continue
+        F = T[key]["rows"]
+        yk = np.arange(len(F))[::-1]
+        for y, r in zip(yk, F):
+            ax.axhline(y, color=GRID, lw=0.8, zorder=0)
+            for sgn, col, mk, dy in (("+", C["FSp2"], "o", 0.12), ("-", C["AB"], "s", -0.12)):
+                d = r["d" + sgn]
+                if which == "shape":
+                    v = d["one_minus_dice"] + d["bnd_term"]
+                elif which == "line":
+                    v = d["line_term"]
+                else:
+                    v = r["dL" + sgn]
+                ax.plot([0, v], [y + dy, y + dy], color=col, lw=2, zorder=2, solid_capstyle="round")
+                ax.plot(v, y + dy, mk, ms=6.5, color=col, mec="white", mew=1, zorder=3)
+        ax.axvline(0, color=MUTED, lw=1)
+        ax.set_yticks(yk)
+        ax.set_yticklabels([lab[r["k"]] for r in F])
+        ax.set_xlim(*xl)
+        ax.set_xlabel("ΔL（N = 96）")
+        ax.set_title(title, loc="left")
+        h = [Line2D([], [], ls="-", marker="o", ms=6.5, color=C["FSp2"], lw=2, label="+10 %"),
+             Line2D([], [], ls="-", marker="s", ms=6.5, color=C["AB"], lw=2, label="−10 %")]
+        ax.legend(handles=h, loc="lower right", fontsize=8.5, frameon=False)
+        clean(ax)
+    fig.suptitle("V0.5 真实动作校准：下游偏移、β 的作用、选点的网格噪声与有限差分（只有 (a) 用了测试图，且只用于报告）",
+                 fontsize=11, x=0.01, ha="left")
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
     out = os.path.join(P["final"], "offset_fd.png")
     fig.savefig(out, facecolor="white")
     print("wrote", out, os.path.getsize(out))

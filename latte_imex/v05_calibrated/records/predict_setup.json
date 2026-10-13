@@ -1,0 +1,125 @@
+{
+ "sets": {
+  "AB": {
+   "B_dep": 5607.000859452053,
+   "p_dep": 5.631123272792429,
+   "kappa_r": 0.005000295121507416,
+   "kappa_Q": 2.1818681986154482,
+   "cp": 1.1816304689718549,
+   "beta": 1.5559599288009482,
+   "kappa_t": 0.7193312665447785,
+   "kappa_c": 0.7701726827716918,
+   "u_exit": 0.18349370672993737,
+   "Q_scale": 0.8261549647449631
+  },
+  "A": {
+   "B_dep": 2104.655258979339,
+   "p_dep": 2.5797585250386015,
+   "kappa_r": 0.044559234782742645,
+   "kappa_Q": 1.2458321104191679,
+   "cp": 1.4996980235842812,
+   "beta": 1.6523105483292755,
+   "kappa_t": 0.7363967824202523,
+   "kappa_c": 0.8968881151349334,
+   "u_exit": 0.15237535861809914,
+   "Q_scale": 1.2869712872127026
+  },
+  "FSp2": {
+   "B_dep": 2149.4432509690528,
+   "p_dep": 2.0,
+   "kappa_r": 0.04231228241693512,
+   "kappa_Q": 2.0,
+   "cp": 1.36,
+   "beta": 3.0,
+   "kappa_t": 0.7,
+   "kappa_c": 1.0,
+   "u_exit": 0.15,
+   "Q_scale": 1.0
+  },
+  "AB_i1": {
+   "B_dep": 1902.4262054229698,
+   "p_dep": 1.233264743981053,
+   "kappa_r": 0.039320147239340304,
+   "kappa_Q": 1.9577106595949783,
+   "cp": 1.3384351982546008,
+   "beta": 1.4070057581998399,
+   "kappa_t": 0.6165961696247261,
+   "kappa_c": 0.8254057655638976,
+   "u_exit": 0.15126267445247576,
+   "Q_scale": 1.0435799985237233
+  },
+  "AB_i2": {
+   "B_dep": 5607.000859452053,
+   "p_dep": 5.631123272792429,
+   "kappa_r": 0.005000295121507416,
+   "kappa_Q": 2.1818681986154482,
+   "cp": 1.1816304689718549,
+   "beta": 1.5559599288009482,
+   "kappa_t": 0.7193312665447785,
+   "kappa_c": 0.7701726827716918,
+   "u_exit": 0.18349370672993737,
+   "Q_scale": 0.8261549647449631
+  },
+  "AB_i3": {
+   "B_dep": 4374.621221525572,
+   "p_dep": 4.047614284452052,
+   "kappa_r": 0.0752909940552654,
+   "kappa_Q": 1.297290035112888,
+   "cp": 1.2513658942552077,
+   "beta": 1.4357381288183024,
+   "kappa_t": 0.9604701576986656,
+   "kappa_c": 0.4522145455656271,
+   "u_exit": 0.17034925046478805,
+   "Q_scale": 1.8100121814284111
+  }
+ },
+ "source": {
+  "AB": "calib_AB best (loss 1.4507)",
+  "A": "calib_A best (loss 1.4982)",
+  "FSp2": "prereg x0 1 (FSp2 closure + u_exit 0.15 + Q_scale 1.0), zero tuning",
+  "AB_i1": "calib_AB init 1 best (loss 1.5261, gen 2)",
+  "AB_i2": "calib_AB init 2 best (loss 1.4507, gen 8)",
+  "AB_i3": "calib_AB init 3 best (loss 1.5040, gen 7)"
+ },
+ "ab_best_is": "AB_i2",
+ "spec": {
+  "kind": "v05",
+  "base": "FSp2",
+  "loss_delay": false,
+  "space_extra": {
+   "u_exit": [
+    0.1,
+    0.27,
+    "lin"
+   ],
+   "Q_scale": [
+    0.5,
+    2.0,
+    "log"
+   ]
+  }
+ },
+ "N_eval": 128,
+ "N_fig": 256,
+ "delay_in_loss": false,
+ "k_video": 3.0,
+ "provenance": {
+  "git_head": "aea98cf9ed28851bc494d54563250f96f62d7e3f",
+  "sha1": {
+   "v05_predict.py": "8556574cfb94",
+   "v05_calibrate.py": "a12954fcb6e8",
+   "calib.py": "32d01f0d2c3d",
+   "v05_adapter.py": "0a865cdc9ed5",
+   "solver.py": "17030c77de70",
+   "kernels.py": "62460653c8ff",
+   "v3min_adapter.py": "572566819020",
+   "video_extract.py": "588b1c57e8c8",
+   "make_videos.py": "34cadd92b398",
+   "appearance.py": "65c22bf34e7a"
+  },
+  "numpy": "2.5.3"
+ },
+ "date": "2026-10-13 12:49:38",
+ "cal": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05calib",
+ "base": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05video"
+}
