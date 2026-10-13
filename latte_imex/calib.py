@@ -259,7 +259,7 @@ def _rec(value, unit, valid_count, valid_duration, status="completed", reason=""
                 reason=reason)
 
 
-def evaluate(clip, wT, ledger=None):
+def evaluate(clip, wT, ledger=None, delay_in_loss=True):
     """All metrics of one pattern for model whiteness wT [n, Mo, Mo] on the clip's physical time axis."""
     res = clip["res"]
     t = res["t"]
@@ -294,7 +294,7 @@ def evaluate(clip, wT, ledger=None):
     out["profiles"] = profile_metrics(clip, res, wT)
     if ledger is not None:
         out["ledger"] = ledger
-    out["loss"] = loss_of(out)
+    out["loss"] = loss_of(out, delay=delay_in_loss)
     return out
 
 
@@ -360,12 +360,14 @@ def profile_metrics(clip, res, wT):
     return out
 
 
-def loss_of(ev):
-    """Pre-registered calibration loss of one pattern (see module docstring)."""
+def loss_of(ev, delay=True):
+    """Pre-registered calibration loss of one pattern (see module docstring).  delay=False drops the first-white term:
+    used for models without any first-white delay mechanism (V0.5 deposits instantly), where the term could only be
+    met by compensation in the other parameters; the delay error is still reported in ev['events']."""
     d = ev["dice"]["value"]; b = ev["boundary_D"]["value"]
     L = (1.0 - d if d is not None else 1.0) + (b if b is not None else EMPTY_BND) / BND_SCALE
     fw = ev["events"]["first_white"]["value"]
-    if fw is not None:
+    if fw is not None and delay:
         L += fw / DELAY_SCALE
     pr = [p for p in ev["profiles"] if p["at"] != "final"]
     if pr:
@@ -384,12 +386,12 @@ def simulate_clip(model, params, clip, N=128):
     return wT, r.get("ledger")
 
 
-def evaluate_model(model, params, names, N=128):
+def evaluate_model(model, params, names, N=128, delay_in_loss=True):
     out = {}
     for n in names:
         clip = load_clip(n)
         wT, led = simulate_clip(model, params, clip, N)
-        out[n] = evaluate(clip, wT, led)
+        out[n] = evaluate(clip, wT, led, delay_in_loss=delay_in_loss)
     return out
 
 
@@ -489,10 +491,17 @@ def contact_sheet(clip, wT, path, n=10, title=""):
 
 # =========================================================================== calibration driver (CMA-ES)
 def make_model(spec):
-    """spec = dict(kind='v3min', code_dir=..., fixed={...}, space_extra={...}) -> model object."""
+    """spec = dict(kind='v3min', code_dir=..., fixed={...}, space_extra={...}) or
+    dict(kind='v05', base='FSp2'|'FS', space_extra={...}, u_exit=..., grid_numerics=...) -> model object."""
     if spec["kind"] == "v3min":
         from .v3min_adapter import V3MinModel
         return V3MinModel(spec["code_dir"], fixed=spec.get("fixed"), space_extra=spec.get("space_extra"))
+    if spec["kind"] == "v05":
+        from .v05_adapter import V05Model, CLOSURE_SETS
+        m = V05Model(base=dict(CLOSURE_SETS[spec.get("base", "FSp2")]), **({"u_exit": spec["u_exit"]} if "u_exit" in spec else {}))
+        if spec.get("space_extra"):
+            m.space = dict(m.space, **{k: tuple(v) for k, v in spec["space_extra"].items()})
+        return m
     raise ValueError(spec["kind"])
 
 
@@ -518,6 +527,7 @@ _W = {}
 
 def _winit(spec):
     _W["model"] = make_model(spec)
+    _W["delay"] = bool(spec.get("loss_delay", True))
 
 
 def compact(ev):
@@ -538,7 +548,7 @@ def _weval(args):
         wT, led = simulate_clip(_W["model"], params, clip, N)
         if led is not None and not led.get("ok", True):
             return name, dict(name=name, loss=float("inf"), ledger=led, failed=True)
-        return name, compact(evaluate(clip, wT, led))
+        return name, compact(evaluate(clip, wT, led, delay_in_loss=_W.get("delay", True)))
     except Exception as e:                         # recorded as a failed forward call, scored +inf
         return name, dict(name=name, loss=float("inf"), failed=True, error=f"{type(e).__name__}: {e}")
 
@@ -554,7 +564,7 @@ def calibrate(spec, names, out_dir, x0s, gens=40, popsize=8, sigma0=0.25, N=128,
     rec = dict(spec=spec, names=list(names), space=space, N=N, gens=gens, popsize=popsize, sigma0=sigma0,
                preregistered=dict(SIGMA_CAM_D=SIGMA_CAM_D, THR=THR, Q_MIN=Q_MIN, FV_MIN=FV_MIN, BND_SCALE=BND_SCALE,
                                   DELAY_SCALE=DELAY_SCALE, EMPTY_BND=EMPTY_BND, PREROLL=PREROLL,
-                                  SKIP_FIRST_ONSET=SKIP_FIRST_ONSET),
+                                  SKIP_FIRST_ONSET=SKIP_FIRST_ONSET, loss_delay=bool(spec.get("loss_delay", True))),
                inits=[], n_forward=0, n_failed=0)
     with Pool(procs, initializer=_winit, initargs=(spec,)) as pool:
         for ii, x0p in enumerate(x0s):
