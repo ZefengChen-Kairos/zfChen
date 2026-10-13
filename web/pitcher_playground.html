@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>壶模型试验台</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
@@ -75,6 +76,7 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
 .rp th,.rp td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top}
 .rp th{color:var(--muted);font-weight:500}
 .rp td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.rp td:first-child,.rp th:first-child{min-width:5.5em}
 .rp .bad{color:var(--warn)} .rp .good{color:var(--ok)}
 .rp .flag{display:inline-block;font-size:11px;border:1px solid var(--warn);color:var(--warn);border-radius:3px;padding:0 4px;margin-inline-start:4px}
 </style>
@@ -88,9 +90,9 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
   <div class="stage" id="stage">
     <canvas id="gl"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="hint">拖动 = 移动壶嘴 · 滚轮 = 升降 · 右键拖或右侧滑块 = 转视角 · Shift+滚轮 = 远近 · 双击杯子 = 杯面 2D 图<br><kbd>空格</kbd> 按住倒奶 · <kbd>W</kbd>/<kbd>S</kbd> 手动倾角</div>
+    <div class="hint" id="hint">拖动 = 移动壶嘴 · 滚轮 = 升降 · 右键拖或右侧滑块 = 转视角 · Shift+滚轮 = 远近 · 双击杯子 = 杯面 2D 图<br><kbd>空格</kbd> 按住倒奶 · <kbd>W</kbd>/<kbd>S</kbd> 手动倾角</div>
     <div class="overlay" id="overlay" hidden>
-      <div class="pair"><div class="cell"><img id="targetimg2" alt="视频目标" src="targets/heart.png"><span>视频目标（末帧）</span></div><div class="cell"><canvas id="top2d" width="768" height="768"></canvas><span>模拟杯面 c = m/ℓ</span></div></div>
+      <div class="pair"><div class="cell"><img id="targetimg2" alt="视频目标" src="v05phys/img/heart_realw.webp"><span>视频目标（末帧）</span></div><div class="cell"><canvas id="top2d" width="768" height="768"></canvas><span>模拟杯面 c = m/ℓ</span></div></div>
       <div class="bar"><span id="top2dinfo"></span><button id="closeTop">关闭（或再次双击）</button></div>
     </div>
   </div>
@@ -104,7 +106,7 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
         <button id="clear">擦掉杯面</button>
         <select id="scriptsel"><optgroup label="壶链脚本（咖啡师 → 壶 → 耦合）"><option value="heart">大白心</option><option value="push_heart">推推乐</option><option value="layered_heart">千层心</option><option value="tulip">压纹郁金香</option><option value="leaf">树叶</option><option value="swan">天鹅</option><option value="heart_opt">大白心（优化动作）</option><option value="push_heart_opt">推推乐（优化动作）</option><option value="layered_heart_opt">千层心（优化动作）</option><option value="tulip_opt">压纹郁金香（优化动作）</option><option value="leaf_opt">树叶（优化动作）</option><option value="swan_opt">天鹅（优化动作）</option><option value="tulip_sweep9">郁金香（联合扫描 #9 的动作）</option><option value="heart_sweep9">心形（联合扫描 #9 的动作）</option></optgroup>
           <optgroup label="V0.5 原版（Codex 入口，不可倒）"><option value="rp:v05:heart">大白心 · V0.5 原版</option><option value="rp:v05:push_heart">推推乐 · V0.5 原版</option><option value="rp:v05:layered_heart">千层心 · V0.5 原版</option><option value="rp:v05:tulip">压纹郁金香 · V0.5 原版</option><option value="rp:v05:leaf">树叶 · V0.5 原版</option><option value="rp:v05:swan">天鹅 · V0.5 原版</option></optgroup>
-          <optgroup label="V0.5 全物理（入口全部可倒）"><option value="rp:phys:heart">大白心 · 全物理</option><option value="rp:phys:push_heart">推推乐 · 全物理</option><option value="rp:phys:layered_heart">千层心 · 全物理（相位事后再猜）</option><option value="rp:phys:tulip">压纹郁金香 · 全物理</option><option value="rp:phys:leaf">树叶 · 全物理</option><option value="rp:phys:swan">天鹅 · 全物理</option></optgroup></select>
+          <optgroup label="V0.5 全物理（入口全部可倒）"><option value="rp:phys:heart">大白心 · 全物理</option><option value="rp:phys:push_heart">推推乐 · 全物理</option><option value="rp:phys:layered_heart">千层心 · 全物理（相位事后再猜）</option><option value="rp:phys:tulip">压纹郁金香 · 全物理（相位事后再猜）</option><option value="rp:phys:leaf">树叶 · 全物理（相位事后再猜）</option><option value="rp:phys:swan">天鹅 · 全物理（相位事后再猜）</option></optgroup></select>
         <button class="primary" id="auto">回放脚本</button>
         <button id="show2d">杯面 2D 图</button>
       </div>
@@ -164,7 +166,7 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
         <dt>杯面白区面积 / 已沉积</dt><dd id="rwhite">—</dd>
       </dl>
     </div>
-    <div class="ref"><img id="targetimg" alt="视频目标" src="targets/heart.png"><p id="targettxt">视频目标：大白心（参考视频末帧展平到正圆杯的奶白度场）。回放脚本后双击杯子，杯面 2D 图会和它并排显示。</p></div>
+    <div class="ref"><img id="targetimg" alt="视频目标" src="v05phys/img/heart_realw.webp"><p id="targettxt">视频目标：大白心（参考视频末帧展平到正圆杯的奶白度场；物理俯视，+y 在上，和杯面 2D 图同一朝向）。回放脚本后双击杯子，杯面 2D 图会和它并排显示。</p></div>
   </aside>
 </div>
 
@@ -181,7 +183,7 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
   <div class="cols">
     <div>
       <h3>这一组是什么</h3>
-      <p>入口回放，不是壶链脚本：把 Python 求解器（latte_imex，单层 IMEX，闭合 'chi'，回流律 v05）实际收到的入口按 1/120 s 一帧导出（落点 x_hit、S_eff、u_in、U⊥、d_jet、足迹椭圆 r₁ r₂ φ、扫描速度；全物理组另有壶嘴高 z、接收流量 Q、χ），在这里直接喂给同一个 2D 求解器。帧内线性插值，帧长规则与 <code>run.run</code> 相同，所以 128² 上和 Python 的末帧几乎逐位一致。虚拟咖啡师、壶模型和耦合都绕过；闭合参数用该组自己的一套（见下表）。3D 壶只是摆姿势：奶柱落在 x_hit、壶嘴在高度 z，壶里没有流动物理。</p>
+      <p>入口回放，不是壶链脚本：把 Python 求解器（latte_imex，单层 IMEX，闭合 'chi'，回流律 v05）实际收到的入口按 1/120 s 一帧导出（落点 x_hit、S_eff、u_in、U⊥、d_jet、足迹椭圆 r₁ r₂ φ、扫描速度；全物理组另有壶嘴高 z、接收流量 Q、χ），在这里直接喂给同一个 2D 求解器。帧内线性插值，帧长规则与 <code>run.run</code> 相同。128² 上与 Python 用同一张表复放的末帧几乎逐位一致（|Δc| ≤ 3e-8）；与原始 Python 运行相比 IoU(c &gt; 0.4) ≥ 0.996（量化表和帧内插值带来的小差别）。虚拟咖啡师、壶模型和耦合都绕过；闭合参数用该组自己的一套（见下表）。3D 壶只是摆姿势：奶柱落在 x_hit、壶嘴在高度 z，壶里没有流动物理。</p>
       <h3>入口量：原版和全物理</h3>
       <div class="tw"><table>
         <thead><tr><th>量</th><th>V0.5 原版</th><th>全物理</th><th>物理范围 / 依据</th></tr></thead>
@@ -201,15 +203,16 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
     <div>
       <h3>重新猜的（不是测量）</h3>
       <ul>
-        <li><b>每一笔的壶嘴高度</b>：P2 反设计。在共享闭合 B_dep = 1550 D/s²、p_dep = 8、κ_r = 0.0373 下，逐笔解出高度，让该笔流量加权的 χ 等于 V0.5 同一笔的 χ；全部落在物理范围内。本图案的逐笔数值见下表。</li>
-        <li><b>流量脉动的相位</b>：郁金香、树叶、天鹅把峰从摆到两端（Codex，π）挪到过中线（0），沿用报告 P4f 的修补。千层心挪到回摆途中（π/2，strictfp90）<span class="flag">事后再猜</span>：这是看过 π 和 0 都不成形之后才改的动作，不是先验设定。</li>
+        <li><b>每一笔的壶嘴高度</b>：P2 反设计。在共享闭合 B_dep = 1550 D/s²、p_dep = 8、κ_r = 0.0373 下，逐笔解出高度，让该笔流量加权的 χ 逼近 V0.5 同一笔的 χ（差 ≤ 0.02）；全部落在物理范围内。本图案的逐笔数值见下表。</li>
+        <li><b>流量脉动的相位</b><span class="flag">事后再猜</span>：两种相位都是看过结果之后才改的动作，不是先验设定。郁金香、树叶、天鹅把峰从摆到两端（Codex，π）挪到过中线（0），沿用报告 P4f 的修补，是 P4 用 π 在中轴扫出褐色空洞之后才改的；千层心挪到回摆途中（π/2，strictfp90），是看过 π 和 0 都不成形之后才改的。</li>
         <li>路径、时序、摆幅、摆频都沿用 Codex 的猜测；大白心、推推乐没有脉动。</li>
       </ul>
       <div class="tw"><table id="rpStrokes"></table></div>
       <h3>注意</h3>
       <ul>
-        <li><b>p_dep = 8</b>：沉积开关非常陡，几毫米高度就从全沉积切到不沉积。反设计顶到了上界，这是一个还没有实验验证的物理断言；p_dep = 2 时无论高度怎么取都配不上逐笔沉积比例。</li>
-        <li><b>大白心</b>：心形和尖都在，但下半有一条 25–32 mm 长、2–4 mm 宽的褐缝，从凹口一直劈到心中部以上（V0.5 只有 4 mm 的凹口）。</li>
+        <li><b>p_dep = 8</b>：这一组的沉积开关很陡，几毫米高度就从全沉积切到不沉积；反设计顶到了上界，不是拟合值。后来的补跑（最终组 FS 的 p_dep = 2 变体，即 V0.5 自己的指数）六个图案也都成形，只是摆动铺底多沉积、白区大 1.15–1.33 倍，所以陡开关不是必需的。</li>
+        <li><b>这里回放的是复核时的严格组 strictB3。</b>最终组 FS 在它上面又把出口水平速度的下限只加在出口部分、加了 0.08 s 的壶嘴滞后、让笔与笔之间的高度连续变化，256² 上同样六个都成形，图和这里很接近（见 latte_imex/V05_ALLPHYS_RESULT.md）。</li>
+        <li><b>大白心</b>：心形和尖都在，但上半有一条从凹口往下劈到心中部的褐缝（strictB3：沿轴 c &lt; 0.6 计 32 mm，c &lt; 0.4 计约 19 mm；c &lt; 0.6 的缝宽约 4 mm）。V0.5 只有 4 mm 的凹口。</li>
         <li><b>线条更宽</b>：足迹大 3–5 倍；郁金香、树叶的白底变成两根细条，树叶叶脉偏淡（对比约为 V0.5 的 0.8）。</li>
         <li><b>天鹅</b>：头、颈和最后补白要压到 0.3–0.55 cm，近乎贴面倒；喙变短或卷成钩。</li>
         <li><b>比的是 V0.5 自己的图</b>：IoU(c &gt; 0.4) 大白心 0.71、推推乐 0.82、千层心 0.68、郁金香 0.61、树叶 0.76、天鹅 0.75（256²）。IoU 不能当成形的证据，判断看结构（千层心 0.68 也成形）。</li>
@@ -217,7 +220,9 @@ select{font:inherit;border:1px solid var(--line);background:var(--panel);color:v
         <li>网页默认 96²，比 256² 粗，细线、叶脉、天鹅颈会更糊；看细节请选 256²（约 1/8 实时），或看上面 Python 预算的 256² 图。</li>
       </ul>
       <h3>和真实视频比</h3>
-      <p id="rpReal">与真实视频末帧的定量对比（v05real/compare_real.md）还没有完成，数字出来后补在这里。目前只能看上面的图：朝向一致，但 Codex 的动作不是视频里的动作，图案的位置、大小和层数本来就不会一一对上。</p>
+      <p id="rpReal">全物理和 V0.5 离真实视频一样远。两者与真实末帧的 IoU（模拟 c &gt; 0.4 对真实 w &gt; 0.5）原样只有 0.29–0.68，最佳刚体对齐（±25°、±0.06 D）后 0.39–0.74；全物理减 V0.5 在 −0.04 到 +0.11 之间，六个图案平均 +0.01。两者共同离真实的差距比彼此之间的差大得多（多数图案大一个量级，大白心大 3–4 倍）：图案偏小（大白心、千层心、树叶的真实白区 0.34–0.39，模拟 0.17–0.27）；细褐线少而宽（树叶 66 道对 24–28 道，天鹅 74 对 12–13，千层心每瓣 8–10 道弧对 3–4 道）；元件布局不同（推推乐的独立小心和单侧外弧、郁金香叠起的几颗心、天鹅没有单独的身体，Codex 的动作里都没有）。这些差距不是入口物理化造成的；它们来自猜的动作还是模型本身（单层闭合、足迹、扩散），这次比较分不开，要用从视频读出的真实动作（<code>stage_scripts</code>）去跑才能分开。</p>
+      <p id="rpRealOne"></p>
+      <p class="note">数字来自 review/v05real/compare_real.md。IoU 对方向和结构几乎不敏感，结构以看图和条纹计数为准。树叶、天鹅的真实目标不在模拟的规范坐标里（stage 脚本有记载），先分别转 180°、135° 再比；上面的两张真实图也已同样转过。推推乐按同一来源偏约 39°，没有转（敏感性检查：转过后 IoU 变化 ≤ 0.02）。</p>
     </div>
   </div>
 </section>
@@ -629,20 +634,32 @@ function resetKin(){ kin.tipPrev=null; kin.vel=[0,0,0]; kin.acc=[0,0,0]; kin.slo
 SCRIPTS={heart:{moves:MOVES_HEART}, layered_heart:{moves:MOVES_LAYERED}};
 fetch('scripts.json').then(r=>r.json()).then(j=>{ SCRIPTS=j; updateModelText(); const d=j._default_physics; if(d){ PHYS={params:d.params||null, coupling:d.coupling||null}; Object.assign(Latte2D.COUPLING, COUPLING_DEFAULT, PHYS.coupling||{}); if(!rp) newSolver(solN); } }).catch(e=>console.warn('scripts.json not available, built-in scripts only', e));
 const TARGET_CN={heart:'大白心',push_heart:'推推乐',layered_heart:'千层心',tulip:'压纹郁金香',leaf:'树叶',swan:'天鹅'};
+// One set of target images for both modes: the real final-frame whiteness as a physical top view (+y up, like the 2-D cup view)
+// in the canonical pattern frame (pour start B at +y, cut exit at -y).  The V0.5 controls and the pitcher-chain scripts in
+// scripts.json are both laid out in that frame (e.g. the leaf script wiggles toward +y and cuts to -y; the swan's neck runs up
+// the left side to a head at the top left), so the leaf and swan targets are shown rotated 180 / 135 deg into it.
+const TARGET_ROT={leaf:'，已转 180° 到规范坐标',swan:'，已转 135° 到规范坐标'};
 function updateTarget(){ const sel=document.getElementById('scriptsel').value, pk=parseKey(sel);
-  if(pk){ const src='v05phys/img/'+pk.name+'_realw.webp'; document.getElementById('targetimg').src=src; document.getElementById('targetimg2').src=src;
-    document.getElementById('targettxt').textContent='视频目标：'+TARGET_CN[pk.name]+'（参考视频末帧展平到正圆杯的奶白度场，与模拟同一朝向）。下方「末帧对照」里还有真实照片和两组 256² 结果。';
-    showReplayPanel(pk); return; }
-  if(!rp) document.getElementById('rpPanel').hidden=true;
-  const k=sel.replace(/_(sweep\d+|opt)$/,''); const src='targets/'+(TARGET_CN[k]?k:'heart')+'.png';
+  const k0=sel.replace(/_(sweep\d+|opt)$/,''), k=pk?pk.name:(TARGET_CN[k0]?k0:'heart'), src='v05phys/img/'+k+'_realw.webp';
   document.getElementById('targetimg').src=src; document.getElementById('targetimg2').src=src;
-  document.getElementById('targettxt').textContent='视频目标：'+(TARGET_CN[k]||'大白心')+'（参考视频末帧展平到正圆杯的奶白度场）。回放脚本后双击杯子，杯面 2D 图会和它并排显示。'; }
+  const what='视频目标：'+TARGET_CN[k]+'（参考视频末帧展平到正圆杯的奶白度场；物理俯视，+y 在上，和杯面 2D 图同一朝向'+(TARGET_ROT[k]||'')+'）。';
+  if(pk){ document.getElementById('targettxt').textContent=what+'下方「末帧对照」里还有真实照片和两组 256² 结果。'; showReplayPanel(pk); return; }
+  if(!rp) document.getElementById('rpPanel').hidden=true;
+  document.getElementById('targettxt').textContent=what+'回放脚本后双击杯子，杯面 2D 图会和它并排显示。'; }
 
 /* ---------------------------------------------------------------- V0.5 inlet replays (web/v05phys/<pattern>.json)
    The 2-D solver is driven directly by the inlet the Python solver received (Latte2D.replayAdvance in the worker), with the
    set's closure; the barista, the pitcher model and the coupling are bypassed.  The 3-D pitcher is only posed: spout at
    height z above the stream foot (jet leaving the lip at 0.35 m/s downward plus the horizontal arrival velocity). */
 const RP_CACHE={}, RP_SETCN={v05:'V0.5 原版（Codex 入口，不可倒）', phys:'V0.5 全物理（入口全部可倒）'}, V_EXIT=0.35;
+// per-pattern comparison with the real final frame (review/v05real/compare_real.md: IoU sim c > 0.4 vs real w > 0.5, V0.5 / all-physical)
+const RP_REAL={
+  heart:'大白心：IoU 原样 V0.5 0.56 / 全物理 0.68（最佳对齐 0.66 / 0.74）；白区 0.254 / 0.273，真实 0.367。按指标全物理更近，按样子 V0.5 更像：真实的心是实白的，全物理从凹口往下有一条约 19 mm（沿轴 c &lt; 0.4）的中缝。',
+  push_heart:'推推乐：IoU 0.46 / 0.44（最佳 0.51 / 0.49）；白区 0.258 / 0.240，真实 0.251。持平：两者都是左右对称的三层臂，没有真实那颗独立的小心和单侧外弧；全物理的缝更清楚。真实目标按 stage 脚本偏约 39°，这里没转；转过后 IoU 变化 ≤ 0.02，判断不变。',
+  layered_heart:'千层心：IoU 0.40 / 0.36（最佳 0.47 / 0.43）；白区 0.182 / 0.169，真实 0.389。按指标 V0.5 略近；按样子全物理每瓣 3–4 道嵌套弧更像真实的“一层一层”。两者面积都只有真实一半，真实每瓣 8–10 道弧。',
+  tulip:'压纹郁金香：IoU 0.30 / 0.29（最佳 0.39 / 0.39）；白区 0.228 / 0.238，真实 0.261。持平：层间褐缝数接近（轴上/三线：真实 2/7，V0.5 1/5，全物理 2/6），但模拟的瓣窄而对称，缝 1.8–6.8 mm 对真实 5–20 mm；全物理的顶心和底座裂成细条。',
+  leaf:'树叶（真实目标转 180°）：IoU 0.43 / 0.46（最佳 0.49 / 0.52）；白区 0.250 / 0.274，真实 0.339。按指标全物理略近；按样子 V0.5 的叶脉（褐底上的白片）更像。两者的叶片数都只有真实一半，叶也短得多。',
+  swan:'天鹅（真实目标转 135°）：IoU 0.35 / 0.32（最佳 0.41 / 0.40）；白区 0.253 / 0.265，真实 0.213。持平：布局一致（头在左上、颈沿左侧、翅在右），但真实的头是心形团、翅约 10 道羽、没有圆底身体；模拟是直喙或卷钩、5–6 道羽，还多一个身体。'};
 function parseKey(k){ const m=/^rp:(v05|phys):([a-z_]+)$/.exec(k||''); return m&&TARGET_CN[m[2]]?{key:k, which:m[1], name:m[2]}:null; }
 function loadReplay(name){ if(RP_CACHE[name]) return Promise.resolve(RP_CACHE[name]);
   return fetch('v05phys/'+name+'.json').then(r=>{ if(!r.ok) throw new Error('v05phys/'+name+'.json: HTTP '+r.status); return r.json(); }).then(j=>(RP_CACHE[name]=j)); }
@@ -652,13 +669,14 @@ function showReplayPanel(pk){ const P=document.getElementById('rpPanel'); P.hidd
   im('rpPhoto','photo'); im('rpRealw','realw'); im('rpV05','v05'); im('rpPhys','phys');
   document.getElementById('rpFigV05').classList.toggle('cur', pk.which==='v05'); document.getElementById('rpFigPhys').classList.toggle('cur', pk.which==='phys');
   document.getElementById('rpTitle').textContent='V0.5 入口回放 · '+TARGET_CN[pk.name]+' · 末帧对照';
+  document.getElementById('rpRealOne').innerHTML='<b>本图案</b>　'+RP_REAL[pk.name];
   paintField();
   loadReplay(pk.name).then(J=>{ const a=J.sets.v05, b=J.sets.phys;
     const rows=[['c_p','cp','D/s'],['β','beta','/s'],['ν','nu','D²/s'],['D（混合）','D','D²/s'],['κ_t','kappa_t',''],['κ_c','kappa_c',''],['κ_r','kappa_r',''],['B_dep','B_dep','D/s²'],['p_dep','p_dep',''],['κ_Q','kappa_Q','/D'],['回流律','return_law','']];
     document.getElementById('rpParams').innerHTML='<thead><tr><th>参数</th><th>V0.5 原版</th><th>全物理</th></tr></thead><tbody>'+rows.map(([n,k,u])=>
       `<tr><td>${n}${u?' ['+u+']':''}</td><td class="n">${fmtP(a.params[k])}</td><td class="n${a.params[k]!==b.params[k]?' good':''}">${fmtP(b.params[k])}</td></tr>`).join('')+'</tbody>';
     const v05chi={}; for(const s of a.strokes) v05chi[s.k]=s.chi_Qw;
-    const fp=b.meta&&b.meta.flow_phase, fpTxt=fp==null?'无脉动':(Math.abs(fp)<1e-9?'0（过中线）':(Math.abs(fp-Math.PI/2)<1e-9?'π/2（回摆途中）<span class="flag">事后再猜</span>':fp.toFixed(2)));
+    const fp=b.meta&&b.meta.flow_phase, fpTxt=fp==null?'无脉动':(Math.abs(fp)<1e-9?'0（过中线）<span class="flag">事后再猜</span>':(Math.abs(fp-Math.PI/2)<1e-9?'π/2（回摆途中）<span class="flag">事后再猜</span>':fp.toFixed(2)));
     document.getElementById('rpStrokes').innerHTML=`<caption style="caption-side:top;text-align:left;font-size:12px;color:var(--muted);padding-bottom:4px">${TARGET_CN[pk.name]} · 全物理的逐笔入口（流量峰相位：${fpTxt}）</caption>`+
       '<thead><tr><th>笔段</th><th>t [s]</th><th>z [cm]</th><th>Q [mL/s]</th><th>U⊥ [m/s]</th><th>r [mm]</th><th>χ</th><th>V0.5 χ</th></tr></thead><tbody>'+b.strokes.map(s=>
       `<tr><td>${s.label.replace(/^第 (\d+) 笔 · /,'#$1 ')}</td><td class="n">${s.t0.toFixed(2)}–${s.t1.toFixed(2)}</td><td class="n">${s.z_cm.toFixed(2)}</td><td class="n">${s.Q[0].toFixed(1)}–${s.Q[1].toFixed(1)}</td><td class="n">${s.U_ms[0].toFixed(2)}${s.U_ms[1]-s.U_ms[0]>0.005?'–'+s.U_ms[1].toFixed(2):''}</td><td class="n">${s.r_mm[0].toFixed(1)}–${s.r_mm[1].toFixed(1)}</td><td class="n">${s.chi_Qw.toFixed(3)}</td><td class="n">${v05chi[s.k]!==undefined?v05chi[s.k].toFixed(3):'—'}</td></tr>`).join('')+'</tbody>';
@@ -668,7 +686,9 @@ function setReplayUI(on){ document.getElementById('rpread').hidden=!on; document
   document.getElementById('delay').disabled=on||document.getElementById('modelsel').value==='twolayer'; document.getElementById('modelsel').disabled=on;
   out('modelv').textContent=on?'回放':(document.getElementById('modelsel').value==='twolayer'?'拟合':'#9');
   const L=on?['接收流量 Q [mL/s]','壶嘴高 z [mm]','沉积比例 χ × 30']:['流量 Q [mL/s]','倾角 [°] ÷ 4','液面高出壶嘴 h [mm]'];
-  ['lg1','lg2','lg3'].forEach((id,i)=>{ document.getElementById(id).textContent=L[i]; }); hist2.length=0; }
+  ['lg1','lg2','lg3'].forEach((id,i)=>{ document.getElementById(id).textContent=L[i]; }); hist2.length=0;
+  const hn=document.getElementById('hint'); if(on){ if(!hn.dataset.orig) hn.dataset.orig=hn.innerHTML; hn.innerHTML='回放中：拖动或右键拖 = 转视角 · 滚轮 = 远近 · 双击杯子 = 杯面 2D 图<br>「擦掉杯面」或换网格 = 从头回放 · 按住倒奶 / <kbd>W</kbd> <kbd>S</kbd> = 结束回放，改用壶模型手动倒'; }
+  else if(hn.dataset.orig) hn.innerHTML=hn.dataset.orig; }
 function startReplay(key){ const pk=parseKey(key); if(!pk) return;
   loadReplay(pk.name).then(J=>{ const set=J.sets[pk.which];
     auto=null; pouring=false; pourBtn.classList.remove('active'); manualTilt=null; keyTilt=0;

@@ -1,0 +1,5674 @@
+{
+ "file": "compare_real.md",
+ "figure": "compare_real.png",
+ "figures_extra": [
+  "compare_real_overlay.png",
+  "compare_real_zoom.png",
+  "compare_real_orientation.png"
+ ],
+ "meta": {
+  "units": "D = 8 cm cup diameter; boundary distance in D (x 80 = mm); gap widths in mm",
+  "frames": "sim c_M compared as c_M[::-1, :] in the target T frame; leaf and swan targets first rotated into the canonical pattern frame by PHI (documented frame correction, not fitted); figures show the physical top view (no mirror), canonical frame (B / pour start at top, cut exit / stem at bottom)",
+  "PHI_deg": {
+   "heart": 0.0,
+   "push_heart": 0.0,
+   "layered_heart": 0.0,
+   "tulip": 0.0,
+   "leaf": 180.0,
+   "swan": 135.0
+  },
+  "thresholds": {
+   "sim": [
+    0.4,
+    0.5
+   ],
+   "video": 0.5
+  },
+  "align_raw": "as simulated, no transform (canonical frame)",
+  "align_best": "rotation |theta| <= 25.0 deg (CCW, physical top view) about the cup centre + shift |dx|,|dy| <= 0.06 D (physical x right, y up), maximising IoU(c>0.4) on a 1 deg / 0.01 D grid refined to 0.25 deg / 0.0025 D; the same transform for all other metrics",
+  "diagnostic_full_circle": "best IoU(c>0.4) over theta in [-180,180) step 5 deg x shifts {-0.06,-0.03,0,0.03,0.06} D, as simulated and mirrored; NOT an alignment used in the tables",
+  "sims": {
+   "V05": "V0.5 original, Codex inlet, runs/v05_256",
+   "P1": "all-physical inlet with c_p = 0.3 (v05allphys P1)",
+   "PHYS": "all-physical strictB3; flow-pulse peak moved from Codex's pi to 0 for tulip / leaf / swan (P4f patch, made after P4 with pi failed) and to pi/2 for layered_heart (strictfp90); both phases are post-hoc action re-guesses"
+  },
+  "gap_rule": "cf_runner.axis_gaps: lines x = 0, -0.05, +0.05 D (T frame), 0.1 mm steps, white runs < 0.5 mm dropped, gap = brown run >= 1 mm strictly between two white runs"
+ },
+ "orientation_check": {
+  "rectification": "frames.npz ell[-1] equals targets.liquid_ellipse on <p>_frame.png; recomputed whiteness equals targets w to 3e-8; VE.rectify and targets.warp give identical RGB (corr 1.0)",
+  "det_display_to_image": {
+   "heart": 1.4461068397667718,
+   "push_heart": 1.3449410125484464,
+   "layered_heart": 1.4267220189966363,
+   "tulip": 1.3447455063306237,
+   "leaf": 0.8092028081148654,
+   "swan": 1.9415204916419975
+  },
+  "det_note": "det > 0 for all six: the T array shown with row 0 at the top is a rotation (no mirror) of the camera view",
+  "frame_corrections_deg": {
+   "leaf": 180.0,
+   "swan": 135.0
+  },
+  "frame_correction_sources": {
+   "leaf": "latte_imex/stage_scripts/leaf.json frame_note: B (heart-shaped tip) at -y_M, D (base, cut exit) at +y_M, '180 deg from the convention used by the other five clips'; compare as c_M[:, ::-1]",
+   "swan": "latte_imex/stage_scripts/swan.json orientation_warning: targets rot 0 'not rotated into the canonical orientation', B->D axis at ~45 deg in M (canonical -90 deg) -> 135 deg"
+  },
+  "verified_by_eye": "after the correction the real swan has head top-left, neck down the left side, wing fan to the right, as in the V0.5 swan (no mirror needed); the real leaf has its heart-shaped tip at the top and the base at the bottom, as in V0.5",
+  "not_corrected": "push_heart: stage_scripts/push_heart.json puts the B->D axis at -51 deg in M (~39 deg off canonical); the target rot is the repo's canonical choice and was kept; the +-25 deg window cannot reach 39 deg, but IoU is flat in angle (full-circle optimum 0.506 vs window optimum 0.507 for V0.5); NOTE the raw push_heart numbers in the tables are therefore computed with the target ~39 deg off the stage-script axis -- see push_heart_sensitivity",
+  "push_heart_sensitivity": {
+   "pattern": "push_heart",
+   "source": "latte_imex/stage_scripts/push_heart.json landmarks_M B, D",
+   "B_to_D_axis_deg_M": -50.63,
+   "PHI_deg": 39.4,
+   "note": "sensitivity check only; the tables in compare_real.md keep the repo's target rotation (PHI = 0), whose orientation is about 39 deg off the stage-script axis",
+   "video": {
+    "white_frac": 0.25075550438912075
+   },
+   "sims": {
+    "V05": {
+     "raw": {
+      "iou_c04": 0.459013008465827,
+      "iou_c05": 0.4498149127445796,
+      "bdist_c04_D": 0.03643487961633974,
+      "white_frac_c04": 0.2576629730896532
+     },
+     "best": {
+      "iou_c04": 0.5109184328837508,
+      "iou_c05": 0.502245099112912,
+      "bdist_c04_D": 0.03409629506313483,
+      "white_frac_c04": 0.2570513742984602,
+      "transform": {
+       "theta_deg": -22.0,
+       "dx_D": -0.035,
+       "dy_D": -0.02,
+       "iou_c04": 0.5109184328837508,
+       "at_bound": {
+        "theta": false,
+        "dx": false,
+        "dy": false
+       }
+      }
+     }
+    },
+    "P1": {
+     "raw": {
+      "iou_c04": 0.46730058108821976,
+      "iou_c05": 0.45962329508551636,
+      "bdist_c04_D": 0.03628738659932034,
+      "white_frac_c04": 0.24888473161605987
+     },
+     "best": {
+      "iou_c04": 0.504664786287698,
+      "iou_c05": 0.49728291005877784,
+      "bdist_c04_D": 0.036983582043469576,
+      "white_frac_c04": 0.24823715642538494,
+      "transform": {
+       "theta_deg": -18.25,
+       "dx_D": -0.0325,
+       "dy_D": -0.0275,
+       "iou_c04": 0.504664786287698,
+       "at_bound": {
+        "theta": false,
+        "dx": false,
+        "dy": false
+       }
+      }
+     }
+    },
+    "PHYS": {
+     "raw": {
+      "iou_c04": 0.44151182432432434,
+      "iou_c05": 0.4310641964670401,
+      "bdist_c04_D": 0.03758166725335013,
+      "white_frac_c04": 0.24046625413728595
+     },
+     "best": {
+      "iou_c04": 0.47940156114483956,
+      "iou_c05": 0.46212288042281435,
+      "bdist_c04_D": 0.039873898447178695,
+      "white_frac_c04": 0.24017844294143043,
+      "transform": {
+       "theta_deg": 7.5,
+       "dx_D": -0.06,
+       "dy_D": -0.0425,
+       "iou_c04": 0.47940156114483956,
+       "at_bound": {
+        "theta": false,
+        "dx": true,
+        "dy": false
+       }
+      }
+     }
+    }
+   }
+  },
+  "iou_rotation_insensitivity": "full-circle diagnostic: IoU changes by <= 0.02 between the window optimum and the best angle anywhere (heart V0.5: 0.663 within +-25 deg, 0.668 at +155 deg), so IoU cannot check orientation or structure"
+ },
+ "patterns": {
+  "heart": {
+   "PHI_deg": 0.0,
+   "M_target": 192,
+   "phys_tag": "strictB3",
+   "phys_note": "strictB3 (no flow pulsation)",
+   "video": {
+    "white_frac": 0.3673909915095697,
+    "gaps": {
+     "n_axis": 0,
+     "n_total": 0,
+     "per_line": [
+      {
+       "x": 0.0,
+       "n": 0,
+       "widths_mm": [],
+       "y_T": []
+      },
+      {
+       "x": -0.05,
+       "n": 0,
+       "widths_mm": [],
+       "y_T": []
+      },
+      {
+       "x": 0.05,
+       "n": 0,
+       "widths_mm": [],
+       "y_T": []
+      }
+     ],
+     "median_width_mm": null,
+     "n_dips_total": 0
+    },
+    "structure": {
+     "components": [
+      1765.8,
+      6.3
+     ],
+     "stripes": [
+      {
+       "x": -0.1,
+       "gaps": 0,
+       "dips": 0,
+       "total": 0
+      },
+      {
+       "x": -0.05,
+       "gaps": 0,
+       "dips": 0,
+       "total": 0
+      },
+      {
+       "x": 0.0,
+       "gaps": 0,
+       "dips": 0,
+       "total": 0
+      },
+      {
+       "x": 0.05,
+       "gaps": 0,
+       "dips": 0,
+       "total": 0
+      },
+      {
+       "x": 0.1,
+       "gaps": 0,
+       "dips": 0,
+       "total": 0
+      }
+     ],
+     "heart_axis": {
+      "notch_depth_mm": 11.8,
+      "brown_on_axis_mm": 0.0,
+      "axis_white_extent_mm": 45.2,
+      "lobe_top_to_tip_mm": 57.1
+     }
+    }
+   },
+   "sims": {
+    "V05": {
+     "path": "/home/user/zfChen/runs/v05_256/heart/final_state.npz",
+     "raw": {
+      "iou_c04": 0.5635869565217392,
+      "iou_c05": 0.5590636908002178,
+      "bdist_c04_D": 0.06988579651362715,
+      "bdist_c04_dir_D": [
+       0.061853117399396515,
+       0.0779184756278578
+      ],
+      "bdist_c05_D": 0.07033805978485251,
+      "white_frac_c04": 0.25363361634767595,
+      "white_frac_c05": 0.25082745718808463,
+      "gaps_c04": {
+       "n_axis": 0,
+       "n_total": 0,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": null,
+       "n_dips_total": 0
+      },
+      "gaps_c05": {
+       "n_axis": 0,
+       "n_total": 0,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": null,
+       "n_dips_total": 0
+      },
+      "gaps_native_N256_c04": {
+       "n_axis": 0,
+       "n_total": 0,
+       "median_width_mm": null
+      },
+      "white_frac_native_c04": 0.25370475342132964
+     },
+     "best": {
+      "iou_c04": 0.6631660082859621,
+      "iou_c05": 0.6561897416120324,
+      "bdist_c04_D": 0.05302461472382751,
+      "bdist_c04_dir_D": [
+       0.04355303685766983,
+       0.06249619258998519
+      ],
+      "bdist_c05_D": 0.05409889664537891,
+      "white_frac_c04": 0.25363361634767595,
+      "white_frac_c05": 0.250611598791193,
+      "gaps_c04": {
+       "n_axis": 0,
+       "n_total": 0,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": null,
+       "n_dips_total": 0
+      },
+      "gaps_c05": {
+       "n_axis": 0,
+       "n_total": 0,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": null,
+       "n_dips_total": 0
+      },
+      "transform": {
+       "theta_deg": 24.0,
+       "dx_D": 0.0375,
+       "dy_D": -0.06,
+       "iou_c04": 0.6631660082859621,
+       "at_bound": {
+        "theta": false,
+        "dx": false,
+        "dy": true
+       }
+      }
+     },
+     "diagnostic_full_circle": {
+      "as_simulated": {
+       "iou_c04": 0.6678902627511591,
+       "theta_deg": 155.0,
+       "dx_D": -0.03,
+       "dy_D": 0.03
+      },
+      "mirrored": {
+       "iou_c04": 0.6678902627511591,
+       "theta_deg": 155.0,
+       "dx_D": -0.03,
+       "dy_D": 0.03
+      }
+     },
+     "structure": {
+      "components": [
+       1224.0
+      ],
+      "stripes": [
+       {
+        "x": -0.1,
+        "gaps": 0,
+        "dips": 0,
+        "total": 0
+       },
+       {
+        "x": -0.05,
+        "gaps": 0,
+        "dips": 0,
+        "total": 0
+       },
+       {
+        "x": 0.0,
+        "gaps": 0,
+        "dips": 0,
+        "total": 0
+       },
+       {
+        "x": 0.05,
+        "gaps": 0,
+        "dips": 0,
+        "total": 0
+       },
+       {
+        "x": 0.1,
+        "gaps": 0,
+        "dips": 0,
+        "total": 0
+       }
+      ],
+      "heart_axis": {
+       "notch_depth_mm": 4.0,
+       "brown_on_axis_mm": 0.0,
+       "axis_white_extent_mm": 40.9,
+       "lobe_top_to_tip_mm": 44.9
+      },
+      "heart_axis_c05": {
+       "notch_depth_mm": 4.2,
+       "brown_on_axis_mm": 0.0,
+       "axis_white_extent_mm": 40.2,
+       "lobe_top_to_tip_mm": 44.4
+      }
+     }
+    },
+    "P1": {
+     "path": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05allphys/runs/P1/heart_N256.npz",
+     "raw": {
+      "iou_c04": 0.6907622981599699,
+      "iou_c05": 0.6778927563499529,
+      "bdist_c04_D": 0.05071487681974534,
+      "bdist_c04_dir_D": [
+       0.04702892595349032,
+       0.05440082768600036
+      ],
+      "bdist_c05_D": 0.052845701019639174,
+      "white_frac_c04": 0.28054396316016694,
+      "white_frac_c05": 0.2742840696503094,
+      "gaps_c04": {
+       "n_axis": 0,
+       "n_total": 0,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": null,
+       "n_dips_total": 2
+      },
+      "gaps_c05": {
+       "n_axis": 0,
+       "n_total": 0,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": null,
+       "n_dips_total": 2
+      },
+      "gaps_native_N256_c04": {
+       "n_axis": 0,
+       "n_total": 0,
+       "median_width_mm": null
+      },
+      "white_frac_native_c04": 0.2806300105271682
+     },
+     "best": {
+      "iou_c04": 0.7580220423290744,
+      "iou_c05": 0.7422317764315028,
+      "bdist_c04_D": 0.03865969852984041,
+      "bdist_c04_dir_D": [
+       0.03056619474717075,
+       0.04675320231251006
+      ],
+      "bdist_c05_D": 0.043561861004932506,
+      "white_frac_c04": 0.28108360915239605,
+      "white_frac_c05": 0.27406821125341774,
+      "gaps_c04": {
+       "n_axis": 0,
+       "n_total": 0,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": null,
+       "n_dips_total": 2
+      },
+      "gaps_c05": {
+       "n_axis": 0,
+       "n_total": 1,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          1.3
+         ],
+         "y_T": [
+          -0.113
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": 1.3,
+       "n_dips_total": 2
+      },
+      "transform": {
+       "theta_deg": 9.0,
+       "dx_D": -0.06,
+       "dy_D": -0.045,
+       "iou_c04": 0.7580220423290744,
+       "at_bound": {
+        "theta": false,
+        "dx": true,
+        "dy": false
+       }
+      }
+     },
+     "diagnostic_full_circle": {
+      "as_simulated": {
+       "iou_c04": 0.752360556799377,
+       "theta_deg": 10.0,
+       "dx_D": -0.06,
+       "dy_D": -0.03
+      },
+      "mirrored": {
+       "iou_c04": 0.752360556799377,
+       "theta_deg": 10.0,
+       "dx_D": -0.06,
+       "dy_D": -0.03
+      }
+     },
+     "structure": {
+      "components": [
+       1353.8
+      ],
+      "stripes": [
+       {
+        "x": -0.1,
+        "gaps": 0,
+        "dips": 0,
+        "total": 0
+       },
+       {
+        "x": -0.05,
+        "gaps": 0,
+        "dips": 1,
+        "total": 1
+       },
+       {
+        "x": 0.0,
+        "gaps": 0,
+        "dips": 0,
+        "total": 0
+       },
+       {
+        "x": 0.05,
+        "gaps": 0,
+        "dips": 1,
+        "total": 1
+       },
+       {
+        "x": 0.1,
+        "gaps": 0,
+        "dips": 0,
+        "total": 0
+       }
+      ],
+      "heart_axis": {
+       "notch_depth_mm": 16.9,
+       "brown_on_axis_mm": 0.0,
+       "axis_white_extent_mm": 25.8,
+       "lobe_top_to_tip_mm": 42.7
+      },
+      "heart_axis_c05": {
+       "notch_depth_mm": 18.5,
+       "brown_on_axis_mm": 0.0,
+       "axis_white_extent_mm": 24.1,
+       "lobe_top_to_tip_mm": 42.6
+      }
+     }
+    },
+    "PHYS": {
+     "path": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05allphys/ref2/runs/strictB3_heart_N256/c.npz",
+     "raw": {
+      "iou_c04": 0.6754873340239194,
+      "iou_c05": 0.659433962264151,
+      "bdist_c04_D": 0.052722597763447815,
+      "bdist_c04_dir_D": [
+       0.05016881400978193,
+       0.0552763815171137
+      ],
+      "bdist_c05_D": 0.05421073135208117,
+      "white_frac_c04": 0.27270110807310405,
+      "white_frac_c05": 0.2654338753777522,
+      "gaps_c04": {
+       "n_axis": 0,
+       "n_total": 0,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": null,
+       "n_dips_total": 2
+      },
+      "gaps_c05": {
+       "n_axis": 0,
+       "n_total": 0,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": null,
+       "n_dips_total": 2
+      },
+      "gaps_native_N256_c04": {
+       "n_axis": 0,
+       "n_total": 0,
+       "median_width_mm": null
+      },
+      "white_frac_native_c04": 0.2727346343833509
+     },
+     "best": {
+      "iou_c04": 0.7356871159660587,
+      "iou_c05": 0.717227916056613,
+      "bdist_c04_D": 0.042009594477917,
+      "bdist_c04_dir_D": [
+       0.0352489405642986,
+       0.048770248391535403
+      ],
+      "bdist_c05_D": 0.04476201155296573,
+      "white_frac_c04": 0.2728450136710318,
+      "white_frac_c05": 0.265541804576198,
+      "gaps_c04": {
+       "n_axis": 0,
+       "n_total": 0,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": null,
+       "n_dips_total": 3
+      },
+      "gaps_c05": {
+       "n_axis": 0,
+       "n_total": 1,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          1.9
+         ],
+         "y_T": [
+          -0.1005
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": 1.9,
+       "n_dips_total": 3
+      },
+      "transform": {
+       "theta_deg": 10.25,
+       "dx_D": -0.06,
+       "dy_D": -0.04,
+       "iou_c04": 0.7356871159660587,
+       "at_bound": {
+        "theta": false,
+        "dx": true,
+        "dy": false
+       }
+      }
+     },
+     "diagnostic_full_circle": {
+      "as_simulated": {
+       "iou_c04": 0.7331449727201871,
+       "theta_deg": 10.0,
+       "dx_D": -0.06,
+       "dy_D": -0.03
+      },
+      "mirrored": {
+       "iou_c04": 0.7331449727201871,
+       "theta_deg": 10.0,
+       "dx_D": -0.06,
+       "dy_D": -0.03
+      }
+     },
+     "structure": {
+      "components": [
+       1316.0
+      ],
+      "stripes": [
+       {
+        "x": -0.1,
+        "gaps": 0,
+        "dips": 0,
+        "total": 0
+       },
+       {
+        "x": -0.05,
+        "gaps": 0,
+        "dips": 1,
+        "total": 1
+       },
+       {
+        "x": 0.0,
+        "gaps": 0,
+        "dips": 0,
+        "total": 0
+       },
+       {
+        "x": 0.05,
+        "gaps": 0,
+        "dips": 1,
+        "total": 1
+       },
+       {
+        "x": 0.1,
+        "gaps": 0,
+        "dips": 0,
+        "total": 0
+       }
+      ],
+      "heart_axis": {
+       "notch_depth_mm": 19.4,
+       "brown_on_axis_mm": 0.0,
+       "axis_white_extent_mm": 24.6,
+       "lobe_top_to_tip_mm": 43.9
+      },
+      "heart_axis_c05": {
+       "notch_depth_mm": 21.0,
+       "brown_on_axis_mm": 0.0,
+       "axis_white_extent_mm": 22.4,
+       "lobe_top_to_tip_mm": 43.4
+      }
+     }
+    }
+   },
+   "judgement": {
+    "structure": "heart notch and point",
+    "video": "实心大白心，顶部凹口深而窄（轴上 11.8 mm），底部尖拉成细尾到杯边；心内部均匀白，没有中缝",
+    "V05": {
+     "present": "yes",
+     "note": "凹口 + 尖都在，内部实白（与真实一致）；凹口偏浅（4.0 mm），心偏小（白区 0.254 对 0.367）"
+    },
+    "P1": {
+     "present": "yes",
+     "note": "凹口 + 尖在，但凹口向下连成一条灰褐中缝（轴上 c<0.4 共 16.9 mm），真实没有"
+    },
+    "PHYS": {
+     "present": "yes",
+     "note": "凹口 + 尖在，尖更细长；凹口连成 19.4 mm 的褐缝（真实没有），心比 V0.5 大一点（0.273）"
+    },
+    "closer": "指标：全物理更近（IoU +0.11、边界距离 −1.7 mm）；看样子：V0.5 更像（实心）。凹口深度两边离真实一样远（−7.8 / +7.6 mm）"
+   },
+   "delta_PHYS_minus_V05": {
+    "raw": {
+     "iou_c04": 0.11190037750218018,
+     "iou_c05": 0.10037027146393318,
+     "bdist_c04_D": -0.01716319875017934
+    },
+    "best": {
+     "iou_c04": 0.07252110768009667,
+     "iou_c05": 0.061038174444580595,
+     "bdist_c04_D": -0.011015020245910508
+    }
+   }
+  },
+  "push_heart": {
+   "PHI_deg": 0.0,
+   "M_target": 192,
+   "phys_tag": "strictB3",
+   "phys_note": "strictB3 (no flow pulsation)",
+   "video": {
+    "white_frac": 0.2514750323787595,
+    "gaps": {
+     "n_axis": 1,
+     "n_total": 5,
+     "per_line": [
+      {
+       "x": 0.0,
+       "n": 1,
+       "widths_mm": [
+        4.2
+       ],
+       "y_T": [
+        0.2051
+       ]
+      },
+      {
+       "x": -0.05,
+       "n": 1,
+       "widths_mm": [
+        3.9
+       ],
+       "y_T": [
+        0.2045
+       ]
+      },
+      {
+       "x": 0.05,
+       "n": 3,
+       "widths_mm": [
+        24.8,
+        2.2,
+        2.1
+       ],
+       "y_T": [
+        -0.3198,
+        0.1602,
+        0.2108
+       ]
+      }
+     ],
+     "median_width_mm": 3.9,
+     "n_dips_total": 8
+    },
+    "structure": {
+     "components": [
+      494.4,
+      479.5,
+      229.7,
+      9.7
+     ],
+     "stripes": [
+      {
+       "x": -0.1,
+       "gaps": 1,
+       "dips": 1,
+       "total": 2
+      },
+      {
+       "x": -0.05,
+       "gaps": 1,
+       "dips": 1,
+       "total": 2
+      },
+      {
+       "x": 0.0,
+       "gaps": 1,
+       "dips": 3,
+       "total": 4
+      },
+      {
+       "x": 0.05,
+       "gaps": 3,
+       "dips": 4,
+       "total": 7
+      },
+      {
+       "x": 0.1,
+       "gaps": 2,
+       "dips": 3,
+       "total": 5
+      }
+     ]
+    }
+   },
+   "sims": {
+    "V05": {
+     "path": "/home/user/zfChen/runs/v05_256/push_heart/final_state.npz",
+     "raw": {
+      "iou_c04": 0.46304145559805643,
+      "iou_c05": 0.45193019566367004,
+      "bdist_c04_D": 0.03525505307125826,
+      "bdist_c04_dir_D": [
+       0.02277321865700268,
+       0.04773688748551383
+      ],
+      "bdist_c05_D": 0.033799629866912304,
+      "white_frac_c04": 0.2576629730896532,
+      "white_frac_c05": 0.2424089797093107,
+      "gaps_c04": {
+       "n_axis": 0,
+       "n_total": 2,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          2.3
+         ],
+         "y_T": [
+          -0.0067
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          2.3
+         ],
+         "y_T": [
+          -0.0067
+         ]
+        }
+       ],
+       "median_width_mm": 2.3,
+       "n_dips_total": 8
+      },
+      "gaps_c05": {
+       "n_axis": 1,
+       "n_total": 5,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          1.1
+         ],
+         "y_T": [
+          0.2045
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          2.7,
+          1.7
+         ],
+         "y_T": [
+          -0.0067,
+          0.147
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          2.7,
+          1.7
+         ],
+         "y_T": [
+          -0.0067,
+          0.147
+         ]
+        }
+       ],
+       "median_width_mm": 1.7,
+       "n_dips_total": 8
+      },
+      "gaps_native_N256_c04": {
+       "n_axis": 0,
+       "n_total": 4,
+       "median_width_mm": 1.65
+      },
+      "white_frac_native_c04": 0.2571058385294356
+     },
+     "best": {
+      "iou_c04": 0.5070797402320877,
+      "iou_c05": 0.49863700795987353,
+      "bdist_c04_D": 0.033635685088041184,
+      "bdist_c04_dir_D": [
+       0.01992627880211486,
+       0.04734509137396751
+      ],
+      "bdist_c05_D": 0.032281830220910954,
+      "white_frac_c04": 0.25780687868758095,
+      "white_frac_c05": 0.24298460210102174,
+      "gaps_c04": {
+       "n_axis": 1,
+       "n_total": 6,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          1.0
+         ],
+         "y_T": [
+          0.1901
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 3,
+         "widths_mm": [
+          8.4,
+          1.7,
+          1.0
+         ],
+         "y_T": [
+          -0.1136,
+          0.0445,
+          0.1814
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          4.2,
+          3.0
+         ],
+         "y_T": [
+          -0.0223,
+          0.1964
+         ]
+        }
+       ],
+       "median_width_mm": 2.35,
+       "n_dips_total": 8
+      },
+      "gaps_c05": {
+       "n_axis": 1,
+       "n_total": 7,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          1.5
+         ],
+         "y_T": [
+          0.1895
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 3,
+         "widths_mm": [
+          8.9,
+          2.0,
+          1.7
+         ],
+         "y_T": [
+          -0.1155,
+          0.0452,
+          0.182
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 3,
+         "widths_mm": [
+          2.5,
+          5.4,
+          4.0
+         ],
+         "y_T": [
+          -0.168,
+          -0.0248,
+          0.1989
+         ]
+        }
+       ],
+       "median_width_mm": 2.5,
+       "n_dips_total": 8
+      },
+      "transform": {
+       "theta_deg": 17.0,
+       "dx_D": -0.015,
+       "dy_D": -0.03,
+       "iou_c04": 0.5070797402320877,
+       "at_bound": {
+        "theta": false,
+        "dx": false,
+        "dy": false
+       }
+      }
+     },
+     "diagnostic_full_circle": {
+      "as_simulated": {
+       "iou_c04": 0.5056896735084547,
+       "theta_deg": 55.0,
+       "dx_D": -0.03,
+       "dy_D": -0.06
+      },
+      "mirrored": {
+       "iou_c04": 0.5056896735084547,
+       "theta_deg": 55.0,
+       "dx_D": -0.03,
+       "dy_D": -0.06
+      }
+     },
+     "structure": {
+      "components": [
+       1243.4
+      ],
+      "stripes": [
+       {
+        "x": -0.1,
+        "gaps": 2,
+        "dips": 2,
+        "total": 4
+       },
+       {
+        "x": -0.05,
+        "gaps": 1,
+        "dips": 3,
+        "total": 4
+       },
+       {
+        "x": 0.0,
+        "gaps": 0,
+        "dips": 2,
+        "total": 2
+       },
+       {
+        "x": 0.05,
+        "gaps": 1,
+        "dips": 3,
+        "total": 4
+       },
+       {
+        "x": 0.1,
+        "gaps": 2,
+        "dips": 2,
+        "total": 4
+       }
+      ]
+     }
+    },
+    "P1": {
+     "path": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05allphys/runs/P1/push_heart_N256.npz",
+     "raw": {
+      "iou_c04": 0.4479958355023425,
+      "iou_c05": 0.433697844781824,
+      "bdist_c04_D": 0.03584048233442373,
+      "bdist_c04_dir_D": [
+       0.021794086469426988,
+       0.04988687819942048
+      ],
+      "bdist_c05_D": 0.035490537100184585,
+      "white_frac_c04": 0.24888473161605987,
+      "white_frac_c05": 0.23435026622535618,
+      "gaps_c04": {
+       "n_axis": 1,
+       "n_total": 3,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          1.0
+         ],
+         "y_T": [
+          0.2039
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          1.9
+         ],
+         "y_T": [
+          -0.0242
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          1.9
+         ],
+         "y_T": [
+          -0.0242
+         ]
+        }
+       ],
+       "median_width_mm": 1.9,
+       "n_dips_total": 6
+      },
+      "gaps_c05": {
+       "n_axis": 1,
+       "n_total": 5,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          1.9
+         ],
+         "y_T": [
+          0.2045
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          2.9,
+          1.7
+         ],
+         "y_T": [
+          -0.0217,
+          0.1358
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          2.9,
+          1.7
+         ],
+         "y_T": [
+          -0.0217,
+          0.1358
+         ]
+        }
+       ],
+       "median_width_mm": 1.9,
+       "n_dips_total": 6
+      },
+      "gaps_native_N256_c04": {
+       "n_axis": 1,
+       "n_total": 3,
+       "median_width_mm": 2.0
+      },
+      "white_frac_native_c04": 0.24767187626528464
+     },
+     "best": {
+      "iou_c04": 0.5033528012113346,
+      "iou_c05": 0.49253070709306185,
+      "bdist_c04_D": 0.036818667498305716,
+      "bdist_c04_dir_D": [
+       0.022139381908130574,
+       0.05149795308848086
+      ],
+      "bdist_c05_D": 0.03500445248801992,
+      "white_frac_c04": 0.24859692042020434,
+      "white_frac_c05": 0.23377464383364513,
+      "gaps_c04": {
+       "n_axis": 1,
+       "n_total": 5,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          1.0
+         ],
+         "y_T": [
+          0.1839
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          8.1,
+          1.5
+         ],
+         "y_T": [
+          -0.0967,
+          0.0395
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          3.3,
+          3.9
+         ],
+         "y_T": [
+          -0.138,
+          -0.0692
+         ]
+        }
+       ],
+       "median_width_mm": 3.3,
+       "n_dips_total": 7
+      },
+      "gaps_c05": {
+       "n_axis": 2,
+       "n_total": 7,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 2,
+         "widths_mm": [
+          1.2,
+          1.5
+         ],
+         "y_T": [
+          0.0914,
+          0.1845
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 3,
+         "widths_mm": [
+          8.8,
+          2.0,
+          1.3
+         ],
+         "y_T": [
+          -0.0986,
+          0.0414,
+          0.1758
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          11.8,
+          1.1
+         ],
+         "y_T": [
+          -0.0911,
+          0.2208
+         ]
+        }
+       ],
+       "median_width_mm": 1.5,
+       "n_dips_total": 7
+      },
+      "transform": {
+       "theta_deg": 20.0,
+       "dx_D": -0.01,
+       "dy_D": -0.0375,
+       "iou_c04": 0.5033528012113346,
+       "at_bound": {
+        "theta": false,
+        "dx": false,
+        "dy": false
+       }
+      }
+     },
+     "diagnostic_full_circle": {
+      "as_simulated": {
+       "iou_c04": 0.4967693301744562,
+       "theta_deg": 55.0,
+       "dx_D": -0.03,
+       "dy_D": -0.06
+      },
+      "mirrored": {
+       "iou_c04": 0.4967693301744562,
+       "theta_deg": 55.0,
+       "dx_D": -0.03,
+       "dy_D": -0.06
+      }
+     },
+     "structure": {
+      "components": [
+       1201.0
+      ],
+      "stripes": [
+       {
+        "x": -0.1,
+        "gaps": 1,
+        "dips": 2,
+        "total": 3
+       },
+       {
+        "x": -0.05,
+        "gaps": 1,
+        "dips": 2,
+        "total": 3
+       },
+       {
+        "x": 0.0,
+        "gaps": 1,
+        "dips": 2,
+        "total": 3
+       },
+       {
+        "x": 0.05,
+        "gaps": 1,
+        "dips": 2,
+        "total": 3
+       },
+       {
+        "x": 0.1,
+        "gaps": 1,
+        "dips": 2,
+        "total": 3
+       }
+      ]
+     }
+    },
+    "PHYS": {
+     "path": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05allphys/ref2/runs/strictB3_push_heart_N256/c.npz",
+     "raw": {
+      "iou_c04": 0.444996301384339,
+      "iou_c05": 0.42890893470790376,
+      "bdist_c04_D": 0.03520948140584765,
+      "bdist_c04_dir_D": [
+       0.02298134502984209,
+       0.04743761778185321
+      ],
+      "bdist_c05_D": 0.03442963519513388,
+      "white_frac_c04": 0.24046625413728595,
+      "white_frac_c05": 0.22722693912793207,
+      "gaps_c04": {
+       "n_axis": 2,
+       "n_total": 4,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 2,
+         "widths_mm": [
+          2.4,
+          2.2
+         ],
+         "y_T": [
+          0.1301,
+          0.2351
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          1.4
+         ],
+         "y_T": [
+          -0.0173
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          1.4
+         ],
+         "y_T": [
+          -0.0173
+         ]
+        }
+       ],
+       "median_width_mm": 1.8,
+       "n_dips_total": 12
+      },
+      "gaps_c05": {
+       "n_axis": 2,
+       "n_total": 8,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 2,
+         "widths_mm": [
+          5.4,
+          2.7
+         ],
+         "y_T": [
+          0.1251,
+          0.2345
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 3,
+         "widths_mm": [
+          1.7,
+          1.4,
+          1.2
+         ],
+         "y_T": [
+          -0.0167,
+          0.0239,
+          0.1402
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 3,
+         "widths_mm": [
+          1.7,
+          1.4,
+          1.2
+         ],
+         "y_T": [
+          -0.0167,
+          0.0239,
+          0.1402
+         ]
+        }
+       ],
+       "median_width_mm": 1.55,
+       "n_dips_total": 12
+      },
+      "gaps_native_N256_c04": {
+       "n_axis": 2,
+       "n_total": 4,
+       "median_width_mm": 1.85
+      },
+      "white_frac_native_c04": 0.23900720706130052
+     },
+     "best": {
+      "iou_c04": 0.48753130785146465,
+      "iou_c05": 0.47128341064722773,
+      "bdist_c04_D": 0.03519909289565682,
+      "bdist_c04_dir_D": [
+       0.02155750708943504,
+       0.0488406787018786
+      ],
+      "bdist_c05_D": 0.03364744620105707,
+      "white_frac_c04": 0.23996258454453878,
+      "white_frac_c05": 0.22776658512016118,
+      "gaps_c04": {
+       "n_axis": 3,
+       "n_total": 6,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 3,
+         "widths_mm": [
+          9.3,
+          3.2,
+          1.0
+         ],
+         "y_T": [
+          -0.028,
+          0.1026,
+          0.2014
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          2.1,
+          4.0
+         ],
+         "y_T": [
+          0.032,
+          0.2664
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          1.2
+         ],
+         "y_T": [
+          0.0302
+         ]
+        }
+       ],
+       "median_width_mm": 2.65,
+       "n_dips_total": 11
+      },
+      "gaps_c05": {
+       "n_axis": 3,
+       "n_total": 9,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 3,
+         "widths_mm": [
+          10.4,
+          3.6,
+          1.4
+         ],
+         "y_T": [
+          -0.0311,
+          0.1026,
+          0.2026
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 3,
+         "widths_mm": [
+          2.6,
+          1.9,
+          5.1
+         ],
+         "y_T": [
+          0.0327,
+          0.0895,
+          0.2633
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 3,
+         "widths_mm": [
+          1.3,
+          1.4,
+          1.4
+         ],
+         "y_T": [
+          -0.1042,
+          0.0302,
+          0.0627
+         ]
+        }
+       ],
+       "median_width_mm": 1.9,
+       "n_dips_total": 11
+      },
+      "transform": {
+       "theta_deg": -9.5,
+       "dx_D": -0.01,
+       "dy_D": -0.045,
+       "iou_c04": 0.48753130785146465,
+       "at_bound": {
+        "theta": false,
+        "dx": false,
+        "dy": false
+       }
+      }
+     },
+     "diagnostic_full_circle": {
+      "as_simulated": {
+       "iou_c04": 0.4808879263670818,
+       "theta_deg": 0.0,
+       "dx_D": 0.0,
+       "dy_D": -0.03
+      },
+      "mirrored": {
+       "iou_c04": 0.4808879263670818,
+       "theta_deg": 0.0,
+       "dx_D": 0.0,
+       "dy_D": -0.03
+      }
+     },
+     "structure": {
+      "components": [
+       938.2,
+       222.2
+      ],
+      "stripes": [
+       {
+        "x": -0.1,
+        "gaps": 1,
+        "dips": 2,
+        "total": 3
+       },
+       {
+        "x": -0.05,
+        "gaps": 1,
+        "dips": 5,
+        "total": 6
+       },
+       {
+        "x": 0.0,
+        "gaps": 2,
+        "dips": 2,
+        "total": 4
+       },
+       {
+        "x": 0.05,
+        "gaps": 1,
+        "dips": 5,
+        "total": 6
+       },
+       {
+        "x": 0.1,
+        "gaps": 1,
+        "dips": 2,
+        "total": 3
+       }
+      ]
+     }
+    }
+   },
+   "judgement": {
+    "structure": "separated arms",
+    "video": "三块分开的白：B 侧一颗独立小心、中间一颗内心、只在一侧（右、下）包住的外弧；块间褐缝 2–4 mm；图案轴比竖直斜约 40°",
+    "V05": {
+     "present": "partial",
+     "note": "臂是分开的（每侧两道嵌套 V 形臂，褐缝约 2 mm），但左右对称、在尖处连成一块，没有独立小心，外弧不是单侧"
+    },
+    "P1": {
+     "present": "partial",
+     "note": "同 V0.5，褐缝略淡"
+    },
+    "PHYS": {
+     "present": "partial",
+     "note": "同 V0.5，褐缝更清楚、更多（外臂与内心断开成 2 块），布局仍是对称三层"
+    },
+    "closer": "持平（IoU 0.463 对 0.445，边界距离都 2.8 mm）；两者与真实的差别都在布局，不是入口物理化造成的；Codex 的动作里本来就没有单独点一颗小心，但这次比较分不开动作和模型本身"
+   },
+   "delta_PHYS_minus_V05": {
+    "raw": {
+     "iou_c04": -0.01804515421371744,
+     "iou_c05": -0.023021260955766287,
+     "bdist_c04_D": -4.557166541060975e-05
+    },
+    "best": {
+     "iou_c04": -0.019548432380623038,
+     "iou_c05": -0.027353597312645805,
+     "bdist_c04_D": 0.0015634078076156369
+    }
+   }
+  },
+  "layered_heart": {
+   "PHI_deg": 0.0,
+   "M_target": 192,
+   "phys_tag": "strictfp90",
+   "phys_note": "strictfp90 = strictB3 + flow-pulse peak moved from Codex's pi to pi/2 (inward swing): post-hoc action re-guess, made after pi and 0 did not form the layers",
+   "video": {
+    "white_frac": 0.3885451144049504,
+    "gaps": {
+     "n_axis": 0,
+     "n_total": 0,
+     "per_line": [
+      {
+       "x": 0.0,
+       "n": 0,
+       "widths_mm": [],
+       "y_T": []
+      },
+      {
+       "x": -0.05,
+       "n": 0,
+       "widths_mm": [],
+       "y_T": []
+      },
+      {
+       "x": 0.05,
+       "n": 0,
+       "widths_mm": [],
+       "y_T": []
+      }
+     ],
+     "median_width_mm": null,
+     "n_dips_total": 9
+    },
+    "structure": {
+     "components": [
+      1840.1,
+      13.7,
+      7.5
+     ],
+     "stripes": [
+      {
+       "x": -0.1,
+       "gaps": 0,
+       "dips": 0,
+       "total": 0
+      },
+      {
+       "x": -0.05,
+       "gaps": 0,
+       "dips": 0,
+       "total": 0
+      },
+      {
+       "x": 0.0,
+       "gaps": 0,
+       "dips": 2,
+       "total": 2
+      },
+      {
+       "x": 0.05,
+       "gaps": 0,
+       "dips": 7,
+       "total": 7
+      },
+      {
+       "x": 0.1,
+       "gaps": 0,
+       "dips": 5,
+       "total": 5
+      }
+     ],
+     "heart_axis": {
+      "notch_depth_mm": 9.1,
+      "brown_on_axis_mm": 0.0,
+      "axis_white_extent_mm": 41.2,
+      "lobe_top_to_tip_mm": 50.3
+     }
+    }
+   },
+   "sims": {
+    "V05": {
+     "path": "/home/user/zfChen/runs/v05_256/layered_heart/final_state.npz",
+     "raw": {
+      "iou_c04": 0.3983589200635257,
+      "iou_c05": 0.38089727612604596,
+      "bdist_c04_D": 0.09053954047583981,
+      "bdist_c04_dir_D": [
+       0.0794110592016207,
+       0.10166802175005892
+      ],
+      "bdist_c05_D": 0.096117711313255,
+      "white_frac_c04": 0.1816448409843143,
+      "white_frac_c05": 0.1695567707583825,
+      "gaps_c04": {
+       "n_axis": 0,
+       "n_total": 2,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          1.9
+         ],
+         "y_T": [
+          -0.1442
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          2.0
+         ],
+         "y_T": [
+          -0.1536
+         ]
+        }
+       ],
+       "median_width_mm": 1.95,
+       "n_dips_total": 6
+      },
+      "gaps_c05": {
+       "n_axis": 0,
+       "n_total": 0,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": null,
+       "n_dips_total": 4
+      },
+      "gaps_native_N256_c04": {
+       "n_axis": 0,
+       "n_total": 2,
+       "median_width_mm": 1.95
+      },
+      "white_frac_native_c04": 0.1815936513077982
+     },
+     "best": {
+      "iou_c04": 0.46618558608566935,
+      "iou_c05": 0.4375636397297047,
+      "bdist_c04_D": 0.08296996927665519,
+      "bdist_c04_dir_D": [
+       0.06095554546708084,
+       0.10498439308622953
+      ],
+      "bdist_c05_D": 0.08915097555837526,
+      "white_frac_c04": 0.18160886458483236,
+      "white_frac_c05": 0.17016836954957548,
+      "gaps_c04": {
+       "n_axis": 1,
+       "n_total": 1,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          1.2
+         ],
+         "y_T": [
+          -0.1011
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": 1.2,
+       "n_dips_total": 3
+      },
+      "gaps_c05": {
+       "n_axis": 1,
+       "n_total": 1,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          3.2
+         ],
+         "y_T": [
+          -0.1049
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": 3.2,
+       "n_dips_total": 3
+      },
+      "transform": {
+       "theta_deg": 4.0,
+       "dx_D": -0.06,
+       "dy_D": -0.06,
+       "iou_c04": 0.46618558608566935,
+       "at_bound": {
+        "theta": false,
+        "dx": true,
+        "dy": true
+       }
+      }
+     },
+     "diagnostic_full_circle": {
+      "as_simulated": {
+       "iou_c04": 0.4653098982423682,
+       "theta_deg": 45.0,
+       "dx_D": 0.06,
+       "dy_D": -0.06
+      },
+      "mirrored": {
+       "iou_c04": 0.46571666512445636,
+       "theta_deg": 45.0,
+       "dx_D": 0.06,
+       "dy_D": -0.06
+      }
+     },
+     "structure": {
+      "components": [
+       876.4
+      ],
+      "stripes": [
+       {
+        "x": -0.1,
+        "gaps": 0,
+        "dips": 0,
+        "total": 0
+       },
+       {
+        "x": -0.05,
+        "gaps": 1,
+        "dips": 3,
+        "total": 4
+       },
+       {
+        "x": 0.0,
+        "gaps": 0,
+        "dips": 0,
+        "total": 0
+       },
+       {
+        "x": 0.05,
+        "gaps": 1,
+        "dips": 3,
+        "total": 4
+       },
+       {
+        "x": 0.1,
+        "gaps": 0,
+        "dips": 0,
+        "total": 0
+       }
+      ],
+      "heart_axis": {
+       "notch_depth_mm": 10.8,
+       "brown_on_axis_mm": 0.0,
+       "axis_white_extent_mm": 24.1,
+       "lobe_top_to_tip_mm": 34.9
+      },
+      "heart_axis_c05": {
+       "notch_depth_mm": 10.3,
+       "brown_on_axis_mm": 0.0,
+       "axis_white_extent_mm": 23.2,
+       "lobe_top_to_tip_mm": 33.5
+      }
+     }
+    },
+    "P1": {
+     "path": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05allphys/runs/P1/layered_heart_N256.npz",
+     "raw": {
+      "iou_c04": 0.394337803488474,
+      "iou_c05": 0.33494335645912005,
+      "bdist_c04_D": 0.0860504376809624,
+      "bdist_c04_dir_D": [
+       0.07957432793773143,
+       0.09252654742419336
+      ],
+      "bdist_c05_D": 0.09086309935211946,
+      "white_frac_c04": 0.18376744855374874,
+      "white_frac_c05": 0.15833213412001726,
+      "gaps_c04": {
+       "n_axis": 1,
+       "n_total": 3,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          13.5
+         ],
+         "y_T": [
+          0.0895
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          4.1
+         ],
+         "y_T": [
+          0.047
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          5.3
+         ],
+         "y_T": [
+          0.0433
+         ]
+        }
+       ],
+       "median_width_mm": 5.3,
+       "n_dips_total": 5
+      },
+      "gaps_c05": {
+       "n_axis": 0,
+       "n_total": 3,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          7.5
+         ],
+         "y_T": [
+          0.0333
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          1.6,
+          9.2
+         ],
+         "y_T": [
+          -0.0636,
+          0.0264
+         ]
+        }
+       ],
+       "median_width_mm": 7.5,
+       "n_dips_total": 4
+      },
+      "gaps_native_N256_c04": {
+       "n_axis": 1,
+       "n_total": 3,
+       "median_width_mm": 5.3
+      },
+      "white_frac_native_c04": 0.1845898453316058
+     },
+     "best": {
+      "iou_c04": 0.46707193515704154,
+      "iou_c05": 0.40250760578961925,
+      "bdist_c04_D": 0.0839830708091415,
+      "bdist_c04_dir_D": [
+       0.07307500933618453,
+       0.09489113228209844
+      ],
+      "bdist_c05_D": 0.08935354123178842,
+      "white_frac_c04": 0.18448697654338753,
+      "white_frac_c05": 0.15876385091380055,
+      "gaps_c04": {
+       "n_axis": 2,
+       "n_total": 3,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 2,
+         "widths_mm": [
+          3.8,
+          7.5
+         ],
+         "y_T": [
+          0.0101,
+          0.102
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          10.6
+         ],
+         "y_T": [
+          0.1089
+         ]
+        }
+       ],
+       "median_width_mm": 7.5,
+       "n_dips_total": 5
+      },
+      "gaps_c05": {
+       "n_axis": 1,
+       "n_total": 3,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          14.0
+         ],
+         "y_T": [
+          0.0664
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          4.3
+         ],
+         "y_T": [
+          0.117
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          14.1
+         ],
+         "y_T": [
+          0.0908
+         ]
+        }
+       ],
+       "median_width_mm": 14.0,
+       "n_dips_total": 5
+      },
+      "transform": {
+       "theta_deg": 25.0,
+       "dx_D": 0.01,
+       "dy_D": -0.06,
+       "iou_c04": 0.46707193515704154,
+       "at_bound": {
+        "theta": true,
+        "dx": false,
+        "dy": true
+       }
+      }
+     },
+     "diagnostic_full_circle": {
+      "as_simulated": {
+       "iou_c04": 0.4687211662668389,
+       "theta_deg": 40.0,
+       "dx_D": 0.06,
+       "dy_D": -0.06
+      },
+      "mirrored": {
+       "iou_c04": 0.4677731673582296,
+       "theta_deg": 45.0,
+       "dx_D": 0.06,
+       "dy_D": -0.06
+      }
+     },
+     "structure": {
+      "components": [
+       886.8
+      ],
+      "stripes": [
+       {
+        "x": -0.1,
+        "gaps": 0,
+        "dips": 1,
+        "total": 1
+       },
+       {
+        "x": -0.05,
+        "gaps": 1,
+        "dips": 2,
+        "total": 3
+       },
+       {
+        "x": 0.0,
+        "gaps": 1,
+        "dips": 1,
+        "total": 2
+       },
+       {
+        "x": 0.05,
+        "gaps": 1,
+        "dips": 2,
+        "total": 3
+       },
+       {
+        "x": 0.1,
+        "gaps": 0,
+        "dips": 0,
+        "total": 0
+       }
+      ],
+      "heart_axis": {
+       "notch_depth_mm": 13.5,
+       "brown_on_axis_mm": 13.6,
+       "axis_white_extent_mm": 23.0,
+       "lobe_top_to_tip_mm": 36.4
+      },
+      "heart_axis_c05": {
+       "notch_depth_mm": 32.4,
+       "brown_on_axis_mm": 0.0,
+       "axis_white_extent_mm": 3.2,
+       "lobe_top_to_tip_mm": 35.6
+      }
+     }
+    },
+    "PHYS": {
+     "path": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05allphys/ref2/runs/strictfp90_layered_heart_N256/c.npz",
+     "raw": {
+      "iou_c04": 0.36138439915671117,
+      "iou_c05": 0.26814019020781965,
+      "bdist_c04_D": 0.08676193225604759,
+      "bdist_c04_dir_D": [
+       0.08487929141571393,
+       0.08864457309638124
+      ],
+      "bdist_c05_D": 0.09114878222723061,
+      "white_frac_c04": 0.1690171247661534,
+      "white_frac_c05": 0.12955101453446538,
+      "gaps_c04": {
+       "n_axis": 0,
+       "n_total": 4,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          1.5,
+          6.3
+         ],
+         "y_T": [
+          0.0033,
+          0.0645
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          2.2,
+          7.7
+         ],
+         "y_T": [
+          -0.0223,
+          0.0583
+         ]
+        }
+       ],
+       "median_width_mm": 4.25,
+       "n_dips_total": 5
+      },
+      "gaps_c05": {
+       "n_axis": 1,
+       "n_total": 5,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          8.1
+         ],
+         "y_T": [
+          0.162
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          1.2,
+          9.9
+         ],
+         "y_T": [
+          -0.0373,
+          0.0533
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          2.9,
+          9.0
+         ],
+         "y_T": [
+          -0.0217,
+          0.0602
+         ]
+        }
+       ],
+       "median_width_mm": 8.1,
+       "n_dips_total": 5
+      },
+      "gaps_native_N256_c04": {
+       "n_axis": 0,
+       "n_total": 4,
+       "median_width_mm": 4.3
+      },
+      "white_frac_native_c04": 0.16807028909223418
+     },
+     "best": {
+      "iou_c04": 0.43025939259669527,
+      "iou_c05": 0.33065335920894556,
+      "bdist_c04_D": 0.08842724040160332,
+      "bdist_c04_dir_D": [
+       0.08067148133830962,
+       0.09618299946489701
+      ],
+      "bdist_c05_D": 0.092714419238093,
+      "white_frac_c04": 0.16887321916822565,
+      "white_frac_c05": 0.1294790617355015,
+      "gaps_c04": {
+       "n_axis": 3,
+       "n_total": 5,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 3,
+         "widths_mm": [
+          1.8,
+          1.8,
+          6.0
+         ],
+         "y_T": [
+          0.0189,
+          0.0664,
+          0.1226
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          8.4
+         ],
+         "y_T": [
+          0.0564
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          5.3
+         ],
+         "y_T": [
+          0.0995
+         ]
+        }
+       ],
+       "median_width_mm": 5.3,
+       "n_dips_total": 4
+      },
+      "gaps_c05": {
+       "n_axis": 2,
+       "n_total": 4,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 2,
+         "widths_mm": [
+          2.3,
+          9.5
+         ],
+         "y_T": [
+          0.0195,
+          0.1107
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          20.8
+         ],
+         "y_T": [
+          0.1264
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          8.6
+         ],
+         "y_T": [
+          0.0864
+         ]
+        }
+       ],
+       "median_width_mm": 9.05,
+       "n_dips_total": 4
+      },
+      "transform": {
+       "theta_deg": 4.0,
+       "dx_D": -0.06,
+       "dy_D": -0.06,
+       "iou_c04": 0.43025939259669527,
+       "at_bound": {
+        "theta": false,
+        "dx": true,
+        "dy": true
+       }
+      }
+     },
+     "diagnostic_full_circle": {
+      "as_simulated": {
+       "iou_c04": 0.42813653136531366,
+       "theta_deg": 15.0,
+       "dx_D": -0.03,
+       "dy_D": -0.06
+      },
+      "mirrored": {
+       "iou_c04": 0.427926267281106,
+       "theta_deg": 5.0,
+       "dx_D": -0.06,
+       "dy_D": -0.06
+      }
+     },
+     "structure": {
+      "components": [
+       813.9
+      ],
+      "stripes": [
+       {
+        "x": -0.1,
+        "gaps": 1,
+        "dips": 2,
+        "total": 3
+       },
+       {
+        "x": -0.05,
+        "gaps": 2,
+        "dips": 3,
+        "total": 5
+       },
+       {
+        "x": 0.0,
+        "gaps": 0,
+        "dips": 0,
+        "total": 0
+       },
+       {
+        "x": 0.05,
+        "gaps": 2,
+        "dips": 2,
+        "total": 4
+       },
+       {
+        "x": 0.1,
+        "gaps": 2,
+        "dips": 2,
+        "total": 4
+       }
+      ],
+      "heart_axis": {
+       "notch_depth_mm": 16.8,
+       "brown_on_axis_mm": 0.0,
+       "axis_white_extent_mm": 21.6,
+       "lobe_top_to_tip_mm": 38.4
+      },
+      "heart_axis_c05": {
+       "notch_depth_mm": 17.3,
+       "brown_on_axis_mm": 8.1,
+       "axis_white_extent_mm": 19.5,
+       "lobe_top_to_tip_mm": 36.7
+      }
+     }
+    }
+   },
+   "judgement": {
+    "structure": "nested lines",
+    "video": "大心（白区 0.389），两瓣上半部各约 8–10 道 1–2 mm 的细褐弧，与瓣的轮廓平行；下半实白；凹口 9 mm；尖 + 细尾",
+    "V05": {
+     "present": "partial",
+     "note": "心形、凹口、尖都在，但心只有真实的一半大（0.182），内部是灰（c 0.6–0.8）；凹口旁一对亮卷 + 1–2 道淡弧，弧不铺满瓣"
+    },
+    "P1": {
+     "present": "partial",
+     "note": "2–3 道弧，轴上一块褐色楔（13.6 mm）"
+    },
+    "PHYS": {
+     "present": "partial",
+     "note": "strictfp90（流量峰挪到回摆途中，事后对动作的再猜）：每瓣 3–4 道清楚的嵌套亮弧，比 V0.5 多、更像真实的“层”；但弧集中在中轴两侧、心同样只有一半大（0.169），内部更灰"
+    },
+    "closer": "指标：V0.5 略近（IoU 0.398 对 0.361；c>0.5 时 0.381 对 0.268）；看样子：全物理的内弧更像。两者共同缺的是大小和弧数"
+   },
+   "delta_PHYS_minus_V05": {
+    "raw": {
+     "iou_c04": -0.03697452090681452,
+     "iou_c05": -0.11275708591822631,
+     "bdist_c04_D": -0.003777608219792228
+    },
+    "best": {
+     "iou_c04": -0.03592619348897408,
+     "iou_c05": -0.10691028052075913,
+     "bdist_c04_D": 0.005457271124948135
+    }
+   }
+  },
+  "tulip": {
+   "PHI_deg": 0.0,
+   "M_target": 192,
+   "phys_tag": "strictB3",
+   "phys_note": "strictB3; flow-pulse peak moved from Codex's pi to 0 (mid-line crossing; the P4f patch, made after P4 with pi failed): post-hoc action re-guess",
+   "video": {
+    "white_frac": 0.26068499064613615,
+    "gaps": {
+     "n_axis": 2,
+     "n_total": 7,
+     "per_line": [
+      {
+       "x": 0.0,
+       "n": 2,
+       "widths_mm": [
+        19.7,
+        5.9
+       ],
+       "y_T": [
+        -0.1305,
+        0.1557
+       ]
+      },
+      {
+       "x": -0.05,
+       "n": 3,
+       "widths_mm": [
+        1.7,
+        6.3,
+        4.6
+       ],
+       "y_T": [
+        0.0208,
+        0.1658,
+        0.2902
+       ]
+      },
+      {
+       "x": 0.05,
+       "n": 2,
+       "widths_mm": [
+        8.7,
+        5.3
+       ],
+       "y_T": [
+        -0.103,
+        0.1408
+       ]
+      }
+     ],
+     "median_width_mm": 5.9,
+     "n_dips_total": 9
+    },
+    "structure": {
+     "components": [
+      486.3,
+      332.5,
+      229.7,
+      77.3,
+      53.6,
+      35.9,
+      20.5,
+      6.3
+     ],
+     "stripes": [
+      {
+       "x": -0.1,
+       "gaps": 3,
+       "dips": 6,
+       "total": 9
+      },
+      {
+       "x": -0.05,
+       "gaps": 3,
+       "dips": 3,
+       "total": 6
+      },
+      {
+       "x": 0.0,
+       "gaps": 2,
+       "dips": 3,
+       "total": 5
+      },
+      {
+       "x": 0.05,
+       "gaps": 2,
+       "dips": 3,
+       "total": 5
+      },
+      {
+       "x": 0.1,
+       "gaps": 2,
+       "dips": 4,
+       "total": 6
+      }
+     ]
+    }
+   },
+   "sims": {
+    "V05": {
+     "path": "/home/user/zfChen/runs/v05_256/tulip/final_state.npz",
+     "raw": {
+      "iou_c04": 0.29815505209826976,
+      "iou_c05": 0.2838406577273172,
+      "bdist_c04_D": 0.03586932973167206,
+      "bdist_c04_dir_D": [
+       0.01914077652435634,
+       0.05259788293898779
+      ],
+      "bdist_c05_D": 0.036738721007512166,
+      "white_frac_c04": 0.227874514318607,
+      "white_frac_c05": 0.21121744135846884,
+      "gaps_c04": {
+       "n_axis": 1,
+       "n_total": 5,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          2.9
+         ],
+         "y_T": [
+          -0.093
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          4.8,
+          2.3
+         ],
+         "y_T": [
+          -0.1973,
+          -0.0517
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          5.6,
+          1.9
+         ],
+         "y_T": [
+          -0.1811,
+          -0.0517
+         ]
+        }
+       ],
+       "median_width_mm": 2.9,
+       "n_dips_total": 9
+      },
+      "gaps_c05": {
+       "n_axis": 2,
+       "n_total": 6,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 2,
+         "widths_mm": [
+          3.8,
+          1.9
+         ],
+         "y_T": [
+          -0.0924,
+          0.0157
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          5.5,
+          2.7
+         ],
+         "y_T": [
+          -0.1955,
+          -0.0517
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          5.9,
+          2.3
+         ],
+         "y_T": [
+          -0.1805,
+          -0.0517
+         ]
+        }
+       ],
+       "median_width_mm": 3.25,
+       "n_dips_total": 9
+      },
+      "gaps_native_N256_c04": {
+       "n_axis": 1,
+       "n_total": 5,
+       "median_width_mm": 2.9
+      },
+      "white_frac_native_c04": 0.22740707749615355
+     },
+     "best": {
+      "iou_c04": 0.3915181315304241,
+      "iou_c05": 0.37884999474403447,
+      "bdist_c04_D": 0.04371400383541307,
+      "bdist_c04_dir_D": [
+       0.01964970753476089,
+       0.06777830013606526
+      ],
+      "bdist_c05_D": 0.043554386822390184,
+      "white_frac_c04": 0.22801841991653476,
+      "white_frac_c05": 0.21121744135846884,
+      "gaps_c04": {
+       "n_axis": 2,
+       "n_total": 6,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 2,
+         "widths_mm": [
+          4.1,
+          1.7
+         ],
+         "y_T": [
+          -0.208,
+          -0.1005
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          7.6,
+          1.0
+         ],
+         "y_T": [
+          -0.1923,
+          -0.0611
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          3.7,
+          1.8
+         ],
+         "y_T": [
+          -0.2767,
+          -0.1211
+         ]
+        }
+       ],
+       "median_width_mm": 2.75,
+       "n_dips_total": 7
+      },
+      "gaps_c05": {
+       "n_axis": 2,
+       "n_total": 6,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 2,
+         "widths_mm": [
+          4.4,
+          2.1
+         ],
+         "y_T": [
+          -0.2074,
+          -0.1005
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          9.5,
+          1.8
+         ],
+         "y_T": [
+          -0.183,
+          -0.0611
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          6.5,
+          2.2
+         ],
+         "y_T": [
+          -0.2705,
+          -0.1211
+         ]
+        }
+       ],
+       "median_width_mm": 3.3,
+       "n_dips_total": 7
+      },
+      "transform": {
+       "theta_deg": -10.25,
+       "dx_D": -0.06,
+       "dy_D": 0.0575,
+       "iou_c04": 0.3915181315304241,
+       "at_bound": {
+        "theta": false,
+        "dx": true,
+        "dy": false
+       }
+      }
+     },
+     "diagnostic_full_circle": {
+      "as_simulated": {
+       "iou_c04": 0.39089417555373257,
+       "theta_deg": -10.0,
+       "dx_D": -0.06,
+       "dy_D": 0.06
+      },
+      "mirrored": {
+       "iou_c04": 0.3854634544712127,
+       "theta_deg": 45.0,
+       "dx_D": -0.03,
+       "dy_D": 0.06
+      }
+     },
+     "structure": {
+      "components": [
+       1003.1,
+       96.5
+      ],
+      "stripes": [
+       {
+        "x": -0.1,
+        "gaps": 1,
+        "dips": 1,
+        "total": 2
+       },
+       {
+        "x": -0.05,
+        "gaps": 2,
+        "dips": 4,
+        "total": 6
+       },
+       {
+        "x": 0.0,
+        "gaps": 1,
+        "dips": 2,
+        "total": 3
+       },
+       {
+        "x": 0.05,
+        "gaps": 2,
+        "dips": 3,
+        "total": 5
+       },
+       {
+        "x": 0.1,
+        "gaps": 1,
+        "dips": 1,
+        "total": 2
+       }
+      ]
+     }
+    },
+    "P1": {
+     "path": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05allphys/runs/P1/tulip_N256.npz",
+     "raw": {
+      "iou_c04": 0.2652346270858302,
+      "iou_c05": 0.22062788906009245,
+      "bdist_c04_D": 0.03191375977651312,
+      "bdist_c04_dir_D": [
+       0.019464183998468162,
+       0.04436333555455808
+      ],
+      "bdist_c05_D": 0.034440152452257955,
+      "white_frac_c04": 0.23305511584400634,
+      "white_frac_c05": 0.19531587278745144,
+      "gaps_c04": {
+       "n_axis": 2,
+       "n_total": 7,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 2,
+         "widths_mm": [
+          3.5,
+          9.7
+         ],
+         "y_T": [
+          -0.0605,
+          0.0907
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 3,
+         "widths_mm": [
+          4.7,
+          2.5,
+          5.5
+         ],
+         "y_T": [
+          -0.1755,
+          -0.0292,
+          0.0633
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          1.9,
+          11.5
+         ],
+         "y_T": [
+          -0.1767,
+          0.0283
+         ]
+        }
+       ],
+       "median_width_mm": 4.7,
+       "n_dips_total": 10
+      },
+      "gaps_c05": {
+       "n_axis": 2,
+       "n_total": 8,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 2,
+         "widths_mm": [
+          4.3,
+          10.7
+         ],
+         "y_T": [
+          -0.058,
+          0.0895
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 3,
+         "widths_mm": [
+          5.3,
+          1.7,
+          12.2
+         ],
+         "y_T": [
+          -0.1742,
+          -0.1055,
+          0.0277
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 3,
+         "widths_mm": [
+          2.5,
+          1.2,
+          12.3
+         ],
+         "y_T": [
+          -0.1755,
+          -0.0898,
+          0.0283
+         ]
+        }
+       ],
+       "median_width_mm": 4.8,
+       "n_dips_total": 10
+      },
+      "gaps_native_N256_c04": {
+       "n_axis": 2,
+       "n_total": 7,
+       "median_width_mm": 4.7
+      },
+      "white_frac_native_c04": 0.23333873188112397
+     },
+     "best": {
+      "iou_c04": 0.38422007255139057,
+      "iou_c05": 0.3244569757727652,
+      "bdist_c04_D": 0.041514557150899176,
+      "bdist_c04_dir_D": [
+       0.018588784533686488,
+       0.06444032976811186
+      ],
+      "bdist_c05_D": 0.04482916350759773,
+      "white_frac_c04": 0.23352280903727154,
+      "white_frac_c05": 0.19560368398330696,
+      "gaps_c04": {
+       "n_axis": 1,
+       "n_total": 4,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          13.7
+         ],
+         "y_T": [
+          -0.0355
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          5.5,
+          7.7
+         ],
+         "y_T": [
+          -0.2005,
+          0.0133
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          1.2
+         ],
+         "y_T": [
+          -0.1798
+         ]
+        }
+       ],
+       "median_width_mm": 6.6,
+       "n_dips_total": 8
+      },
+      "gaps_c05": {
+       "n_axis": 3,
+       "n_total": 8,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 3,
+         "widths_mm": [
+          2.5,
+          2.3,
+          14.9
+         ],
+         "y_T": [
+          -0.3305,
+          -0.1918,
+          -0.0368
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          6.7,
+          8.4
+         ],
+         "y_T": [
+          -0.1967,
+          0.0127
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 3,
+         "widths_mm": [
+          3.5,
+          4.9,
+          4.9
+         ],
+         "y_T": [
+          -0.278,
+          -0.1917,
+          -0.0155
+         ]
+        }
+       ],
+       "median_width_mm": 4.9,
+       "n_dips_total": 8
+      },
+      "transform": {
+       "theta_deg": 12.25,
+       "dx_D": -0.05,
+       "dy_D": 0.0575,
+       "iou_c04": 0.38422007255139057,
+       "at_bound": {
+        "theta": false,
+        "dx": false,
+        "dy": false
+       }
+      }
+     },
+     "diagnostic_full_circle": {
+      "as_simulated": {
+       "iou_c04": 0.3890857547838412,
+       "theta_deg": 155.0,
+       "dx_D": 0.0,
+       "dy_D": 0.03
+      },
+      "mirrored": {
+       "iou_c04": 0.38536831483350154,
+       "theta_deg": 135.0,
+       "dx_D": -0.03,
+       "dy_D": 0.06
+      }
+     },
+     "structure": {
+      "components": [
+       1040.8,
+       83.9
+      ],
+      "stripes": [
+       {
+        "x": -0.1,
+        "gaps": 2,
+        "dips": 3,
+        "total": 5
+       },
+       {
+        "x": -0.05,
+        "gaps": 3,
+        "dips": 4,
+        "total": 7
+       },
+       {
+        "x": 0.0,
+        "gaps": 2,
+        "dips": 2,
+        "total": 4
+       },
+       {
+        "x": 0.05,
+        "gaps": 2,
+        "dips": 4,
+        "total": 6
+       },
+       {
+        "x": 0.1,
+        "gaps": 2,
+        "dips": 3,
+        "total": 5
+       }
+      ]
+     }
+    },
+    "PHYS": {
+     "path": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05allphys/ref2/runs/strictB3_tulip_N256/c.npz",
+     "raw": {
+      "iou_c04": 0.291064939904966,
+      "iou_c05": 0.2454006233035086,
+      "bdist_c04_D": 0.03160185509914239,
+      "bdist_c04_dir_D": [
+       0.02128481618207438,
+       0.0419188940162104
+      ],
+      "bdist_c05_D": 0.03337410958063289,
+      "white_frac_c04": 0.23783997697510434,
+      "white_frac_c05": 0.1849906461361347,
+      "gaps_c04": {
+       "n_axis": 2,
+       "n_total": 6,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 2,
+         "widths_mm": [
+          3.6,
+          2.7
+         ],
+         "y_T": [
+          -0.0036,
+          0.0895
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          6.8,
+          3.1
+         ],
+         "y_T": [
+          -0.1211,
+          0.0083
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          4.1,
+          1.8
+         ],
+         "y_T": [
+          -0.1305,
+          -0.0011
+         ]
+        }
+       ],
+       "median_width_mm": 3.35,
+       "n_dips_total": 6
+      },
+      "gaps_c05": {
+       "n_axis": 2,
+       "n_total": 6,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 2,
+         "widths_mm": [
+          4.6,
+          4.0
+         ],
+         "y_T": [
+          -0.0024,
+          0.0901
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          7.5,
+          3.8
+         ],
+         "y_T": [
+          -0.118,
+          0.0089
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          4.6,
+          2.7
+         ],
+         "y_T": [
+          -0.1298,
+          -0.0005
+         ]
+        }
+       ],
+       "median_width_mm": 4.3,
+       "n_dips_total": 6
+      },
+      "gaps_native_N256_c04": {
+       "n_axis": 2,
+       "n_total": 6,
+       "median_width_mm": 3.35
+      },
+      "white_frac_native_c04": 0.23817718033848895
+     },
+     "best": {
+      "iou_c04": 0.3894620855454272,
+      "iou_c05": 0.32200854700854703,
+      "bdist_c04_D": 0.03877260472162231,
+      "bdist_c04_dir_D": [
+       0.017393757681664495,
+       0.060151451761580134
+      ],
+      "bdist_c05_D": 0.039172988973909036,
+      "white_frac_c04": 0.23834364656785148,
+      "white_frac_c05": 0.18448697654338753,
+      "gaps_c04": {
+       "n_axis": 2,
+       "n_total": 6,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 2,
+         "widths_mm": [
+          1.5,
+          2.5
+         ],
+         "y_T": [
+          -0.3105,
+          -0.088
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 3,
+         "widths_mm": [
+          15.3,
+          2.6,
+          1.7
+         ],
+         "y_T": [
+          -0.2492,
+          -0.0586,
+          -0.0092
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          6.3
+         ],
+         "y_T": [
+          -0.2055
+         ]
+        }
+       ],
+       "median_width_mm": 2.55,
+       "n_dips_total": 6
+      },
+      "gaps_c05": {
+       "n_axis": 2,
+       "n_total": 6,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 2,
+         "widths_mm": [
+          13.5,
+          3.9
+         ],
+         "y_T": [
+          -0.2705,
+          -0.0855
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          3.9,
+          2.3
+         ],
+         "y_T": [
+          -0.063,
+          -0.008
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          3.6,
+          10.2
+         ],
+         "y_T": [
+          -0.3048,
+          -0.2073
+         ]
+        }
+       ],
+       "median_width_mm": 3.9,
+       "n_dips_total": 5
+      },
+      "transform": {
+       "theta_deg": 20.5,
+       "dx_D": -0.0525,
+       "dy_D": 0.06,
+       "iou_c04": 0.3894620855454272,
+       "at_bound": {
+        "theta": false,
+        "dx": false,
+        "dy": true
+       }
+      }
+     },
+     "diagnostic_full_circle": {
+      "as_simulated": {
+       "iou_c04": 0.39699808602800446,
+       "theta_deg": -65.0,
+       "dx_D": 0.03,
+       "dy_D": 0.06
+      },
+      "mirrored": {
+       "iou_c04": 0.4009905994137269,
+       "theta_deg": 15.0,
+       "dx_D": -0.06,
+       "dy_D": 0.06
+      }
+     },
+     "structure": {
+      "components": [
+       887.7,
+       176.6,
+       83.5
+      ],
+      "stripes": [
+       {
+        "x": -0.1,
+        "gaps": 2,
+        "dips": 2,
+        "total": 4
+       },
+       {
+        "x": -0.05,
+        "gaps": 2,
+        "dips": 2,
+        "total": 4
+       },
+       {
+        "x": 0.0,
+        "gaps": 2,
+        "dips": 2,
+        "total": 4
+       },
+       {
+        "x": 0.05,
+        "gaps": 2,
+        "dips": 2,
+        "total": 4
+       },
+       {
+        "x": 0.1,
+        "gaps": 2,
+        "dips": 2,
+        "total": 4
+       }
+      ]
+     }
+    }
+   },
+   "judgement": {
+    "structure": "stacked petals with brown gaps",
+    "video": "顶心 + 第二颗大心 + 带细波纹的底弧，层间褐缝很宽（轴上 19.7、5.9 mm）；在规范坐标里整体斜约 20°",
+    "V05": {
+     "present": "yes",
+     "note": "叠瓣 + 层间褐缝在（轴/三线 1/5 道，宽 1.9–5.6 mm），但是窄 V 形瓣、左右对称；底弧没有波纹，各层在尖处相连"
+    },
+    "P1": {
+     "present": "yes",
+     "note": "同 V0.5，缝更多（2/7）"
+    },
+    "PHYS": {
+     "present": "yes",
+     "note": "叠瓣 + 褐缝在（2/6），顶心裂成两根细条，底弧变成两根细条"
+    },
+    "closer": "持平（IoU 0.298 对 0.291；边界距离全物理近 0.3 mm）"
+   },
+   "delta_PHYS_minus_V05": {
+    "raw": {
+     "iou_c04": -0.007090112193303744,
+     "iou_c05": -0.03844003442380861,
+     "bdist_c04_D": -0.004267474632529675
+    },
+    "best": {
+     "iou_c04": -0.002056045984996868,
+     "iou_c05": -0.05684144773548744,
+     "bdist_c04_D": -0.004941399113790761
+    }
+   }
+  },
+  "leaf": {
+   "PHI_deg": 180.0,
+   "M_target": 256,
+   "phys_tag": "strictB3",
+   "phys_note": "strictB3; flow-pulse peak moved from Codex's pi to 0 (mid-line crossing; the P4f patch, made after P4 with pi failed): post-hoc action re-guess",
+   "video": {
+    "white_frac": 0.3388331038950522,
+    "gaps": {
+     "n_axis": 5,
+     "n_total": 14,
+     "per_line": [
+      {
+       "x": 0.0,
+       "n": 5,
+       "widths_mm": [
+        1.0,
+        1.0,
+        1.8,
+        1.8,
+        5.5
+       ],
+       "y_T": [
+        -0.2005,
+        -0.108,
+        -0.0468,
+        0.0995,
+        0.2926
+       ]
+      },
+      {
+       "x": -0.05,
+       "n": 3,
+       "widths_mm": [
+        6.5,
+        2.1,
+        3.5
+       ],
+       "y_T": [
+        -0.0186,
+        0.0426,
+        0.2939
+       ]
+      },
+      {
+       "x": 0.05,
+       "n": 6,
+       "widths_mm": [
+        1.6,
+        1.1,
+        1.1,
+        1.3,
+        1.5,
+        5.9
+       ],
+       "y_T": [
+        -0.1342,
+        -0.0661,
+        -0.0024,
+        0.0726,
+        0.1464,
+        0.2876
+       ]
+      }
+     ],
+     "median_width_mm": 1.7,
+     "n_dips_total": 22
+    },
+    "white_frac_uncorrected": 0.3388331038950522,
+    "gaps_uncorrected": {
+     "n_axis": 5,
+     "n_total": 14,
+     "per_line": [
+      {
+       "x": 0.0,
+       "n": 5,
+       "widths_mm": [
+        5.5,
+        1.8,
+        1.7,
+        1.0,
+        1.0
+       ],
+       "y_T": [
+        -0.2912,
+        -0.098,
+        0.0476,
+        0.1095,
+        0.202
+       ]
+      },
+      {
+       "x": -0.05,
+       "n": 6,
+       "widths_mm": [
+        5.9,
+        1.5,
+        1.3,
+        1.1,
+        1.1,
+        1.6
+       ],
+       "y_T": [
+        -0.2861,
+        -0.1449,
+        -0.0711,
+        0.0039,
+        0.0676,
+        0.1358
+       ]
+      },
+      {
+       "x": 0.05,
+       "n": 3,
+       "widths_mm": [
+        3.5,
+        2.1,
+        6.4
+       ],
+       "y_T": [
+        -0.2924,
+        -0.0411,
+        0.0195
+       ]
+      }
+     ],
+     "median_width_mm": 1.65,
+     "n_dips_total": 22
+    },
+    "structure": {
+     "components": [
+      974.0,
+      506.0,
+      69.9,
+      43.5,
+      40.6
+     ],
+     "stripes": [
+      {
+       "x": -0.1,
+       "gaps": 5,
+       "dips": 11,
+       "total": 16
+      },
+      {
+       "x": -0.05,
+       "gaps": 3,
+       "dips": 5,
+       "total": 8
+      },
+      {
+       "x": 0.0,
+       "gaps": 5,
+       "dips": 8,
+       "total": 13
+      },
+      {
+       "x": 0.05,
+       "gaps": 6,
+       "dips": 9,
+       "total": 15
+      },
+      {
+       "x": 0.1,
+       "gaps": 6,
+       "dips": 8,
+       "total": 14
+      }
+     ]
+    }
+   },
+   "sims": {
+    "V05": {
+     "path": "/home/user/zfChen/runs/v05_256/leaf/final_state.npz",
+     "raw": {
+      "iou_c04": 0.43129827323264625,
+      "iou_c05": 0.41200579797071024,
+      "bdist_c04_D": 0.03612616649723026,
+      "bdist_c04_dir_D": [
+       0.01968972965619699,
+       0.05256260333826353
+      ],
+      "bdist_c05_D": 0.03364260214316269,
+      "white_frac_c04": 0.25016195643371936,
+      "white_frac_c05": 0.23307555267633007,
+      "gaps_c04": {
+       "n_axis": 1,
+       "n_total": 4,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          2.8
+         ],
+         "y_T": [
+          -0.008
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          1.9
+         ],
+         "y_T": [
+          -0.2549
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          1.9,
+          1.0
+         ],
+         "y_T": [
+          -0.2686,
+          -0.228
+         ]
+        }
+       ],
+       "median_width_mm": 1.9,
+       "n_dips_total": 16
+      },
+      "gaps_c05": {
+       "n_axis": 1,
+       "n_total": 5,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          5.4
+         ],
+         "y_T": [
+          -0.013
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          4.2,
+          1.3
+         ],
+         "y_T": [
+          -0.2667,
+          -0.0474
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          2.3,
+          1.5
+         ],
+         "y_T": [
+          -0.2686,
+          -0.2286
+         ]
+        }
+       ],
+       "median_width_mm": 2.3,
+       "n_dips_total": 16
+      },
+      "gaps_native_N256_c04": {
+       "n_axis": 1,
+       "n_total": 4,
+       "median_width_mm": 1.9
+      },
+      "white_frac_native_c04": 0.25016195643371936
+     },
+     "best": {
+      "iou_c04": 0.4947395432383885,
+      "iou_c05": 0.47643431915560663,
+      "bdist_c04_D": 0.030939662056059684,
+      "bdist_c04_dir_D": [
+       0.01451440241312581,
+       0.04736492169899356
+      ],
+      "bdist_c05_D": 0.029307966179027062,
+      "white_frac_c04": 0.2507895376143817,
+      "white_frac_c05": 0.23319702000161957,
+      "gaps_c04": {
+       "n_axis": 0,
+       "n_total": 2,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          2.5
+         ],
+         "y_T": [
+          0.0351
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          2.0
+         ],
+         "y_T": [
+          -0.1592
+         ]
+        }
+       ],
+       "median_width_mm": 2.25,
+       "n_dips_total": 14
+      },
+      "gaps_c05": {
+       "n_axis": 0,
+       "n_total": 2,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          4.6
+         ],
+         "y_T": [
+          0.032
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          1.0
+         ],
+         "y_T": [
+          -0.1055
+         ]
+        }
+       ],
+       "median_width_mm": 2.8,
+       "n_dips_total": 13
+      },
+      "transform": {
+       "theta_deg": -6.0,
+       "dx_D": -0.06,
+       "dy_D": -0.06,
+       "iou_c04": 0.4947395432383885,
+       "at_bound": {
+        "theta": false,
+        "dx": true,
+        "dy": true
+       }
+      }
+     },
+     "diagnostic_full_circle": {
+      "as_simulated": {
+       "iou_c04": 0.4938176594325586,
+       "theta_deg": -5.0,
+       "dx_D": -0.06,
+       "dy_D": -0.06
+      },
+      "mirrored": {
+       "iou_c04": 0.49282272121398546,
+       "theta_deg": -15.0,
+       "dx_D": -0.06,
+       "dy_D": -0.06
+      }
+     },
+     "uncorrected": {
+      "raw": {
+       "iou_c04": 0.4348984020516867,
+       "iou_c05": 0.4132066033016508,
+       "bdist_c04_D": 0.03463053578460918
+      },
+      "best": {
+       "theta_deg": -6.75,
+       "dx_D": 0.06,
+       "dy_D": -0.0225,
+       "iou_c04": 0.46773217706967835,
+       "at_bound": {
+        "theta": false,
+        "dx": true,
+        "dy": false
+       }
+      }
+     },
+     "structure": {
+      "components": [
+       1206.7
+      ],
+      "stripes": [
+       {
+        "x": -0.1,
+        "gaps": 0,
+        "dips": 3,
+        "total": 3
+       },
+       {
+        "x": -0.05,
+        "gaps": 1,
+        "dips": 7,
+        "total": 8
+       },
+       {
+        "x": 0.0,
+        "gaps": 1,
+        "dips": 1,
+        "total": 2
+       },
+       {
+        "x": 0.05,
+        "gaps": 2,
+        "dips": 8,
+        "total": 10
+       },
+       {
+        "x": 0.1,
+        "gaps": 1,
+        "dips": 4,
+        "total": 5
+       }
+      ]
+     }
+    },
+    "P1": {
+     "path": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05allphys/runs/P1/leaf_N256.npz",
+     "raw": {
+      "iou_c04": 0.4068433734939759,
+      "iou_c05": 0.3499105723370429,
+      "bdist_c04_D": 0.03218634189790161,
+      "bdist_c04_dir_D": [
+       0.019974830808490475,
+       0.04439785298731274
+      ],
+      "bdist_c05_D": 0.03147423278895053,
+      "white_frac_c04": 0.2521459227467811,
+      "white_frac_c05": 0.2112316786784355,
+      "gaps_c04": {
+       "n_axis": 1,
+       "n_total": 8,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          16.3
+         ],
+         "y_T": [
+          0.0501
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 3,
+         "widths_mm": [
+          1.0,
+          2.3,
+          5.3
+         ],
+         "y_T": [
+          -0.2217,
+          -0.0499,
+          0.0676
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 4,
+         "widths_mm": [
+          1.5,
+          1.5,
+          1.1,
+          5.8
+         ],
+         "y_T": [
+          -0.2311,
+          -0.1986,
+          -0.0749,
+          0.067
+         ]
+        }
+       ],
+       "median_width_mm": 1.9,
+       "n_dips_total": 13
+      },
+      "gaps_c05": {
+       "n_axis": 1,
+       "n_total": 12,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          17.5
+         ],
+         "y_T": [
+          0.0476
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 6,
+         "widths_mm": [
+          2.4,
+          1.5,
+          1.4,
+          6.5,
+          1.2,
+          7.5
+         ],
+         "y_T": [
+          -0.2217,
+          -0.1774,
+          -0.1392,
+          -0.0749,
+          -0.0017,
+          0.0589
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 5,
+         "widths_mm": [
+          4.7,
+          1.4,
+          1.5,
+          2.9,
+          8.8
+         ],
+         "y_T": [
+          -0.2149,
+          -0.1567,
+          -0.1224,
+          -0.0824,
+          0.0533
+         ]
+        }
+       ],
+       "median_width_mm": 2.65,
+       "n_dips_total": 13
+      },
+      "gaps_native_N256_c04": {
+       "n_axis": 1,
+       "n_total": 8,
+       "median_width_mm": 1.9
+      },
+      "white_frac_native_c04": 0.2521459227467811
+     },
+     "best": {
+      "iou_c04": 0.479835849630155,
+      "iou_c05": 0.41819795364376694,
+      "bdist_c04_D": 0.0262841592631349,
+      "bdist_c04_dir_D": [
+       0.013565254689385386,
+       0.039003063836884413
+      ],
+      "bdist_c05_D": 0.025678457971793446,
+      "white_frac_c04": 0.2524900801684347,
+      "white_frac_c05": 0.21115070046157583,
+      "gaps_c04": {
+       "n_axis": 1,
+       "n_total": 4,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          3.6
+         ],
+         "y_T": [
+          -0.0068
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 3,
+         "widths_mm": [
+          2.2,
+          1.0,
+          17.8
+         ],
+         "y_T": [
+          -0.1392,
+          -0.0792,
+          0.0645
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": 2.9,
+       "n_dips_total": 12
+      },
+      "gaps_c05": {
+       "n_axis": 2,
+       "n_total": 5,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 2,
+         "widths_mm": [
+          4.1,
+          8.1
+         ],
+         "y_T": [
+          -0.0087,
+          0.1251
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          21.9
+         ],
+         "y_T": [
+          0.0439
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          3.1,
+          1.2
+         ],
+         "y_T": [
+          -0.1186,
+          -0.0767
+         ]
+        }
+       ],
+       "median_width_mm": 4.1,
+       "n_dips_total": 11
+      },
+      "transform": {
+       "theta_deg": -17.75,
+       "dx_D": -0.05,
+       "dy_D": -0.06,
+       "iou_c04": 0.479835849630155,
+       "at_bound": {
+        "theta": false,
+        "dx": false,
+        "dy": true
+       }
+      }
+     },
+     "diagnostic_full_circle": {
+      "as_simulated": {
+       "iou_c04": 0.48499643983318075,
+       "theta_deg": -50.0,
+       "dx_D": -0.06,
+       "dy_D": -0.03
+      },
+      "mirrored": {
+       "iou_c04": 0.48454499237417387,
+       "theta_deg": 70.0,
+       "dx_D": 0.03,
+       "dy_D": 0.0
+      }
+     },
+     "uncorrected": {
+      "raw": {
+       "iou_c04": 0.40447438056290597,
+       "iou_c05": 0.3570572370392568,
+       "bdist_c04_D": 0.031017232484342613
+      },
+      "best": {
+       "theta_deg": -10.5,
+       "dx_D": 0.0275,
+       "dy_D": -0.06,
+       "iou_c04": 0.46165774598569354,
+       "at_bound": {
+        "theta": false,
+        "dx": false,
+        "dy": true
+       }
+      }
+     },
+     "structure": {
+      "components": [
+       1216.3
+      ],
+      "stripes": [
+       {
+        "x": -0.1,
+        "gaps": 0,
+        "dips": 5,
+        "total": 5
+       },
+       {
+        "x": -0.05,
+        "gaps": 3,
+        "dips": 5,
+        "total": 8
+       },
+       {
+        "x": 0.0,
+        "gaps": 1,
+        "dips": 1,
+        "total": 2
+       },
+       {
+        "x": 0.05,
+        "gaps": 4,
+        "dips": 7,
+        "total": 11
+       },
+       {
+        "x": 0.1,
+        "gaps": 1,
+        "dips": 4,
+        "total": 5
+       }
+      ]
+     }
+    },
+    "PHYS": {
+     "path": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05allphys/ref2/runs/strictB3_leaf_N256/c.npz",
+     "raw": {
+      "iou_c04": 0.46353612535061417,
+      "iou_c05": 0.415379911328543,
+      "bdist_c04_D": 0.034131555307906895,
+      "bdist_c04_dir_D": [
+       0.020279172793891836,
+       0.04798393782192196
+      ],
+      "bdist_c05_D": 0.027466981368189685,
+      "white_frac_c04": 0.27382784031095636,
+      "white_frac_c05": 0.22343914487002997,
+      "gaps_c04": {
+       "n_axis": 0,
+       "n_total": 3,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          2.0
+         ],
+         "y_T": [
+          -0.208
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          1.0,
+          1.6
+         ],
+         "y_T": [
+          -0.2117,
+          -0.1855
+         ]
+        }
+       ],
+       "median_width_mm": 1.6,
+       "n_dips_total": 11
+      },
+      "gaps_c05": {
+       "n_axis": 2,
+       "n_total": 7,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 2,
+         "widths_mm": [
+          1.9,
+          2.6
+         ],
+         "y_T": [
+          -0.0837,
+          0.0845
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 3,
+         "widths_mm": [
+          2.9,
+          1.9,
+          1.7
+         ],
+         "y_T": [
+          -0.2074,
+          -0.1636,
+          0.0051
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          4.1,
+          1.5
+         ],
+         "y_T": [
+          -0.1961,
+          -0.1424
+         ]
+        }
+       ],
+       "median_width_mm": 1.9,
+       "n_dips_total": 11
+      },
+      "gaps_native_N256_c04": {
+       "n_axis": 0,
+       "n_total": 3,
+       "median_width_mm": 1.6
+      },
+      "white_frac_native_c04": 0.27382784031095636
+     },
+     "best": {
+      "iou_c04": 0.5212910361470011,
+      "iou_c05": 0.461016770937385,
+      "bdist_c04_D": 0.02898580696102806,
+      "bdist_c04_dir_D": [
+       0.014220649911920652,
+       0.043750964010135465
+      ],
+      "bdist_c05_D": 0.022603632275199743,
+      "white_frac_c04": 0.2737671066483116,
+      "white_frac_c05": 0.22376305773746863,
+      "gaps_c04": {
+       "n_axis": 0,
+       "n_total": 3,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          1.5,
+          1.9
+         ],
+         "y_T": [
+          -0.1411,
+          0.0764
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          1.0
+         ],
+         "y_T": [
+          -0.1242
+         ]
+        }
+       ],
+       "median_width_mm": 1.5,
+       "n_dips_total": 10
+      },
+      "gaps_c05": {
+       "n_axis": 0,
+       "n_total": 4,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          2.9,
+          6.3
+         ],
+         "y_T": [
+          -0.1436,
+          0.0976
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          3.0,
+          1.3
+         ],
+         "y_T": [
+          -0.1317,
+          -0.0886
+         ]
+        }
+       ],
+       "median_width_mm": 2.95,
+       "n_dips_total": 10
+      },
+      "transform": {
+       "theta_deg": -11.75,
+       "dx_D": -0.0275,
+       "dy_D": -0.04,
+       "iou_c04": 0.5212910361470011,
+       "at_bound": {
+        "theta": false,
+        "dx": false,
+        "dy": false
+       }
+      }
+     },
+     "diagnostic_full_circle": {
+      "as_simulated": {
+       "iou_c04": 0.5195620511275174,
+       "theta_deg": -35.0,
+       "dx_D": -0.06,
+       "dy_D": -0.03
+      },
+      "mirrored": {
+       "iou_c04": 0.5209370130196551,
+       "theta_deg": -70.0,
+       "dx_D": -0.06,
+       "dy_D": 0.0
+      }
+     },
+     "uncorrected": {
+      "raw": {
+       "iou_c04": 0.4435699294027857,
+       "iou_c05": 0.3900900900900901,
+       "bdist_c04_D": 0.03261569709679804
+      },
+      "best": {
+       "theta_deg": 23.75,
+       "dx_D": 0.04,
+       "dy_D": -0.06,
+       "iou_c04": 0.483581650656734,
+       "at_bound": {
+        "theta": false,
+        "dx": false,
+        "dy": true
+       }
+      }
+     },
+     "structure": {
+      "components": [
+       1320.9
+      ],
+      "stripes": [
+       {
+        "x": -0.1,
+        "gaps": 1,
+        "dips": 4,
+        "total": 5
+       },
+       {
+        "x": -0.05,
+        "gaps": 1,
+        "dips": 5,
+        "total": 6
+       },
+       {
+        "x": 0.0,
+        "gaps": 0,
+        "dips": 2,
+        "total": 2
+       },
+       {
+        "x": 0.05,
+        "gaps": 2,
+        "dips": 4,
+        "total": 6
+       },
+       {
+        "x": 0.1,
+        "gaps": 1,
+        "dips": 4,
+        "total": 5
+       }
+      ]
+     }
+    }
+   },
+   "judgement": {
+    "structure": "veins and midrib",
+    "video": "（坐标修正 180° 后）顶端心形叶尖，约 12 对白色 V 形叶片（宽 2.5–4 mm）、之间 1–2 mm 褐线，中脉把叶分成两半，底部宽底座；叶长约 0.7 D",
+    "V05": {
+     "present": "yes",
+     "note": "叶尖小心 + 中脉 + 每侧 6–7 道叶脉，叶脉白、对比强；但叶片数约为真实一半，叶只有约 0.35 D 长，坐在一个灰色圆底上"
+    },
+    "P1": {
+     "present": "yes",
+     "note": "叶脉 + 中脉在，叶脉更宽更散"
+    },
+    "PHYS": {
+     "present": "yes",
+     "note": "叶脉 + 中脉在，但叶脉偏淡（灰底上的浅灰条）；底座变成两根细条"
+    },
+    "closer": "指标：全物理略近（IoU 0.464 对 0.431，边界距离近 0.2 mm）；看样子：V0.5 的叶脉更清楚、更像真实的“白片褐线”"
+   },
+   "delta_PHYS_minus_V05": {
+    "raw": {
+     "iou_c04": 0.032237852117967924,
+     "iou_c05": 0.0033741133578327753,
+     "bdist_c04_D": -0.001994611189323363
+    },
+    "best": {
+     "iou_c04": 0.02655149290861264,
+     "iou_c05": -0.01541754821822161,
+     "bdist_c04_D": -0.001953855095031626
+    }
+   }
+  },
+  "swan": {
+   "PHI_deg": 135.0,
+   "M_target": 192,
+   "phys_tag": "strictB3",
+   "phys_note": "strictB3; flow-pulse peak moved from Codex's pi to 0 (mid-line crossing; the P4f patch, made after P4 with pi failed): post-hoc action re-guess",
+   "video": {
+    "white_frac": 0.21301626133256585,
+    "gaps": {
+     "n_axis": 8,
+     "n_total": 21,
+     "per_line": [
+      {
+       "x": 0.0,
+       "n": 8,
+       "widths_mm": [
+        2.0,
+        1.2,
+        1.3,
+        1.5,
+        4.4,
+        3.5,
+        1.5,
+        1.9
+       ],
+       "y_T": [
+        -0.2736,
+        -0.1861,
+        -0.1318,
+        -0.073,
+        0.0689,
+        0.1295,
+        0.1857,
+        0.2245
+       ]
+      },
+      {
+       "x": -0.05,
+       "n": 5,
+       "widths_mm": [
+        14.6,
+        1.1,
+        2.3,
+        2.4,
+        6.8
+       ],
+       "y_T": [
+        -0.1898,
+        -0.0617,
+        -0.0092,
+        0.0502,
+        0.1514
+       ]
+      },
+      {
+       "x": 0.05,
+       "n": 8,
+       "widths_mm": [
+        1.0,
+        1.1,
+        1.4,
+        1.1,
+        1.7,
+        1.7,
+        1.3,
+        1.4
+       ],
+       "y_T": [
+        -0.2998,
+        -0.1542,
+        -0.0898,
+        -0.003,
+        0.067,
+        0.127,
+        0.1783,
+        0.2152
+       ]
+      }
+     ],
+     "median_width_mm": 1.5,
+     "n_dips_total": 35
+    },
+    "white_frac_uncorrected": 0.21690171247661533,
+    "gaps_uncorrected": {
+     "n_axis": 6,
+     "n_total": 18,
+     "per_line": [
+      {
+       "x": 0.0,
+       "n": 6,
+       "widths_mm": [
+        1.1,
+        1.5,
+        1.2,
+        1.3,
+        7.3,
+        7.9
+       ],
+       "y_T": [
+        -0.1443,
+        -0.0855,
+        0.0226,
+        0.0857,
+        0.1532,
+        0.272
+       ]
+      },
+      {
+       "x": -0.05,
+       "n": 6,
+       "widths_mm": [
+        1.1,
+        1.3,
+        1.0,
+        1.6,
+        8.8,
+        5.9
+       ],
+       "y_T": [
+        -0.1505,
+        -0.098,
+        -0.0361,
+        0.0539,
+        0.1577,
+        0.2708
+       ]
+      },
+      {
+       "x": 0.05,
+       "n": 6,
+       "widths_mm": [
+        1.2,
+        1.1,
+        2.0,
+        2.2,
+        3.2,
+        10.1
+       ],
+       "y_T": [
+        -0.2161,
+        -0.1792,
+        -0.1261,
+        -0.0636,
+        -0.0236,
+        0.1083
+       ]
+      }
+     ],
+     "median_width_mm": 1.55,
+     "n_dips_total": 25
+    },
+    "structure": {
+     "components": [
+      405.2,
+      287.0,
+      168.4,
+      95.3,
+      42.5,
+      9.4,
+      8.2
+     ],
+     "stripes": [
+      {
+       "x": -0.1,
+       "gaps": 2,
+       "dips": 2,
+       "total": 4
+      },
+      {
+       "x": -0.05,
+       "gaps": 5,
+       "dips": 12,
+       "total": 17
+      },
+      {
+       "x": 0.0,
+       "gaps": 8,
+       "dips": 12,
+       "total": 20
+      },
+      {
+       "x": 0.05,
+       "gaps": 8,
+       "dips": 11,
+       "total": 19
+      },
+      {
+       "x": 0.1,
+       "gaps": 6,
+       "dips": 8,
+       "total": 14
+      }
+     ]
+    }
+   },
+   "sims": {
+    "V05": {
+     "path": "/home/user/zfChen/runs/v05_256/swan/final_state.npz",
+     "raw": {
+      "iou_c04": 0.3478713438118039,
+      "iou_c05": 0.3463184931506849,
+      "bdist_c04_D": 0.03842419049231281,
+      "bdist_c04_dir_D": [
+       0.018489283860605835,
+       0.05835909712401979
+      ],
+      "bdist_c05_D": 0.03365216850322426,
+      "white_frac_c04": 0.25284213555907326,
+      "white_frac_c05": 0.23956684415023743,
+      "gaps_c04": {
+       "n_axis": 0,
+       "n_total": 0,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": null,
+       "n_dips_total": 7
+      },
+      "gaps_c05": {
+       "n_axis": 0,
+       "n_total": 1,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          1.3
+         ],
+         "y_T": [
+          0.0195
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": 1.3,
+       "n_dips_total": 7
+      },
+      "gaps_native_N256_c04": {
+       "n_axis": 0,
+       "n_total": 0,
+       "median_width_mm": null
+      },
+      "white_frac_native_c04": 0.25358328609604014
+     },
+     "best": {
+      "iou_c04": 0.4080634644642469,
+      "iou_c05": 0.40131505627995095,
+      "bdist_c04_D": 0.03612041015016706,
+      "bdist_c04_dir_D": [
+       0.01597867632467911,
+       0.056262143975655
+      ],
+      "bdist_c05_D": 0.030746982027015604,
+      "white_frac_c04": 0.2531299467549288,
+      "white_frac_c05": 0.23935098575334582,
+      "gaps_c04": {
+       "n_axis": 0,
+       "n_total": 0,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": null,
+       "n_dips_total": 8
+      },
+      "gaps_c05": {
+       "n_axis": 0,
+       "n_total": 0,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": null,
+       "n_dips_total": 8
+      },
+      "transform": {
+       "theta_deg": 9.25,
+       "dx_D": -0.03,
+       "dy_D": 0.01,
+       "iou_c04": 0.4080634644642469,
+       "at_bound": {
+        "theta": false,
+        "dx": false,
+        "dy": false
+       }
+      }
+     },
+     "diagnostic_full_circle": {
+      "as_simulated": {
+       "iou_c04": 0.40233740937128015,
+       "theta_deg": 5.0,
+       "dx_D": -0.06,
+       "dy_D": 0.03
+      },
+      "mirrored": {
+       "iou_c04": 0.41188636116251226,
+       "theta_deg": 65.0,
+       "dx_D": -0.06,
+       "dy_D": 0.06
+      }
+     },
+     "uncorrected": {
+      "raw": {
+       "iou_c04": 0.3373962921233227,
+       "iou_c05": 0.32830820770519265,
+       "bdist_c04_D": 0.03733413107258775
+      },
+      "best": {
+       "theta_deg": 25.0,
+       "dx_D": -0.0375,
+       "dy_D": -0.06,
+       "iou_c04": 0.38071602069912347,
+       "at_bound": {
+        "theta": true,
+        "dx": false,
+        "dy": true
+       }
+      }
+     },
+     "structure": {
+      "components": [
+       1220.1
+      ],
+      "stripes": [
+       {
+        "x": -0.1,
+        "gaps": 0,
+        "dips": 2,
+        "total": 2
+       },
+       {
+        "x": -0.05,
+        "gaps": 0,
+        "dips": 2,
+        "total": 2
+       },
+       {
+        "x": 0.0,
+        "gaps": 0,
+        "dips": 2,
+        "total": 2
+       },
+       {
+        "x": 0.05,
+        "gaps": 0,
+        "dips": 3,
+        "total": 3
+       },
+       {
+        "x": 0.1,
+        "gaps": 0,
+        "dips": 3,
+        "total": 3
+       }
+      ]
+     }
+    },
+    "P1": {
+     "path": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05allphys/runs/P1/swan_N256.npz",
+     "raw": {
+      "iou_c04": 0.34710137330957125,
+      "iou_c05": 0.34062359802602066,
+      "bdist_c04_D": 0.030926524600566774,
+      "bdist_c04_dir_D": [
+       0.016690781510083737,
+       0.04516226769104981
+      ],
+      "bdist_c05_D": 0.027373167623020486,
+      "white_frac_c04": 0.24928047201036121,
+      "white_frac_c05": 0.21700964167506115,
+      "gaps_c04": {
+       "n_axis": 1,
+       "n_total": 3,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          10.9
+         ],
+         "y_T": [
+          0.112
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          9.1
+         ],
+         "y_T": [
+          0.117
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          4.4
+         ],
+         "y_T": [
+          0.1452
+         ]
+        }
+       ],
+       "median_width_mm": 9.1,
+       "n_dips_total": 5
+      },
+      "gaps_c05": {
+       "n_axis": 1,
+       "n_total": 4,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          11.4
+         ],
+         "y_T": [
+          0.1126
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 2,
+         "widths_mm": [
+          1.6,
+          9.9
+         ],
+         "y_T": [
+          0.0227,
+          0.117
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          7.4
+         ],
+         "y_T": [
+          0.1327
+         ]
+        }
+       ],
+       "median_width_mm": 8.65,
+       "n_dips_total": 5
+      },
+      "gaps_native_N256_c04": {
+       "n_axis": 1,
+       "n_total": 3,
+       "median_width_mm": 9.1
+      },
+      "white_frac_native_c04": 0.24983804356628067
+     },
+     "best": {
+      "iou_c04": 0.41201669595782076,
+      "iou_c05": 0.37879312334140997,
+      "bdist_c04_D": 0.027256938701294198,
+      "bdist_c04_dir_D": [
+       0.012791335843242563,
+       0.04172254155934583
+      ],
+      "bdist_c05_D": 0.02489980517198043,
+      "white_frac_c04": 0.2494603540077709,
+      "white_frac_c05": 0.21690171247661533,
+      "gaps_c04": {
+       "n_axis": 1,
+       "n_total": 3,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          9.6
+         ],
+         "y_T": [
+          0.1039
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          8.9
+         ],
+         "y_T": [
+          0.1083
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          4.5
+         ],
+         "y_T": [
+          0.1195
+         ]
+        }
+       ],
+       "median_width_mm": 8.9,
+       "n_dips_total": 8
+      },
+      "gaps_c05": {
+       "n_axis": 1,
+       "n_total": 3,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          10.3
+         ],
+         "y_T": [
+          0.1032
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          9.5
+         ],
+         "y_T": [
+          0.1095
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          7.5
+         ],
+         "y_T": [
+          0.1058
+         ]
+        }
+       ],
+       "median_width_mm": 9.5,
+       "n_dips_total": 8
+      },
+      "transform": {
+       "theta_deg": 13.0,
+       "dx_D": -0.0275,
+       "dy_D": 0.015,
+       "iou_c04": 0.41201669595782076,
+       "at_bound": {
+        "theta": false,
+        "dx": false,
+        "dy": false
+       }
+      }
+     },
+     "diagnostic_full_circle": {
+      "as_simulated": {
+       "iou_c04": 0.3990196078431373,
+       "theta_deg": 15.0,
+       "dx_D": -0.03,
+       "dy_D": 0.0
+      },
+      "mirrored": {
+       "iou_c04": 0.3977396218213432,
+       "theta_deg": -85.0,
+       "dx_D": 0.0,
+       "dy_D": 0.06
+      }
+     },
+     "uncorrected": {
+      "raw": {
+       "iou_c04": 0.33670311532906955,
+       "iou_c05": 0.3141207234691654,
+       "bdist_c04_D": 0.03162631851880972
+      },
+      "best": {
+       "theta_deg": 24.5,
+       "dx_D": -0.0275,
+       "dy_D": -0.06,
+       "iou_c04": 0.3840981856990395,
+       "at_bound": {
+        "theta": false,
+        "dx": false,
+        "dy": true
+       }
+      }
+     },
+     "structure": {
+      "components": [
+       1203.0
+      ],
+      "stripes": [
+       {
+        "x": -0.1,
+        "gaps": 0,
+        "dips": 2,
+        "total": 2
+       },
+       {
+        "x": -0.05,
+        "gaps": 1,
+        "dips": 1,
+        "total": 2
+       },
+       {
+        "x": 0.0,
+        "gaps": 1,
+        "dips": 2,
+        "total": 3
+       },
+       {
+        "x": 0.05,
+        "gaps": 1,
+        "dips": 2,
+        "total": 3
+       },
+       {
+        "x": 0.1,
+        "gaps": 0,
+        "dips": 4,
+        "total": 4
+       }
+      ]
+     }
+    },
+    "PHYS": {
+     "path": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05allphys/ref2/runs/strictB3_swan_N256/c.npz",
+     "raw": {
+      "iou_c04": 0.3191256830601093,
+      "iou_c05": 0.3074050362782757,
+      "bdist_c04_D": 0.03630241354559272,
+      "bdist_c04_dir_D": [
+       0.019725152915653008,
+       0.05287967417553244
+      ],
+      "bdist_c05_D": 0.03224100668636472,
+      "white_frac_c04": 0.2646423945891495,
+      "white_frac_c05": 0.22780256151964312,
+      "gaps_c04": {
+       "n_axis": 0,
+       "n_total": 1,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          1.9
+         ],
+         "y_T": [
+          0.102
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": 1.9,
+       "n_dips_total": 7
+      },
+      "gaps_c05": {
+       "n_axis": 1,
+       "n_total": 3,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          2.1
+         ],
+         "y_T": [
+          0.092
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          2.3
+         ],
+         "y_T": [
+          0.102
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 1,
+         "widths_mm": [
+          1.0
+         ],
+         "y_T": [
+          0.0814
+         ]
+        }
+       ],
+       "median_width_mm": 2.1,
+       "n_dips_total": 7
+      },
+      "gaps_native_N256_c04": {
+       "n_axis": 0,
+       "n_total": 1,
+       "median_width_mm": 1.8
+      },
+      "white_frac_native_c04": 0.2657502631792048
+     },
+     "best": {
+      "iou_c04": 0.4019607843137255,
+      "iou_c05": 0.3789071284011693,
+      "bdist_c04_D": 0.028769525465751265,
+      "bdist_c04_dir_D": [
+       0.013247898418752097,
+       0.04429115251275043
+      ],
+      "bdist_c05_D": 0.025581067719346928,
+      "white_frac_c04": 0.2654338753777522,
+      "white_frac_c05": 0.22819830191394444,
+      "gaps_c04": {
+       "n_axis": 0,
+       "n_total": 1,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          1.9
+         ],
+         "y_T": [
+          0.0645
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 0,
+         "widths_mm": [],
+         "y_T": []
+        }
+       ],
+       "median_width_mm": 1.9,
+       "n_dips_total": 9
+      },
+      "gaps_c05": {
+       "n_axis": 1,
+       "n_total": 4,
+       "per_line": [
+        {
+         "x": 0.0,
+         "n": 1,
+         "widths_mm": [
+          1.8
+         ],
+         "y_T": [
+          0.0389
+         ]
+        },
+        {
+         "x": -0.05,
+         "n": 1,
+         "widths_mm": [
+          2.5
+         ],
+         "y_T": [
+          0.0645
+         ]
+        },
+        {
+         "x": 0.05,
+         "n": 2,
+         "widths_mm": [
+          1.3,
+          1.4
+         ],
+         "y_T": [
+          -0.1392,
+          -0.1011
+         ]
+        }
+       ],
+       "median_width_mm": 1.6,
+       "n_dips_total": 9
+      },
+      "transform": {
+       "theta_deg": 13.25,
+       "dx_D": -0.035,
+       "dy_D": 0.0425,
+       "iou_c04": 0.4019607843137255,
+       "at_bound": {
+        "theta": false,
+        "dx": false,
+        "dy": false
+       }
+      }
+     },
+     "diagnostic_full_circle": {
+      "as_simulated": {
+       "iou_c04": 0.405368276445102,
+       "theta_deg": -85.0,
+       "dx_D": 0.0,
+       "dy_D": 0.06
+      },
+      "mirrored": {
+       "iou_c04": 0.41114058355437666,
+       "theta_deg": 30.0,
+       "dx_D": -0.03,
+       "dy_D": 0.03
+      }
+     },
+     "uncorrected": {
+      "raw": {
+       "iou_c04": 0.33038465361296093,
+       "iou_c05": 0.30970544606908246,
+       "bdist_c04_D": 0.03026117522355186
+      },
+      "best": {
+       "theta_deg": 22.0,
+       "dx_D": -0.0275,
+       "dy_D": -0.06,
+       "iou_c04": 0.3829502113184208,
+       "at_bound": {
+        "theta": false,
+        "dx": false,
+        "dy": true
+       }
+      }
+     },
+     "structure": {
+      "components": [
+       1277.1
+      ],
+      "stripes": [
+       {
+        "x": -0.1,
+        "gaps": 0,
+        "dips": 1,
+        "total": 1
+       },
+       {
+        "x": -0.05,
+        "gaps": 1,
+        "dips": 2,
+        "total": 3
+       },
+       {
+        "x": 0.0,
+        "gaps": 0,
+        "dips": 2,
+        "total": 2
+       },
+       {
+        "x": 0.05,
+        "gaps": 0,
+        "dips": 3,
+        "total": 3
+       },
+       {
+        "x": 0.1,
+        "gaps": 0,
+        "dips": 4,
+        "total": 4
+       }
+      ]
+     }
+    }
+   },
+   "judgement": {
+    "structure": "neck, head, wings",
+    "video": "（坐标修正 135° 后）左上一颗带凹口的心形头，S 形颈沿左侧下行，右上大片翅膀约 10 道 V 形羽（褐线 1–2 mm），外围宽弧；没有单独的圆形身体",
+    "V05": {
+     "present": "yes",
+     "note": "头在左上、颈沿左侧、翅在右——布局与真实一致；头是一根直喙（真实是心形团），翅只有 5–6 根羽、面积约一半；多出一个真实没有的灰色圆底身体"
+    },
+    "P1": {
+     "present": "yes",
+     "note": "同 V0.5，头小，身体中央有褐洞"
+    },
+    "PHYS": {
+     "present": "yes",
+     "note": "颈、头、翅都在；头卷成钩（比直喙圆一些），圆底身体带一道褐月牙"
+    },
+    "closer": "持平（原样 IoU 0.348 对 0.319，最佳 0.408 对 0.402；边界距离全物理近 0.2–0.6 mm）"
+   },
+   "delta_PHYS_minus_V05": {
+    "raw": {
+     "iou_c04": -0.0287456607516946,
+     "iou_c05": -0.03891345687240921,
+     "bdist_c04_D": -0.00212177694672009
+    },
+    "best": {
+     "iou_c04": -0.0061026801505214,
+     "iou_c05": -0.022407927878781653,
+     "bdist_c04_D": -0.007350884684415793
+    }
+   }
+  }
+ },
+ "summary": {
+  "mean_delta_PHYS_minus_V05": {
+   "raw_iou_c04": 0.0088804635924363,
+   "raw_iou_c05": -0.018231242224740745,
+   "raw_bdist_D": -0.004895040233992551,
+   "best_iou_c04": 0.005906541430598988,
+   "best_iou_c05": -0.02798210453688584,
+   "best_bdist_D": -0.0030400800344308194
+  },
+  "n_patterns_PHYS_higher_iou_raw": 2,
+  "n_patterns_PHYS_higher_iou_best": 2,
+  "n_patterns_PHYS_lower_bdist_raw": 6,
+  "n_patterns_PHYS_lower_bdist_best": 4,
+  "structures_present": {
+   "V05": {
+    "heart": "yes",
+    "push_heart": "partial",
+    "layered_heart": "partial",
+    "tulip": "yes",
+    "leaf": "yes",
+    "swan": "yes"
+   },
+   "P1": {
+    "heart": "yes",
+    "push_heart": "partial",
+    "layered_heart": "partial",
+    "tulip": "yes",
+    "leaf": "yes",
+    "swan": "yes"
+   },
+   "PHYS": {
+    "heart": "yes",
+    "push_heart": "partial",
+    "layered_heart": "partial",
+    "tulip": "yes",
+    "leaf": "yes",
+    "swan": "yes"
+   }
+  },
+  "verdict": "全物理与 V0.5 离真实视频一样远：PHYS−V0.5 的 IoU 差在 −0.04…+0.11（均值约 +0.01），比两者与真实的差距（IoU 0.29–0.74，真实的细褐线多 2–6 倍）小得多；差距主要是图案大小、细褐线数量和元件布局。这些差距不是入口物理化造成的；它们来自猜的动作还是模型本身（单层闭合、足迹、扩散），这次比较分不开，要用 stage_scripts 里从视频读出的真实动作去跑（任务 #30）才能分开。"
+ }
+}
