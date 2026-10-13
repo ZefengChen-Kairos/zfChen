@@ -334,7 +334,7 @@ def real_wanted(pattern, dt=DT):
         k = PI.move_index(ti)
         W["k"][i] = -1 if k is None else k
         W["scan"][i] = st["scan"]
-        W["Q"][i] = st["Q"]
+        W["Q"][i] = st["Q"]          # solver inlet flow (lagged); the barista's intent is Q_w (see simulate)
         if st["active"]:
             I = st["inlet"]
             W["active"][i] = 1.0
@@ -690,8 +690,12 @@ def simulate(sset, pattern, variant="main", fill=350, dt=DT, tail=0.6, nr=6, ver
     tilt0 = max(0.0, th_on - math.radians(2.0))
     cp = Coupling()
     kw = dict(tilt0=tilt0) if variant == "stock" else dict(tilt0=tilt0, ff_tol=FF_TOL, lift_smooth=True)
+    # FS: W['Q'] is the wanted flow at the surface.  Real actions: W['Q'] is PhysInlet's flow, already lagged by
+    # tau = 0.08 s, so the barista's intent is the script flow Q_w (before the lag) and the pitcher's spout supplies
+    # the lag once (feeding W['Q'] applied the 0.08 s lag twice).
+    qk = "Q_w" if sset == "real" else "Q"
     if variant in ("main", "stock"):
-        B = TableBarista(P, W, meta, cp, qkey="Q", **kw)
+        B = TableBarista(P, W, meta, cp, qkey=qk, **kw)
     elif variant == "cmd":
         assert sset == "fs"
         B = TableBarista(P, W, meta, cp, qkey="Q_cmd", **kw)
@@ -1287,7 +1291,7 @@ def plot_clearance(R, out=OUT):
         ax.set_facecolor("#fcfcfb")
         for tl, c in cols.items():
             ax.plot(cm["s_mm"], cm["z_min_cm"][tl], color=c, lw=1.4, label=f"lowest tip height, tilt {tl} deg")
-        first = True
+        first, first_ok = True, True
         for r, x in R.items():
             if x["info"]["set"] != sset or x["info"]["variant"] != "main" or x["info"]["fill_mL"] != 350:
                 continue
@@ -1296,18 +1300,22 @@ def plot_clearance(R, out=OUT):
                     continue
                 imp = o["class"]["z"].startswith("IMPOSSIBLE")
                 ax.plot([o["tip_s_mm"]] * 2, [o["z_w_cm"], o["z_tip_cm"]], color=C_D if imp else C_W, lw=1.0, alpha=0.8)
-                ax.plot(o["tip_s_mm"], o["z_w_cm"], "o", ms=5, color=C_D if imp else C_W,
-                        label=("wanted height (lift needed)" if imp and first else None))
-                if imp:
-                    first = False
+                lab = None
+                if imp and first:
+                    lab, first = "wanted height, lift > 1 mm needed (line: height reached)", False
+                elif not imp and first_ok:
+                    lab, first_ok = "wanted height, reachable (lift <= 1 mm)", False
+                ax.plot(o["tip_s_mm"], o["z_w_cm"], "o", ms=5, color=C_D if imp else C_W, label=lab)
         ax.set_title(title, color=INK, fontsize=11)
-        ax.set_xlabel("tip position along the spout axis from the cup centre [mm] (+: towards the pitcher body)")
+        ax.set_xlabel("spout-tip position along the spout axis from the cup centre [mm]\n"
+                      "(the tip, not the stream foot; +: towards the pitcher body)", fontsize=9)
         ax.grid(True, color=GRID, lw=0.6)
         for sp in ("top", "right"):
             ax.spines[sp].set_visible(False)
     axs[0].set_ylabel("spout tip height above the coffee [cm]")
     axs[0].legend(fontsize=8, frameon=False, loc="upper right")
-    fig.suptitle("NX pitcher clearance (Pitcher.required_lift, default Cup): wanted heights vs what the pitcher can reach",
+    fig.suptitle("NX pitcher clearance (Pitcher.required_lift, default Cup): wanted heights vs what the pitcher can reach\n"
+                 "strokes / stages: original barista ('main' controller), 350 mL initial fill, flow-weighted",
                  color=INK, fontsize=11)
     fig.savefig(os.path.join(out, "clearance.png"), dpi=110, facecolor=fig.get_facecolor())
     plt.close(fig)
@@ -2399,8 +2407,12 @@ def best_static(patterns=PATTERNS, fills=(350, 300, 250, 200), rolls=(-20, -10, 
                     return [max(0.0, sel(x) - x["z_w_cm"]) * 10 for x in smps]       # mm
                 a = need(lambda x: x["fills"][F][0]["z_min_fs_cm"])
                 b = need(lambda x: min(x["fills"][F][r]["z_min_fs_cm"] for r in rolls))
-                c = need(lambda x: min(min(x["fills"][F][r]["yaw"].values()) for r in rolls))
-                c2 = need(lambda x: min(min(x["fills"][F][r]["yaw"].values()) for r in rolls if abs(r) <= 10))
+                # any yaw = the 30 deg grid plus the FS yaw itself (z_min_fs_cm); recomputed from the stored samples of
+                # the published static.json this adds nothing (no stroke / fill changes by > 0.05 mm)
+                def anyyaw(e):
+                    return min(min(e["yaw"].values()), e["z_min_fs_cm"])
+                c = need(lambda x: min(anyyaw(x["fills"][F][r]) for r in rolls))
+                c2 = need(lambda x: min(anyyaw(x["fills"][F][r]) for r in rolls if abs(r) <= 10))
                 best_yaw = []
                 for x in smps:
                     bb = min(((x["fills"][F][r]["yaw"][y], y, r) for r in rolls for y in yaws))
@@ -2739,7 +2751,8 @@ def _phase_volumes(run_dir, kQ=KAPPA_Q):
 
 
 def solve_figure(name="FS_vs_pitcher", cols=(("V05", "V0.5"), ("f:FS", "FS (wanted inlet)"),
-                                              ("s:PD", "FS closure, pitcher-delivered inlet")), patterns=PATTERNS):
+                                              ("s:PD", "pitcher-delivered inlet\n(ideal hand, 350 mL fill)")),
+                 patterns=PATTERNS):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -2826,7 +2839,8 @@ def solve_report(srcs=("f:FS", "s:PD", "s:PW", "s:FX", "s:PDz", "s:PD250")):
     solve_figure()
     solve_figure(name="FS_vs_pitcher_diag", cols=(("V05", "V0.5"), ("f:FS", "FS (wanted inlet)"),
                                                   ("s:PW", "FS 1 ms table (sampling check)"),
-                                                  ("s:PD", "delivered, ideal hand 350 mL"), ("s:PD250", "delivered, ideal hand 250 mL"),
+                                                  ("s:PD", "delivered, ideal hand,\n350 mL fill"),
+                                                  ("s:PD250", "delivered, ideal hand,\n250 mL fill"),
                                                   ("s:PDz", "diag: delivered + FS heights")))
     return A
 

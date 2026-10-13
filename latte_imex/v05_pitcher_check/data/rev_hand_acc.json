@@ -1,0 +1,62 @@
+{
+ "fs_heart_ideal_f350": {
+  "gt5": 0.115,
+  "at_lim": 0.074,
+  "max": 10.0
+ },
+ "fs_heart_ideal_f250": {
+  "gt5": 0.093,
+  "at_lim": 0.067,
+  "max": 10.0
+ },
+ "fs_push_heart_ideal_f350": {
+  "gt5": 0.315,
+  "at_lim": 0.223,
+  "max": 10.0
+ },
+ "fs_push_heart_ideal_f250": {
+  "gt5": 0.218,
+  "at_lim": 0.16,
+  "max": 10.0
+ },
+ "fs_layered_heart_ideal_f350": {
+  "gt5": 0.839,
+  "at_lim": 0.818,
+  "max": 10.0
+ },
+ "fs_layered_heart_ideal_f250": {
+  "gt5": 0.803,
+  "at_lim": 0.74,
+  "max": 10.0
+ },
+ "fs_tulip_ideal_f350": {
+  "gt5": 0.794,
+  "at_lim": 0.751,
+  "max": 10.0
+ },
+ "fs_tulip_ideal_f250": {
+  "gt5": 0.756,
+  "at_lim": 0.685,
+  "max": 10.0
+ },
+ "fs_leaf_ideal_f350": {
+  "gt5": 0.792,
+  "at_lim": 0.743,
+  "max": 10.0
+ },
+ "fs_leaf_ideal_f250": {
+  "gt5": 0.794,
+  "at_lim": 0.747,
+  "max": 10.0
+ },
+ "fs_swan_ideal_f350": {
+  "gt5": 0.727,
+  "at_lim": 0.662,
+  "max": 10.0
+ },
+ "fs_swan_ideal_f250": {
+  "gt5": 0.702,
+  "at_lim": 0.628,
+  "max": 10.0
+ }
+}

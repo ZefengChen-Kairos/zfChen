@@ -6496,12 +6496,12 @@
     "dt": 0.001,
     "nr": 6,
     "steps": 12200,
-    "wall_s": 38.72771883010864,
-    "n_ff_solves": 592,
+    "wall_s": 56.28088045120239,
+    "n_ff_solves": 355,
     "ff_tol": 0.005,
     "lift_smooth": true,
-    "wall_want_s": 1.2944672107696533,
-    "wall_sim_s": 37.113364458084106,
+    "wall_want_s": 1.628835678100586,
+    "wall_sim_s": 54.260958671569824,
     "onset_tilt_deg": 37.32788760680706,
     "tilt0_deg": 35.32788760680705,
     "law": {
@@ -6534,21 +6534,21 @@
    },
    "total": {
     "V_w_mL": 120.15576778143362,
-    "V_d_mL": 114.87925505662673,
-    "V_d_in_T_mL": 114.87925282054208,
-    "V_after_T_mL": 2.2360846461961123e-06,
-    "milk_used_mL": 114.87925509787073,
+    "V_d_mL": 114.29723773425553,
+    "V_d_in_T_mL": 114.29723629159253,
+    "V_after_T_mL": 1.4426629901496908e-06,
+    "milk_used_mL": 114.29723776086601,
     "fill_mL": 350.0,
-    "V_end_mL": 235.12074490212927,
+    "V_end_mL": 235.70276223913402,
     "overflow_mL": 0.0,
-    "V_cup_mL": 114.87925505662709,
-    "Q_delay_s": 0.17,
-    "Q_delay_vs_intent_s": 0.227,
-    "Q_err_rel": 0.11733013254659408,
-    "Q_err_rel_delayed": 0.09515415195968074,
+    "V_cup_mL": 114.29723773425532,
+    "Q_delay_s": 0.123,
+    "Q_delay_vs_intent_s": 0.17,
+    "Q_err_rel": 0.10705793290464202,
+    "Q_err_rel_delayed": 0.09099239048895155,
     "tilt_range_deg": [
      35.387887606807055,
-     57.42430420403182
+     57.31109390479572
     ],
     "tilt_rate_max": 60.00000000000583,
     "yaw_rate_max": 0.0,
@@ -6557,25 +6557,25 @@
      -90.00021045914971
     ],
     "lift_max_mm": 18.218994140625,
-    "lift_time_s": 5.498,
-    "tip_speed_max": 0.26598472906140597,
-    "acc_max": 1.8317194194645265,
-    "slope_max_deg": 3.808406076702696,
-    "incoherent_frac": 0.14572075997908315,
-    "Q_hit_max_mLs": 24.964902641485004,
+    "lift_time_s": 5.471,
+    "tip_speed_max": 0.2637587620241027,
+    "acc_max": 1.831545647555412,
+    "slope_max_deg": 3.8039637543956166,
+    "incoherent_frac": 0.15086282028934983,
+    "Q_hit_max_mLs": 24.679268596833488,
     "Q_w_max_mLs": 14.999999999999865
    },
    "classes": {
     "1": {
-     "Q": "DEVIATES |dQ| 25% (delay-corr. 11%), V 0.77x",
+     "Q": "DEVIATES |dQ| 19% (delay-corr. 7%), V 0.81x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DEVIATES +28%",
-     "uh": "DEVIATES +26%",
-     "tan": "DEVIATES +20%",
+     "uh": "DEVIATES +25%",
+     "tan": "DEVIATES +19%",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 1.7 mm (1.7 after 0 ms)",
-     "z": "IMPOSSIBLE lift 4.9 mm (max 18.2)"
+     "foot": "DEVIATES rms 2.0 mm (2.0 after 0 ms)",
+     "z": "IMPOSSIBLE lift 4.5 mm (max 18.2)"
     },
     "2": {
      "Q": "DELIVERED",
@@ -6592,7 +6592,7 @@
      "Q": "DELIVERED",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +18%",
+     "exit_h": "DEVIATES +17%",
      "uh": "DEVIATES +18%",
      "tan": "DELIVERED",
      "r": "DELIVERED",
@@ -6622,7 +6622,7 @@
      "z": "DELIVERED"
     },
     "6": {
-     "Q": "DEVIATES |dQ| 16% (delay-corr. 16%), V 0.91x",
+     "Q": "DEVIATES |dQ| 16% (delay-corr. 16%), V 0.92x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
@@ -6633,7 +6633,7 @@
      "z": "DELIVERED"
     },
     "7": {
-     "Q": "DEVIATES |dQ| 27% (delay-corr. 25%), V 1.06x",
+     "Q": "DEVIATES |dQ| 27% (delay-corr. 25%), V 1.01x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
@@ -6644,31 +6644,31 @@
      "z": "DELIVERED"
     },
     "8": {
-     "Q": "DEVIATES |dQ| 37% (delay-corr. 24%), V 1.35x",
+     "Q": "DEVIATES |dQ| 31% (delay-corr. 23%), V 1.25x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -20%",
-     "exit_h": "DEVIATES -17%",
-     "uh": "DEVIATES -18%",
-     "tan": "DEVIATES -15%",
-     "r": "DEVIATES +25%",
+     "u0": "DEVIATES -21%",
+     "exit_h": "DEVIATES -18%",
+     "uh": "DEVIATES -19%",
+     "tan": "DEVIATES -16%",
+     "r": "DEVIATES +20%",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "9": {
      "Q": "DELIVERED",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -33%",
-     "exit_h": "DEVIATES -27%",
-     "uh": "DEVIATES -26%",
-     "tan": "DEVIATES -25%",
+     "u0": "DEVIATES -34%",
+     "exit_h": "DEVIATES -28%",
+     "uh": "DEVIATES -27%",
+     "tan": "DEVIATES -26%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 3.8 mm (max 7.4)"
+     "z": "IMPOSSIBLE lift 4.0 mm (max 7.6)"
     }
    },
    "worst": {
     "Q": [
-     "DEVIATES |dQ| 37% (delay-corr. 24%), V 1.35x",
+     "DEVIATES |dQ| 31% (delay-corr. 23%), V 1.25x",
      8
     ],
     "pulse": [
@@ -6680,7 +6680,7 @@
      3
     ],
     "u0": [
-     "DEVIATES -33%",
+     "DEVIATES -34%",
      9
     ],
     "exit_h": [
@@ -6688,19 +6688,19 @@
      1
     ],
     "tan": [
-     "DEVIATES -25%",
-     9
-    ],
-    "uh": [
      "DEVIATES -26%",
      9
     ],
+    "uh": [
+     "DEVIATES -27%",
+     9
+    ],
     "r": [
-     "DEVIATES +25%",
+     "DEVIATES +20%",
      8
     ],
     "foot": [
-     "DEVIATES rms 1.7 mm (1.7 after 0 ms)",
+     "DEVIATES rms 2.0 mm (2.0 after 0 ms)",
      1
     ],
     "z": [
@@ -6719,12 +6719,12 @@
     "dt": 0.001,
     "nr": 6,
     "steps": 14300,
-    "wall_s": 51.46046209335327,
-    "n_ff_solves": 1318,
+    "wall_s": 68.96848964691162,
+    "n_ff_solves": 792,
     "ff_tol": 0.005,
     "lift_smooth": true,
-    "wall_want_s": 1.217930793762207,
-    "wall_sim_s": 50.07298707962036,
+    "wall_want_s": 2.0566797256469727,
+    "wall_sim_s": 66.5900022983551,
     "onset_tilt_deg": 37.32788760680706,
     "tilt0_deg": 35.32788760680705,
     "law": {
@@ -6757,21 +6757,21 @@
    },
    "total": {
     "V_w_mL": 194.93416233007437,
-    "V_d_mL": 220.02319601284825,
-    "V_d_in_T_mL": 219.3714614085316,
-    "V_after_T_mL": 0.6517346043166361,
-    "milk_used_mL": 220.03368006255963,
+    "V_d_mL": 208.8709703086845,
+    "V_d_in_T_mL": 208.63638736443843,
+    "V_after_T_mL": 0.23458294424603465,
+    "milk_used_mL": 208.87503121284567,
     "fill_mL": 350.0,
-    "V_end_mL": 129.9663199374404,
+    "V_end_mL": 141.12496878715433,
     "overflow_mL": 0.0,
-    "V_cup_mL": 220.02319601284856,
-    "Q_delay_s": 0.3,
-    "Q_delay_vs_intent_s": 0.446,
-    "Q_err_rel": 0.37710937443179826,
-    "Q_err_rel_delayed": 0.3085457487417837,
+    "V_cup_mL": 208.87097030868478,
+    "Q_delay_s": 0.294,
+    "Q_delay_vs_intent_s": 0.364,
+    "Q_err_rel": 0.316303466149348,
+    "Q_err_rel_delayed": 0.26278252693765847,
     "tilt_range_deg": [
      35.387887606807055,
-     75.88504837711356
+     74.52825039725433
     ],
     "tilt_rate_max": 60.00000000000583,
     "yaw_rate_max": 0.0,
@@ -6780,25 +6780,25 @@
      -90.00021045914971
     ],
     "lift_max_mm": 20.361328125,
-    "lift_time_s": 4.618,
-    "tip_speed_max": 0.8020480490215491,
-    "acc_max": 3.788191907040855,
-    "slope_max_deg": 17.027938064319365,
-    "incoherent_frac": 0.001784121320249777,
-    "Q_hit_max_mLs": 164.30103416976232,
+    "lift_time_s": 4.86,
+    "tip_speed_max": 0.8019071086606423,
+    "acc_max": 3.788201348704538,
+    "slope_max_deg": 17.08113900530454,
+    "incoherent_frac": 0.014433449892121123,
+    "Q_hit_max_mLs": 150.86655580742908,
     "Q_w_max_mLs": 22.499967914198958
    },
    "classes": {
     "1": {
-     "Q": "DEVIATES |dQ| 16% (delay-corr. 9%), V 0.85x",
+     "Q": "DELIVERED",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DEVIATES +26%",
      "uh": "DEVIATES +25%",
-     "tan": "DEVIATES +20%",
+     "tan": "DEVIATES +19%",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 1.3 mm (1.3 after 0 ms)",
-     "z": "IMPOSSIBLE lift 4.2 mm (max 20.4)"
+     "foot": "DEVIATES rms 1.5 mm (1.5 after 0 ms)",
+     "z": "IMPOSSIBLE lift 4.1 mm (max 20.4)"
     },
     "2": {
      "Q": "DELIVERED",
@@ -6809,7 +6809,7 @@
      "tan": "DEVIATES +18%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 2.1 mm (max 2.7)"
+     "z": "IMPOSSIBLE lift 2.0 mm (max 2.7)"
     },
     "3": {
      "Q": "DELIVERED",
@@ -6831,21 +6831,21 @@
      "tan": "DELIVERED",
      "r": "DELIVERED",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 2.6 mm (max 3.1)"
+     "z": "IMPOSSIBLE lift 2.6 mm (max 3.0)"
     },
     "5": {
-     "Q": "DEVIATES |dQ| 51% (delay-corr. 52%), V 1.09x",
+     "Q": "DEVIATES |dQ| 45% (delay-corr. 54%), V 0.98x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -18%",
+     "u0": "DEVIATES -21%",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
-     "r": "DEVIATES +18%",
-     "foot": "DEVIATES rms 2.2 mm (2.2 after 22 ms)",
-     "z": "IMPOSSIBLE lift 1.6 mm (max 3.1)"
+     "r": "DELIVERED",
+     "foot": "DEVIATES rms 2.4 mm (2.4 after 26 ms)",
+     "z": "IMPOSSIBLE lift 1.6 mm (max 3.2)"
     },
     "7": {
-     "Q": "DEVIATES |dQ| 26% (delay-corr. 11%), V 0.75x",
+     "Q": "DEVIATES |dQ| 25% (delay-corr. 11%), V 0.77x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
@@ -6878,24 +6878,24 @@
      "z": "DELIVERED"
     },
     "10": {
-     "Q": "DEVIATES |dQ| 102% (delay-corr. 45%), V 1.81x",
+     "Q": "DEVIATES |dQ| 74% (delay-corr. 44%), V 1.46x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
-     "r": "DEVIATES +40%",
-     "foot": "DEVIATES rms 2.5 mm (2.5 after 0 ms)",
+     "r": "DEVIATES +27%",
+     "foot": "DEVIATES rms 2.3 mm (2.3 after 0 ms)",
      "z": "DELIVERED"
     },
     "12": {
-     "Q": "DEVIATES |dQ| 66% (delay-corr. 17%), V 0.34x",
+     "Q": "DEVIATES |dQ| 69% (delay-corr. 16%), V 0.31x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -18%",
-     "uh": "DEVIATES -17%",
-     "tan": "DEVIATES -18%",
-     "r": "DEVIATES -19%",
+     "exit_h": "DELIVERED",
+     "uh": "DELIVERED",
+     "tan": "DELIVERED",
+     "r": "DEVIATES -16%",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
@@ -6903,9 +6903,9 @@
      "Q": "DELIVERED",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -27%",
-     "uh": "DEVIATES -26%",
-     "tan": "DEVIATES -30%",
+     "exit_h": "DEVIATES -23%",
+     "uh": "DEVIATES -22%",
+     "tan": "DEVIATES -26%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
@@ -6914,50 +6914,50 @@
      "Q": "DEVIATES |dQ| 16% (delay-corr. 16%), V 0.95x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -42%",
-     "uh": "DEVIATES -34%",
-     "tan": "DEVIATES -38%",
+     "exit_h": "DEVIATES -37%",
+     "uh": "DEVIATES -31%",
+     "tan": "DEVIATES -34%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "15": {
-     "Q": "DEVIATES |dQ| 29% (delay-corr. 32%), V 0.97x",
+     "Q": "DEVIATES |dQ| 31% (delay-corr. 34%), V 0.95x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -44%",
-     "uh": "DEVIATES -41%",
-     "tan": "DEVIATES -41%",
+     "exit_h": "DEVIATES -40%",
+     "uh": "DEVIATES -37%",
+     "tan": "DEVIATES -37%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "16": {
-     "Q": "DEVIATES |dQ| 70% (delay-corr. 54%), V 1.17x",
+     "Q": "DEVIATES |dQ| 60% (delay-corr. 55%), V 1.04x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -54%",
-     "uh": "DEVIATES -49%",
-     "tan": "DEVIATES -44%",
-     "r": "DEVIATES +39%",
-     "foot": "DEVIATES rms 1.4 mm (0.9 after 22 ms)",
+     "exit_h": "DEVIATES -50%",
+     "uh": "DEVIATES -46%",
+     "tan": "DEVIATES -41%",
+     "r": "DEVIATES +33%",
+     "foot": "DEVIATES rms 1.4 mm (1.0 after 22 ms)",
      "z": "DELIVERED"
     },
     "17": {
-     "Q": "DEVIATES |dQ| 343% (delay-corr. 156%), V 4.22x",
+     "Q": "DEVIATES |dQ| 317% (delay-corr. 147%), V 3.91x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -62%",
-     "uh": "DEVIATES -47%",
-     "tan": "DEVIATES -46%",
-     "r": "DEVIATES +143%",
-     "foot": "DEVIATES rms 3.0 mm (1.5 after 30 ms)",
+     "exit_h": "DEVIATES -56%",
+     "uh": "DEVIATES -44%",
+     "tan": "DEVIATES -42%",
+     "r": "DEVIATES +140%",
+     "foot": "DEVIATES rms 3.0 mm (1.5 after 28 ms)",
      "z": "DELIVERED"
     }
    },
    "worst": {
     "Q": [
-     "DEVIATES |dQ| 343% (delay-corr. 156%), V 4.22x",
+     "DEVIATES |dQ| 317% (delay-corr. 147%), V 3.91x",
      17
     ],
     "pulse": [
@@ -6969,31 +6969,31 @@
      16
     ],
     "u0": [
-     "DEVIATES -18%",
+     "DEVIATES -21%",
      5
     ],
     "exit_h": [
-     "DEVIATES -62%",
+     "DEVIATES -56%",
      17
     ],
     "tan": [
-     "DEVIATES -46%",
+     "DEVIATES -42%",
      17
     ],
     "uh": [
-     "DEVIATES -49%",
+     "DEVIATES -46%",
      16
     ],
     "r": [
-     "DEVIATES +143%",
+     "DEVIATES +140%",
      17
     ],
     "foot": [
-     "DEVIATES rms 3.0 mm (1.5 after 30 ms)",
+     "DEVIATES rms 3.0 mm (1.5 after 28 ms)",
      17
     ],
     "z": [
-     "IMPOSSIBLE lift 4.2 mm (max 20.4)",
+     "IMPOSSIBLE lift 4.1 mm (max 20.4)",
      1
     ]
    }
@@ -7008,12 +7008,12 @@
     "dt": 0.001,
     "nr": 6,
     "steps": 9933,
-    "wall_s": 39.9615912437439,
-    "n_ff_solves": 733,
+    "wall_s": 43.81630229949951,
+    "n_ff_solves": 409,
     "ff_tol": 0.005,
     "lift_smooth": true,
-    "wall_want_s": 1.018578290939331,
-    "wall_sim_s": 38.79476976394653,
+    "wall_want_s": 1.774066686630249,
+    "wall_sim_s": 41.533533573150635,
     "onset_tilt_deg": 37.32788760680706,
     "tilt0_deg": 35.32788760680705,
     "law": {
@@ -7046,21 +7046,21 @@
    },
    "total": {
     "V_w_mL": 104.02680687228658,
-    "V_d_mL": 100.22969692856846,
-    "V_d_in_T_mL": 100.22884897874563,
-    "V_after_T_mL": 0.0008479498228277377,
-    "milk_used_mL": 100.22971256614457,
+    "V_d_mL": 97.25468407198925,
+    "V_d_in_T_mL": 97.25412836542003,
+    "V_after_T_mL": 0.0005557065691984289,
+    "milk_used_mL": 97.25469432072805,
     "fill_mL": 350.0,
-    "V_end_mL": 249.77028743385546,
+    "V_end_mL": 252.74530567927198,
     "overflow_mL": 0.0,
-    "V_cup_mL": 100.22969692856846,
-    "Q_delay_s": 0.212,
-    "Q_delay_vs_intent_s": 0.318,
-    "Q_err_rel": 0.15427571586543842,
-    "Q_err_rel_delayed": 0.12397997873979838,
+    "V_cup_mL": 97.25468407198906,
+    "Q_delay_s": 0.138,
+    "Q_delay_vs_intent_s": 0.185,
+    "Q_err_rel": 0.16046721400279493,
+    "Q_err_rel_delayed": 0.13622125697008095,
     "tilt_range_deg": [
      35.387887606807055,
-     53.96913257958189
+     53.713720293066686
     ],
     "tilt_rate_max": 60.00000000000583,
     "yaw_rate_max": 0.0,
@@ -7068,18 +7068,18 @@
      -90.00021045914971,
      -90.00021045914971
     ],
-    "lift_max_mm": 18.130363464545326,
-    "lift_time_s": 8.475,
-    "tip_speed_max": 0.2659850257315307,
-    "acc_max": 1.9266158061450196,
-    "slope_max_deg": 10.788255126761012,
-    "incoherent_frac": 0.09346504559270517,
-    "Q_hit_max_mLs": 30.875751253443752,
+    "lift_max_mm": 18.88386175280901,
+    "lift_time_s": 8.496,
+    "tip_speed_max": 0.2749178860277891,
+    "acc_max": 2.0348093314571596,
+    "slope_max_deg": 10.771573877401236,
+    "incoherent_frac": 0.10096623602214744,
+    "Q_hit_max_mLs": 24.94139479959931,
     "Q_w_max_mLs": 14.999999999999865
    },
    "classes": {
     "1": {
-     "Q": "DEVIATES late start 130 ms > stroke 67 ms, V 0.00x",
+     "Q": "DEVIATES late start 121 ms > stroke 67 ms, V 0.00x",
      "U_perp": "n/a",
      "u0": "n/a",
      "exit_h": "n/a",
@@ -7090,26 +7090,26 @@
      "z": "IMPOSSIBLE lift 10.4 mm (max 10.8)"
     },
     "2": {
-     "Q": "DEVIATES |dQ| 72% (delay-corr. 63%), V 0.28x",
+     "Q": "DEVIATES |dQ| 63% (delay-corr. 44%), V 0.37x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -19%",
+     "u0": "DEVIATES -20%",
      "exit_h": "DEVIATES +16%",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
-     "r": "DEVIATES -39%",
-     "foot": "DEVIATES rms 3.5 mm (3.5 after 0 ms)",
-     "z": "IMPOSSIBLE lift 5.0 mm (max 9.8)"
+     "r": "DEVIATES -33%",
+     "foot": "DEVIATES rms 3.8 mm (3.8 after 0 ms)",
+     "z": "IMPOSSIBLE lift 4.5 mm (max 9.7)"
     },
     "3": {
      "Q": "DELIVERED",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +23%",
-     "uh": "DEVIATES +22%",
+     "exit_h": "DEVIATES +22%",
+     "uh": "DEVIATES +21%",
      "tan": "DEVIATES +19%",
      "r": "DELIVERED",
      "foot": "DEVIATES rms 1.9 mm (1.2 after 66 ms)",
-     "z": "IMPOSSIBLE lift 2.1 mm (max 5.5)"
+     "z": "IMPOSSIBLE lift 2.2 mm (max 5.3)"
     },
     "4": {
      "Q": "DELIVERED",
@@ -7119,19 +7119,19 @@
      "uh": "DELIVERED",
      "tan": "DELIVERED",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 1.7 mm (1.0 after 58 ms)",
-     "z": "IMPOSSIBLE lift 4.9 mm (max 9.7)"
+     "foot": "DEVIATES rms 1.7 mm (1.0 after 56 ms)",
+     "z": "IMPOSSIBLE lift 5.0 mm (max 9.6)"
     },
     "6": {
-     "Q": "DELIVERED",
+     "Q": "DEVIATES |dQ| 19% (delay-corr. 15%), V 0.83x",
      "U_perp": "DEVIATES +25%",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
-     "tan": "DELIVERED",
-     "r": "DELIVERED",
+     "tan": "DEVIATES -15%",
+     "r": "DEVIATES -17%",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 11.0 mm (max 11.6)"
+     "z": "IMPOSSIBLE lift 11.4 mm (max 12.4)"
     },
     "7": {
      "Q": "DELIVERED",
@@ -7142,7 +7142,7 @@
      "tan": "DELIVERED",
      "r": "DELIVERED",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 10.9 mm (max 11.7)"
+     "z": "IMPOSSIBLE lift 11.1 mm (max 11.7)"
     },
     "8": {
      "Q": "DELIVERED",
@@ -7153,7 +7153,7 @@
      "tan": "DEVIATES -15%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 9.3 mm (max 12.0)"
+     "z": "IMPOSSIBLE lift 9.5 mm (max 12.2)"
     },
     "9": {
      "Q": "DELIVERED",
@@ -7164,34 +7164,34 @@
      "tan": "DEVIATES -19%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 9.6 mm (max 13.4)"
+     "z": "IMPOSSIBLE lift 10.0 mm (max 13.8)"
     },
     "10": {
-     "Q": "DEVIATES |dQ| 34% (delay-corr. 23%), V 1.27x",
-     "U_perp": "DEVIATES +17%",
-     "u0": "DEVIATES -18%",
+     "Q": "DEVIATES |dQ| 30% (delay-corr. 24%), V 1.20x",
+     "U_perp": "DEVIATES +18%",
+     "u0": "DEVIATES -20%",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DEVIATES -23%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 15.6 mm (max 16.4)"
+     "z": "IMPOSSIBLE lift 16.0 mm (max 16.8)"
     },
     "11": {
-     "Q": "DEVIATES |dQ| 25% (delay-corr. 22%), V 1.08x",
-     "U_perp": "DEVIATES +17%",
-     "u0": "DEVIATES -24%",
-     "exit_h": "DEVIATES -18%",
-     "uh": "DEVIATES -18%",
-     "tan": "DEVIATES -30%",
+     "Q": "DEVIATES |dQ| 23% (delay-corr. 22%), V 1.00x",
+     "U_perp": "DEVIATES +18%",
+     "u0": "DEVIATES -26%",
+     "exit_h": "DEVIATES -19%",
+     "uh": "DEVIATES -19%",
+     "tan": "DEVIATES -31%",
      "r": "DELIVERED",
-     "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 16.2 mm (max 17.9)"
+     "foot": "DEVIATES rms 1.0 mm (0.5 after 68 ms)",
+     "z": "IMPOSSIBLE lift 16.9 mm (max 18.6)"
     }
    },
    "worst": {
     "Q": [
-     "DEVIATES late start 130 ms > stroke 67 ms, V 0.00x",
+     "DEVIATES late start 121 ms > stroke 67 ms, V 0.00x",
      1
     ],
     "pulse": [
@@ -7203,31 +7203,31 @@
      6
     ],
     "u0": [
-     "DEVIATES -24%",
+     "DEVIATES -26%",
      11
     ],
     "exit_h": [
-     "DEVIATES +23%",
-     3
-    ],
-    "tan": [
-     "DEVIATES -30%",
-     11
-    ],
-    "uh": [
      "DEVIATES +22%",
      3
     ],
+    "tan": [
+     "DEVIATES -31%",
+     11
+    ],
+    "uh": [
+     "DEVIATES +21%",
+     3
+    ],
     "r": [
-     "DEVIATES -39%",
+     "DEVIATES -33%",
      2
     ],
     "foot": [
-     "DEVIATES rms 3.5 mm (3.5 after 0 ms)",
+     "DEVIATES rms 3.8 mm (3.8 after 0 ms)",
      2
     ],
     "z": [
-     "IMPOSSIBLE lift 16.2 mm (max 17.9)",
+     "IMPOSSIBLE lift 16.9 mm (max 18.6)",
      11
     ]
    }
@@ -7242,12 +7242,12 @@
     "dt": 0.001,
     "nr": 6,
     "steps": 15690,
-    "wall_s": 53.969521284103394,
-    "n_ff_solves": 1477,
+    "wall_s": 60.91984724998474,
+    "n_ff_solves": 899,
     "ff_tol": 0.005,
     "lift_smooth": true,
-    "wall_want_s": 1.1669893264770508,
-    "wall_sim_s": 52.62901186943054,
+    "wall_want_s": 2.0763285160064697,
+    "wall_sim_s": 58.520177125930786,
     "onset_tilt_deg": 37.32788760680706,
     "tilt0_deg": 35.32788760680705,
     "law": {
@@ -7280,21 +7280,21 @@
    },
    "total": {
     "V_w_mL": 154.03953250861477,
-    "V_d_mL": 137.62298418096847,
-    "V_d_in_T_mL": 137.62290047597673,
-    "V_after_T_mL": 8.370499174823395e-05,
-    "milk_used_mL": 137.62298572447958,
+    "V_d_mL": 130.5582301856106,
+    "V_d_in_T_mL": 130.55817825341776,
+    "V_after_T_mL": 5.19321928384445e-05,
+    "milk_used_mL": 130.55823114327836,
     "fill_mL": 350.0,
-    "V_end_mL": 212.37701427552045,
+    "V_end_mL": 219.44176885672164,
     "overflow_mL": 0.0,
-    "V_cup_mL": 137.6229841809696,
-    "Q_delay_s": 0.196,
-    "Q_delay_vs_intent_s": 0.243,
-    "Q_err_rel": 0.34167419419931766,
-    "Q_err_rel_delayed": 0.26941400548160843,
+    "V_cup_mL": 130.55823018561063,
+    "Q_delay_s": 0.136,
+    "Q_delay_vs_intent_s": 0.20700000000000002,
+    "Q_err_rel": 0.32668237941198724,
+    "Q_err_rel_delayed": 0.28297344175386446,
     "tilt_range_deg": [
      35.387887606807055,
-     60.2871001778546
+     59.34832068159741
     ],
     "tilt_rate_max": 60.00000000000583,
     "yaw_rate_max": 0.0,
@@ -7303,50 +7303,50 @@
      -90.00021045914971
     ],
     "lift_max_mm": 24.0875244140625,
-    "lift_time_s": 5.602,
-    "tip_speed_max": 1.4999999999999998,
-    "acc_max": 2.654965345942099,
-    "slope_max_deg": 11.076507611658872,
-    "incoherent_frac": 0.1920596533655784,
-    "Q_hit_max_mLs": 37.0205178429588,
+    "lift_time_s": 6.079,
+    "tip_speed_max": 1.5000000000000002,
+    "acc_max": 2.4567477648748257,
+    "slope_max_deg": 10.939852806029453,
+    "incoherent_frac": 0.21824169915311198,
+    "Q_hit_max_mLs": 34.77727309007061,
     "Q_w_max_mLs": 20.989829361154566
    },
    "classes": {
     "1": {
-     "Q": "DEVIATES |dQ| 32% (delay-corr. 15%), V 0.72x",
+     "Q": "DEVIATES |dQ| 25% (delay-corr. 10%), V 0.76x",
      "U_perp": "DEVIATES +17%",
      "u0": "DELIVERED",
      "exit_h": "DEVIATES +29%",
-     "uh": "DEVIATES +23%",
+     "uh": "DEVIATES +22%",
      "tan": "DELIVERED",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 2.4 mm (2.4 after 0 ms)",
-     "z": "IMPOSSIBLE lift 11.6 mm (max 24.1)"
+     "foot": "DEVIATES rms 2.8 mm (2.8 after 0 ms)",
+     "z": "IMPOSSIBLE lift 11.1 mm (max 24.1)"
     },
     "2": {
-     "Q": "DEVIATES |dQ| 36% (delay-corr. 36%), V 0.71x",
+     "Q": "DEVIATES |dQ| 41% (delay-corr. 41%), V 0.65x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -17%",
+     "u0": "DEVIATES -18%",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
-     "r": "DELIVERED",
-     "foot": "DEVIATES rms 2.0 mm (0.9 after 48 ms)",
-     "z": "IMPOSSIBLE lift 8.6 mm (max 10.8)"
+     "r": "DEVIATES -17%",
+     "foot": "DEVIATES rms 1.9 mm (1.0 after 46 ms)",
+     "z": "IMPOSSIBLE lift 9.0 mm (max 11.0)"
     },
     "3": {
-     "Q": "DEVIATES |dQ| 34% (delay-corr. 33%), V 0.80x",
+     "Q": "DEVIATES |dQ| 35% (delay-corr. 34%), V 0.74x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 2.1 mm (2.0 after 20 ms)",
-     "z": "IMPOSSIBLE lift 9.5 mm (max 16.3)"
+     "foot": "DEVIATES rms 2.6 mm (2.5 after 22 ms)",
+     "z": "IMPOSSIBLE lift 10.1 mm (max 16.8)"
     },
     "4": {
-     "Q": "DEVIATES |dQ| 54% (delay-corr. 24%), V 1.35x",
+     "Q": "DEVIATES |dQ| 36% (delay-corr. 30%), V 1.13x",
      "U_perp": "DEVIATES +25%",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
@@ -7354,32 +7354,32 @@
      "tan": "DELIVERED",
      "r": "DELIVERED",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 16.6 mm (max 16.8)"
+     "z": "IMPOSSIBLE lift 17.4 mm (max 18.2)"
     },
     "6": {
-     "Q": "DEVIATES late start 205 ms > stroke 170 ms, V 0.00x",
+     "Q": "DEVIATES late start 206 ms > stroke 170 ms, V 0.00x",
      "U_perp": "DELIVERED",
      "u0": "DEVIATES -64%",
      "exit_h": "DEVIATES -46%",
      "uh": "DEVIATES -49%",
-     "tan": "DEVIATES -41%",
-     "r": "DEVIATES -97%",
+     "tan": "DEVIATES -42%",
+     "r": "DEVIATES -98%",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "7": {
-     "Q": "DEVIATES |dQ| 48% (delay-corr. 62%), V 0.86x",
+     "Q": "DEVIATES |dQ| 76% (delay-corr. 87%), V 1.18x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +30%",
-     "uh": "DEVIATES +28%",
-     "tan": "DEVIATES +27%",
-     "r": "DELIVERED",
-     "foot": "DEVIATES rms 1.1 mm (0.8 after 64 ms)",
+     "exit_h": "DEVIATES +35%",
+     "uh": "DEVIATES +33%",
+     "tan": "DEVIATES +29%",
+     "r": "DEVIATES +29%",
+     "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "8": {
-     "Q": "DEVIATES |dQ| 36% (delay-corr. 31%), V 0.75x",
+     "Q": "DEVIATES |dQ| 36% (delay-corr. 32%), V 0.71x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
@@ -7390,7 +7390,7 @@
      "z": "DELIVERED"
     },
     "9": {
-     "Q": "DEVIATES |dQ| 24% (delay-corr. 25%), V 1.03x",
+     "Q": "DEVIATES |dQ| 25% (delay-corr. 26%), V 0.97x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
@@ -7401,7 +7401,7 @@
      "z": "DELIVERED"
     },
     "10": {
-     "Q": "DEVIATES |dQ| 18% (delay-corr. 15%), V 0.83x",
+     "Q": "DEVIATES |dQ| 16% (delay-corr. 14%), V 0.85x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
@@ -7409,21 +7409,21 @@
      "tan": "DELIVERED",
      "r": "DELIVERED",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 1.4 mm (max 2.7)"
+     "z": "IMPOSSIBLE lift 1.5 mm (max 2.9)"
     },
     "11": {
-     "Q": "DEVIATES |dQ| 65% (delay-corr. 25%), V 1.60x",
+     "Q": "DEVIATES |dQ| 45% (delay-corr. 24%), V 1.38x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
-     "r": "DEVIATES +25%",
+     "r": "DEVIATES +21%",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 2.3 mm (max 2.9)"
+     "z": "IMPOSSIBLE lift 2.9 mm (max 3.7)"
     },
     "13": {
-     "Q": "DEVIATES |dQ| 17% (delay-corr. 6%), V 0.84x",
+     "Q": "DEVIATES |dQ| 16% (delay-corr. 8%), V 0.85x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
@@ -7434,7 +7434,7 @@
      "z": "DELIVERED"
     },
     "14": {
-     "Q": "DEVIATES |dQ| 23% (delay-corr. 23%), V 0.92x",
+     "Q": "DEVIATES |dQ| 22% (delay-corr. 23%), V 0.91x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
@@ -7445,53 +7445,53 @@
      "z": "DELIVERED"
     },
     "15": {
-     "Q": "DEVIATES |dQ| 45% (delay-corr. 35%), V 1.21x",
+     "Q": "DEVIATES |dQ| 44% (delay-corr. 36%), V 1.12x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -21%",
+     "exit_h": "DEVIATES -20%",
      "uh": "DEVIATES -22%",
-     "tan": "DEVIATES -20%",
-     "r": "DEVIATES +23%",
+     "tan": "DEVIATES -18%",
+     "r": "DEVIATES +21%",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "16": {
-     "Q": "DEVIATES |dQ| 71% (delay-corr. 43%), V 1.70x",
+     "Q": "DEVIATES |dQ| 58% (delay-corr. 42%), V 1.57x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -17%",
-     "exit_h": "DEVIATES -22%",
-     "uh": "DEVIATES -22%",
-     "tan": "DEVIATES -20%",
-     "r": "DEVIATES +39%",
+     "u0": "DEVIATES -18%",
+     "exit_h": "DEVIATES -21%",
+     "uh": "DEVIATES -21%",
+     "tan": "DEVIATES -19%",
+     "r": "DEVIATES +33%",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "17": {
-     "Q": "DEVIATES |dQ| 28% (delay-corr. 28%), V 0.95x",
+     "Q": "DEVIATES |dQ| 28% (delay-corr. 28%), V 0.92x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -29%",
-     "exit_h": "DEVIATES -31%",
-     "uh": "DEVIATES -29%",
-     "tan": "DEVIATES -27%",
+     "u0": "DEVIATES -30%",
+     "exit_h": "DEVIATES -29%",
+     "uh": "DEVIATES -28%",
+     "tan": "DEVIATES -26%",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 1.6 mm (0.5 after 44 ms)",
+     "foot": "DEVIATES rms 1.7 mm (0.6 after 44 ms)",
      "z": "DELIVERED"
     },
     "18": {
-     "Q": "DEVIATES |dQ| 51% (delay-corr. 49%), V 1.21x",
+     "Q": "DEVIATES |dQ| 52% (delay-corr. 50%), V 1.15x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -34%",
-     "exit_h": "DEVIATES -33%",
-     "uh": "DEVIATES -30%",
-     "tan": "DEVIATES -26%",
-     "r": "DEVIATES +29%",
+     "u0": "DEVIATES -35%",
+     "exit_h": "DEVIATES -32%",
+     "uh": "DEVIATES -29%",
+     "tan": "DEVIATES -24%",
+     "r": "DEVIATES +28%",
      "foot": "DEVIATES rms 1.3 mm (1.1 after 78 ms)",
      "z": "DELIVERED"
     }
    },
    "worst": {
     "Q": [
-     "DEVIATES late start 205 ms > stroke 170 ms, V 0.00x",
+     "DEVIATES late start 206 ms > stroke 170 ms, V 0.00x",
      6
     ],
     "pulse": [
@@ -7511,7 +7511,7 @@
      6
     ],
     "tan": [
-     "DEVIATES -41%",
+     "DEVIATES -42%",
      6
     ],
     "uh": [
@@ -7519,15 +7519,15 @@
      6
     ],
     "r": [
-     "DEVIATES -97%",
+     "DEVIATES -98%",
      6
     ],
     "foot": [
-     "DEVIATES rms 2.4 mm (2.4 after 0 ms)",
+     "DEVIATES rms 2.8 mm (2.8 after 0 ms)",
      1
     ],
     "z": [
-     "IMPOSSIBLE lift 16.6 mm (max 16.8)",
+     "IMPOSSIBLE lift 17.4 mm (max 18.2)",
      4
     ]
    }
@@ -7542,12 +7542,12 @@
     "dt": 0.001,
     "nr": 6,
     "steps": 11340,
-    "wall_s": 32.47222375869751,
-    "n_ff_solves": 506,
+    "wall_s": 42.78216862678528,
+    "n_ff_solves": 298,
     "ff_tol": 0.005,
     "lift_smooth": true,
-    "wall_want_s": 1.0035004615783691,
-    "wall_sim_s": 31.271705150604248,
+    "wall_want_s": 1.6356737613677979,
+    "wall_sim_s": 40.9463586807251,
     "onset_tilt_deg": 37.32788760680706,
     "tilt0_deg": 35.32788760680705,
     "law": {
@@ -7580,21 +7580,21 @@
    },
    "total": {
     "V_w_mL": 130.62878767493257,
-    "V_d_mL": 125.44657309378668,
-    "V_d_in_T_mL": 125.42910364364958,
-    "V_after_T_mL": 0.017469450137091384,
-    "milk_used_mL": 125.44689029885055,
+    "V_d_mL": 124.18083457993131,
+    "V_d_in_T_mL": 124.1663567044595,
+    "V_after_T_mL": 0.014477875471826376,
+    "milk_used_mL": 124.18109755492526,
     "fill_mL": 350.0,
-    "V_end_mL": 224.55310970114945,
+    "V_end_mL": 225.81890244507477,
     "overflow_mL": 0.0,
-    "V_cup_mL": 125.4465730937866,
-    "Q_delay_s": 0.158,
-    "Q_delay_vs_intent_s": 0.20700000000000002,
-    "Q_err_rel": 0.14355779169420418,
-    "Q_err_rel_delayed": 0.12490067304108975,
+    "V_cup_mL": 124.18083457993066,
+    "Q_delay_s": 0.13,
+    "Q_delay_vs_intent_s": 0.182,
+    "Q_err_rel": 0.13888079600672415,
+    "Q_err_rel_delayed": 0.12836904230224838,
     "tilt_range_deg": [
      35.387887606807055,
-     60.47037537568485
+     60.328688237967384
     ],
     "tilt_rate_max": 60.00000000000583,
     "yaw_rate_max": 0.0,
@@ -7604,16 +7604,16 @@
     ],
     "lift_max_mm": 19.940185546875,
     "lift_time_s": 4.307,
-    "tip_speed_max": 0.25992800069040833,
-    "acc_max": 2.6318161729207667,
-    "slope_max_deg": 17.58224425727047,
-    "incoherent_frac": 0.0389916918429003,
-    "Q_hit_max_mLs": 21.11397321390591,
+    "tip_speed_max": 0.26014242861212655,
+    "acc_max": 2.690124368705963,
+    "slope_max_deg": 17.441511654732125,
+    "incoherent_frac": 0.04162733622805362,
+    "Q_hit_max_mLs": 20.872178981046286,
     "Q_w_max_mLs": 14.999999999999865
    },
    "classes": {
     "1": {
-     "Q": "DEVIATES late start 162 ms > stroke 70 ms, V 0.00x",
+     "Q": "DEVIATES late start 158 ms > stroke 70 ms, V 0.00x",
      "U_perp": "n/a",
      "u0": "n/a",
      "exit_h": "n/a",
@@ -7624,26 +7624,26 @@
      "z": "IMPOSSIBLE lift 19.7 mm (max 19.9)"
     },
     "2": {
-     "Q": "DEVIATES |dQ| 39% (delay-corr. 22%), V 0.73x",
-     "U_perp": "DELIVERED",
+     "Q": "DEVIATES |dQ| 33% (delay-corr. 26%), V 0.78x",
+     "U_perp": "DEVIATES +15%",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +31%",
-     "uh": "DEVIATES +23%",
+     "exit_h": "DEVIATES +30%",
+     "uh": "DEVIATES +21%",
      "tan": "DELIVERED",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 3.6 mm (3.6 after 0 ms)",
-     "z": "IMPOSSIBLE lift 10.1 mm (max 19.2)"
+     "foot": "DEVIATES rms 4.1 mm (4.1 after 0 ms)",
+     "z": "IMPOSSIBLE lift 9.7 mm (max 19.2)"
     },
     "3": {
      "Q": "DELIVERED",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DEVIATES +16%",
-     "uh": "DEVIATES +16%",
+     "uh": "DEVIATES +15%",
      "tan": "DELIVERED",
      "r": "DELIVERED",
      "foot": "DEVIATES rms 3.3 mm (1.3 after 80 ms)",
-     "z": "IMPOSSIBLE lift 5.3 mm (max 6.9)"
+     "z": "IMPOSSIBLE lift 5.2 mm (max 7.0)"
     },
     "4": {
      "Q": "DELIVERED",
@@ -7664,7 +7664,7 @@
      "uh": "DELIVERED",
      "tan": "DELIVERED",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 3.1 mm (1.7 after 66 ms)",
+     "foot": "DEVIATES rms 3.0 mm (1.6 after 64 ms)",
      "z": "DELIVERED"
     },
     "6": {
@@ -7679,7 +7679,7 @@
      "z": "DELIVERED"
     },
     "7": {
-     "Q": "DEVIATES |dQ| 26% (delay-corr. 25%), V 1.01x",
+     "Q": "DEVIATES |dQ| 25% (delay-corr. 25%), V 0.98x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DEVIATES -23%",
@@ -7692,7 +7692,7 @@
    },
    "worst": {
     "Q": [
-     "DEVIATES late start 162 ms > stroke 70 ms, V 0.00x",
+     "DEVIATES late start 158 ms > stroke 70 ms, V 0.00x",
      1
     ],
     "pulse": [
@@ -7700,7 +7700,7 @@
      null
     ],
     "U_perp": [
-     "DELIVERED",
+     "DEVIATES +15%",
      2
     ],
     "u0": [
@@ -7708,7 +7708,7 @@
      7
     ],
     "exit_h": [
-     "DEVIATES +31%",
+     "DEVIATES +30%",
      2
     ],
     "tan": [
@@ -7716,15 +7716,15 @@
      7
     ],
     "uh": [
-     "DEVIATES +23%",
-     2
+     "DEVIATES -22%",
+     7
     ],
     "r": [
      "DELIVERED",
      2
     ],
     "foot": [
-     "DEVIATES rms 3.6 mm (3.6 after 0 ms)",
+     "DEVIATES rms 4.1 mm (4.1 after 0 ms)",
      2
     ],
     "z": [
@@ -7743,12 +7743,12 @@
     "dt": 0.001,
     "nr": 6,
     "steps": 18500,
-    "wall_s": 62.330724000930786,
-    "n_ff_solves": 1443,
+    "wall_s": 69.54498052597046,
+    "n_ff_solves": 1038,
     "ff_tol": 0.005,
     "lift_smooth": true,
-    "wall_want_s": 1.5527348518371582,
-    "wall_sim_s": 60.63264346122742,
+    "wall_want_s": 1.9342639446258545,
+    "wall_sim_s": 67.38079714775085,
     "onset_tilt_deg": 37.32788760680706,
     "tilt0_deg": 35.32788760680705,
     "law": {
@@ -7781,21 +7781,21 @@
    },
    "total": {
     "V_w_mL": 120.91661439768893,
-    "V_d_mL": 117.86370566264125,
-    "V_d_in_T_mL": 117.86370566252542,
-    "V_after_T_mL": 1.1584245047692529e-10,
-    "milk_used_mL": 117.86370566264064,
+    "V_d_mL": 118.32913133014613,
+    "V_d_in_T_mL": 118.32913133006943,
+    "V_after_T_mL": 7.667599233641651e-11,
+    "milk_used_mL": 118.32913133014804,
     "fill_mL": 350.0,
-    "V_end_mL": 232.13629433735937,
+    "V_end_mL": 231.67086866985198,
     "overflow_mL": 0.0,
-    "V_cup_mL": 117.86370566264105,
-    "Q_delay_s": 0.171,
-    "Q_delay_vs_intent_s": 0.231,
-    "Q_err_rel": 0.15726680574557425,
-    "Q_err_rel_delayed": 0.12559481713520732,
+    "V_cup_mL": 118.32913133014658,
+    "Q_delay_s": 0.105,
+    "Q_delay_vs_intent_s": 0.17200000000000001,
+    "Q_err_rel": 0.13860935038592673,
+    "Q_err_rel_delayed": 0.12185360740985339,
     "tilt_range_deg": [
-     34.89773866288367,
-     57.40499569330583
+     34.57951879816791,
+     57.50800521256429
     ],
     "tilt_rate_max": 60.00000000000583,
     "yaw_rate_max": 0.0,
@@ -7803,45 +7803,45 @@
      44.97718691776962,
      44.97718691776962
     ],
-    "lift_max_mm": 20.957507299849834,
-    "lift_time_s": 5.038,
-    "tip_speed_max": 0.2531510668063393,
-    "acc_max": 2.0590908183502243,
-    "slope_max_deg": 11.559308125849668,
-    "incoherent_frac": 0.24003837904955413,
-    "Q_hit_max_mLs": 38.37178687551414,
+    "lift_max_mm": 21.528613618653097,
+    "lift_time_s": 5.005,
+    "tip_speed_max": 0.2531406667432555,
+    "acc_max": 2.058436720817204,
+    "slope_max_deg": 11.583610004308191,
+    "incoherent_frac": 0.24478167663319417,
+    "Q_hit_max_mLs": 40.133263767119864,
     "Q_w_max_mLs": 14.999999999999865
    },
    "classes": {
     "1": {
-     "Q": "DEVIATES |dQ| 40% (delay-corr. 20%), V 0.60x",
+     "Q": "DEVIATES |dQ| 30% (delay-corr. 18%), V 0.71x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -26%",
+     "u0": "DEVIATES -24%",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 2.7 mm (2.7 after 0 ms)",
-     "z": "IMPOSSIBLE lift 8.1 mm (max 15.5)"
+     "foot": "DEVIATES rms 2.8 mm (2.8 after 0 ms)",
+     "z": "IMPOSSIBLE lift 7.8 mm (max 15.5)"
     },
     "2": {
      "Q": "DELIVERED",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +21%",
+     "exit_h": "DEVIATES +22%",
      "uh": "DEVIATES +21%",
      "tan": "DEVIATES +18%",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 1.6 mm (0.8 after 48 ms)",
-     "z": "IMPOSSIBLE lift 3.3 mm (max 6.6)"
+     "foot": "DEVIATES rms 1.6 mm (0.8 after 50 ms)",
+     "z": "IMPOSSIBLE lift 3.1 mm (max 6.4)"
     },
     "3": {
      "Q": "DELIVERED",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +23%",
+     "exit_h": "DEVIATES +22%",
      "uh": "DEVIATES +22%",
-     "tan": "DEVIATES +24%",
+     "tan": "DEVIATES +23%",
      "r": "DELIVERED",
      "foot": "DEVIATES rms 1.2 mm (1.0 after 24 ms)",
      "z": "DELIVERED"
@@ -7852,10 +7852,10 @@
      "u0": "DELIVERED",
      "exit_h": "DEVIATES +19%",
      "uh": "DEVIATES +18%",
-     "tan": "DEVIATES +15%",
+     "tan": "DELIVERED",
      "r": "DELIVERED",
      "foot": "DEVIATES rms 1.2 mm (1.0 after 30 ms)",
-     "z": "IMPOSSIBLE lift 2.3 mm (max 3.3)"
+     "z": "IMPOSSIBLE lift 2.2 mm (max 3.3)"
     },
     "5": {
      "Q": "DELIVERED",
@@ -7866,7 +7866,7 @@
      "tan": "DELIVERED",
      "r": "DELIVERED",
      "foot": "DEVIATES rms 1.8 mm (1.1 after 50 ms)",
-     "z": "IMPOSSIBLE lift 1.0 mm (max 3.2)"
+     "z": "IMPOSSIBLE lift 1.0 mm (max 3.1)"
     },
     "6": {
      "Q": "DELIVERED",
@@ -7876,68 +7876,68 @@
      "uh": "DELIVERED",
      "tan": "DELIVERED",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 1.4 mm (0.9 after 36 ms)",
+     "foot": "DEVIATES rms 1.4 mm (0.9 after 34 ms)",
      "z": "DELIVERED"
     },
     "7": {
-     "Q": "DEVIATES |dQ| 34% (delay-corr. 36%), V 0.87x",
+     "Q": "DEVIATES |dQ| 35% (delay-corr. 37%), V 0.80x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -21%",
-     "exit_h": "DEVIATES -17%",
-     "uh": "DEVIATES -18%",
+     "u0": "DEVIATES -23%",
+     "exit_h": "DEVIATES -18%",
+     "uh": "DEVIATES -20%",
      "tan": "DELIVERED",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "8": {
-     "Q": "DEVIATES |dQ| 83% (delay-corr. 66%), V 1.66x",
-     "U_perp": "DELIVERED",
-     "u0": "DEVIATES -22%",
-     "exit_h": "DELIVERED",
-     "uh": "DEVIATES -16%",
-     "tan": "DELIVERED",
-     "r": "DEVIATES +54%",
-     "foot": "DELIVERED",
-     "z": "DELIVERED"
-    },
-    "9": {
-     "Q": "DEVIATES |dQ| 54% (delay-corr. 48%), V 1.31x",
-     "U_perp": "DELIVERED",
-     "u0": "DEVIATES -33%",
-     "exit_h": "DEVIATES -22%",
-     "uh": "DEVIATES -22%",
-     "tan": "DEVIATES -18%",
-     "r": "DEVIATES +31%",
-     "foot": "DELIVERED",
-     "z": "DELIVERED"
-    },
-    "11": {
-     "Q": "DEVIATES |dQ| 34% (delay-corr. 11%), V 0.66x",
-     "U_perp": "DEVIATES +17%",
-     "u0": "DEVIATES -28%",
-     "exit_h": "DEVIATES -17%",
-     "uh": "DEVIATES -19%",
-     "tan": "DEVIATES -30%",
-     "r": "DELIVERED",
-     "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 11.8 mm (max 21.0)"
-    },
-    "12": {
-     "Q": "DEVIATES |dQ| 24% (delay-corr. 25%), V 0.90x",
+     "Q": "DEVIATES |dQ| 78% (delay-corr. 67%), V 1.57x",
      "U_perp": "DELIVERED",
      "u0": "DEVIATES -23%",
      "exit_h": "DELIVERED",
-     "uh": "DELIVERED",
-     "tan": "DEVIATES -17%",
+     "uh": "DEVIATES -17%",
+     "tan": "DELIVERED",
+     "r": "DEVIATES +51%",
+     "foot": "DEVIATES rms 1.0 mm (0.8 after 30 ms)",
+     "z": "DELIVERED"
+    },
+    "9": {
+     "Q": "DEVIATES |dQ| 52% (delay-corr. 49%), V 1.26x",
+     "U_perp": "DELIVERED",
+     "u0": "DEVIATES -33%",
+     "exit_h": "DEVIATES -23%",
+     "uh": "DEVIATES -23%",
+     "tan": "DEVIATES -18%",
+     "r": "DEVIATES +29%",
+     "foot": "DEVIATES rms 1.0 mm (0.5 after 60 ms)",
+     "z": "DELIVERED"
+    },
+    "11": {
+     "Q": "DEVIATES |dQ| 29% (delay-corr. 15%), V 0.71x",
+     "U_perp": "DEVIATES +17%",
+     "u0": "DEVIATES -26%",
+     "exit_h": "DEVIATES -16%",
+     "uh": "DEVIATES -18%",
+     "tan": "DEVIATES -29%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 3.2 mm (max 6.7)"
+     "z": "IMPOSSIBLE lift 11.8 mm (max 21.5)"
     },
-    "13": {
-     "Q": "DEVIATES |dQ| 24% (delay-corr. 24%), V 0.91x",
+    "12": {
+     "Q": "DEVIATES |dQ| 26% (delay-corr. 27%), V 1.01x",
      "U_perp": "DELIVERED",
      "u0": "DEVIATES -20%",
+     "exit_h": "DELIVERED",
+     "uh": "DELIVERED",
+     "tan": "DEVIATES -15%",
+     "r": "DELIVERED",
+     "foot": "DELIVERED",
+     "z": "IMPOSSIBLE lift 3.1 mm (max 6.6)"
+    },
+    "13": {
+     "Q": "DEVIATES |dQ| 22% (delay-corr. 22%), V 0.99x",
+     "U_perp": "DELIVERED",
+     "u0": "DEVIATES -19%",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
@@ -7948,7 +7948,7 @@
     "14": {
      "Q": "DELIVERED",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -17%",
+     "u0": "DEVIATES -16%",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
@@ -7957,7 +7957,7 @@
      "z": "DELIVERED"
     },
     "15": {
-     "Q": "DEVIATES |dQ| 19% (delay-corr. 13%), V 0.90x",
+     "Q": "DEVIATES |dQ| 17% (delay-corr. 14%), V 0.93x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
@@ -7968,20 +7968,20 @@
      "z": "DELIVERED"
     },
     "16": {
-     "Q": "DEVIATES |dQ| 67% (delay-corr. 34%), V 1.60x",
+     "Q": "DEVIATES |dQ| 58% (delay-corr. 28%), V 1.46x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -21%",
-     "exit_h": "DEVIATES -22%",
-     "uh": "DEVIATES -22%",
-     "tan": "DEVIATES -17%",
-     "r": "DEVIATES +36%",
+     "u0": "DEVIATES -23%",
+     "exit_h": "DEVIATES -23%",
+     "uh": "DEVIATES -24%",
+     "tan": "DEVIATES -18%",
+     "r": "DEVIATES +34%",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     }
    },
    "worst": {
     "Q": [
-     "DEVIATES |dQ| 83% (delay-corr. 66%), V 1.66x",
+     "DEVIATES |dQ| 78% (delay-corr. 67%), V 1.57x",
      8
     ],
     "pulse": [
@@ -7997,27 +7997,27 @@
      9
     ],
     "exit_h": [
-     "DEVIATES +23%",
-     3
+     "DEVIATES -23%",
+     16
     ],
     "tan": [
-     "DEVIATES -30%",
+     "DEVIATES -29%",
      11
     ],
     "uh": [
-     "DEVIATES -22%",
+     "DEVIATES -24%",
      16
     ],
     "r": [
-     "DEVIATES +54%",
+     "DEVIATES +51%",
      8
     ],
     "foot": [
-     "DEVIATES rms 2.7 mm (2.7 after 0 ms)",
+     "DEVIATES rms 2.8 mm (2.8 after 0 ms)",
      1
     ],
     "z": [
-     "IMPOSSIBLE lift 11.8 mm (max 21.0)",
+     "IMPOSSIBLE lift 11.8 mm (max 21.5)",
      11
     ]
    }
@@ -8032,12 +8032,12 @@
     "dt": 0.001,
     "nr": 6,
     "steps": 12200,
-    "wall_s": 40.59801006317139,
-    "n_ff_solves": 114,
+    "wall_s": 31.511767625808716,
+    "n_ff_solves": 49,
     "ff_tol": 0.03,
     "lift_smooth": false,
-    "wall_want_s": 1.0293810367584229,
-    "wall_sim_s": 39.428040504455566,
+    "wall_want_s": 0.9438667297363281,
+    "wall_sim_s": 30.393424034118652,
     "onset_tilt_deg": 37.32788760680706,
     "tilt0_deg": 35.32788760680705,
     "law": {
@@ -8070,21 +8070,21 @@
    },
    "total": {
     "V_w_mL": 120.15576778143362,
-    "V_d_mL": 93.06956424122416,
-    "V_d_in_T_mL": 93.0695564073411,
-    "V_after_T_mL": 7.833883036456987e-06,
-    "milk_used_mL": 93.06956438572792,
+    "V_d_mL": 77.87290429571605,
+    "V_d_in_T_mL": 77.87289903617099,
+    "V_after_T_mL": 5.25954506939763e-06,
+    "milk_used_mL": 77.87290439274412,
     "fill_mL": 350.0,
-    "V_end_mL": 256.9304356142721,
+    "V_end_mL": 272.1270956072559,
     "overflow_mL": 0.0,
-    "V_cup_mL": 93.06956424122396,
-    "Q_delay_s": 0.14300000000000002,
-    "Q_delay_vs_intent_s": 0.216,
-    "Q_err_rel": 0.833252666646405,
-    "Q_err_rel_delayed": 0.8164079331575861,
+    "V_cup_mL": 77.87290429571637,
+    "Q_delay_s": 0.108,
+    "Q_delay_vs_intent_s": 0.165,
+    "Q_err_rel": 0.9966232851016019,
+    "Q_err_rel_delayed": 0.9865480735175777,
     "tilt_range_deg": [
-     34.203206342257644,
-     54.36494492477184
+     31.63156928040156,
+     50.8639612312401
     ],
     "tilt_rate_max": 60.00000000000583,
     "yaw_rate_max": 0.0,
@@ -8093,154 +8093,154 @@
      -90.00021045914971
     ],
     "lift_max_mm": 18.218994140625,
-    "lift_time_s": 8.413,
-    "tip_speed_max": 1.5000000000000004,
-    "acc_max": 10.161428946630295,
-    "slope_max_deg": 14.352332607952743,
-    "incoherent_frac": 0.29903828706223917,
-    "Q_hit_max_mLs": 125.25496964738501,
+    "lift_time_s": 8.487,
+    "tip_speed_max": 1.5000000000000002,
+    "acc_max": 10.094125733717732,
+    "slope_max_deg": 15.83984703896337,
+    "incoherent_frac": 0.5192712624736794,
+    "Q_hit_max_mLs": 146.665922234521,
     "Q_w_max_mLs": 14.999999999999865
    },
    "classes": {
     "1": {
-     "Q": "DEVIATES |dQ| 34% (delay-corr. 24%), V 0.69x",
+     "Q": "DEVIATES |dQ| 34% (delay-corr. 31%), V 0.88x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +27%",
-     "uh": "DEVIATES +24%",
-     "tan": "DEVIATES +18%",
+     "exit_h": "DEVIATES +31%",
+     "uh": "DEVIATES +27%",
+     "tan": "DEVIATES +19%",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 2.3 mm (2.3 after 0 ms)",
-     "z": "IMPOSSIBLE lift 4.4 mm (max 18.2)"
+     "foot": "DEVIATES rms 3.4 mm (3.4 after 0 ms)",
+     "z": "IMPOSSIBLE lift 3.7 mm (max 18.2)"
     },
     "2": {
-     "Q": "DEVIATES |dQ| 103% (delay-corr. 103%), V 1.59x",
-     "U_perp": "DEVIATES +38%",
-     "u0": "DEVIATES +18%",
-     "exit_h": "DEVIATES +80%",
-     "uh": "DEVIATES +68%",
-     "tan": "DEVIATES +33%",
-     "r": "DEVIATES +37%",
-     "foot": "DEVIATES rms 14.7 mm (14.7 after 0 ms)",
-     "z": "IMPOSSIBLE lift 3.6 mm (max 9.3)"
+     "Q": "DEVIATES |dQ| 82% (delay-corr. 82%), V 1.27x",
+     "U_perp": "DEVIATES +37%",
+     "u0": "DELIVERED",
+     "exit_h": "DEVIATES +62%",
+     "uh": "DEVIATES +52%",
+     "tan": "DEVIATES +22%",
+     "r": "DEVIATES +27%",
+     "foot": "DEVIATES rms 15.3 mm (15.3 after 0 ms)",
+     "z": "IMPOSSIBLE lift 5.0 mm (max 10.3)"
     },
     "3": {
-     "Q": "DEVIATES |dQ| 59% (delay-corr. 59%), V 0.53x",
-     "U_perp": "DEVIATES +40%",
-     "u0": "DELIVERED",
-     "exit_h": "DEVIATES +42%",
-     "uh": "DEVIATES +43%",
-     "tan": "DELIVERED",
-     "r": "DEVIATES -22%",
-     "foot": "DEVIATES rms 12.8 mm (12.8 after 200 ms)",
-     "z": "IMPOSSIBLE lift 7.9 mm (max 9.9)"
+     "Q": "DEVIATES |dQ| 95% (delay-corr. 95%), V 0.05x",
+     "U_perp": "DEVIATES +53%",
+     "u0": "DEVIATES -43%",
+     "exit_h": "DELIVERED",
+     "uh": "DELIVERED",
+     "tan": "DEVIATES -34%",
+     "r": "DEVIATES -70%",
+     "foot": "DEVIATES rms 11.4 mm (11.4 after 114 ms)",
+     "z": "IMPOSSIBLE lift 10.8 mm (max 17.4)"
     },
     "4": {
-     "Q": "DEVIATES |dQ| 81% (delay-corr. 81%), V 0.20x",
-     "U_perp": "DEVIATES +26%",
-     "u0": "DEVIATES -31%",
-     "exit_h": "DELIVERED",
-     "uh": "DELIVERED",
-     "tan": "DELIVERED",
-     "r": "DEVIATES -40%",
-     "foot": "DEVIATES rms 9.4 mm (9.4 after 34 ms)",
-     "z": "IMPOSSIBLE lift 5.1 mm (max 9.1)"
+     "Q": "IMPOSSIBLE no stream",
+     "U_perp": "DEVIATES +23%",
+     "u0": "DEVIATES -58%",
+     "exit_h": "DEVIATES -37%",
+     "uh": "DEVIATES -36%",
+     "tan": "DEVIATES -45%",
+     "r": "DEVIATES -85%",
+     "foot": "DEVIATES rms 6.5 mm (6.5 after 46 ms)",
+     "z": "IMPOSSIBLE lift 8.7 mm (max 16.1)"
     },
     "5": {
-     "Q": "IMPOSSIBLE no stream",
+     "Q": "DEVIATES late start inf ms > stroke 1150 ms, V 0.01x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -55%",
-     "exit_h": "DEVIATES -37%",
-     "uh": "DEVIATES -37%",
-     "tan": "DEVIATES -37%",
-     "r": "DEVIATES -80%",
-     "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 4.4 mm (max 6.5)"
+     "u0": "DEVIATES -61%",
+     "exit_h": "DEVIATES -43%",
+     "uh": "DEVIATES -43%",
+     "tan": "DEVIATES -45%",
+     "r": "DEVIATES -89%",
+     "foot": "DEVIATES rms 2.0 mm (2.0 after 0 ms)",
+     "z": "IMPOSSIBLE lift 5.8 mm (max 8.1)"
     },
     "6": {
-     "Q": "DEVIATES |dQ| 80% (delay-corr. 80%), V 0.87x",
-     "U_perp": "DEVIATES +36%",
-     "u0": "DELIVERED",
-     "exit_h": "DEVIATES +68%",
-     "uh": "DEVIATES +53%",
-     "tan": "DEVIATES +23%",
-     "r": "DEVIATES +17%",
-     "foot": "DEVIATES rms 12.6 mm (12.6 after 0 ms)",
-     "z": "IMPOSSIBLE lift 4.2 mm (max 6.5)"
+     "Q": "DEVIATES late start 840 ms > stroke 750 ms, V 0.01x",
+     "U_perp": "DELIVERED",
+     "u0": "DEVIATES -60%",
+     "exit_h": "DEVIATES -44%",
+     "uh": "DEVIATES -42%",
+     "tan": "DEVIATES -45%",
+     "r": "DEVIATES -89%",
+     "foot": "DEVIATES rms 2.9 mm (2.9 after 0 ms)",
+     "z": "IMPOSSIBLE lift 6.8 mm (max 10.4)"
     },
     "7": {
-     "Q": "DEVIATES |dQ| 53% (delay-corr. 53%), V 0.71x",
+     "Q": "DEVIATES |dQ| 101% (delay-corr. 95%), V 1.40x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DELIVERED",
-     "uh": "DELIVERED",
-     "tan": "DELIVERED",
-     "r": "DELIVERED",
-     "foot": "DEVIATES rms 11.3 mm (11.3 after 0 ms)",
-     "z": "DELIVERED"
+     "exit_h": "DEVIATES +36%",
+     "uh": "DEVIATES +30%",
+     "tan": "DEVIATES +19%",
+     "r": "DEVIATES +56%",
+     "foot": "DEVIATES rms 10.2 mm (10.2 after 0 ms)",
+     "z": "IMPOSSIBLE lift 2.0 mm (max 7.9)"
     },
     "8": {
-     "Q": "DEVIATES |dQ| 213% (delay-corr. 181%), V 3.03x",
-     "U_perp": "DELIVERED",
+     "Q": "DEVIATES |dQ| 234% (delay-corr. 209%), V 3.10x",
+     "U_perp": "DEVIATES +16%",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +35%",
-     "uh": "DEVIATES +23%",
+     "exit_h": "DEVIATES +42%",
+     "uh": "DEVIATES +28%",
      "tan": "DELIVERED",
-     "r": "DEVIATES +113%",
-     "foot": "DEVIATES rms 3.8 mm (3.8 after 34 ms)",
-     "z": "IMPOSSIBLE lift 2.3 mm (max 15.0)"
+     "r": "DEVIATES +124%",
+     "foot": "DEVIATES rms 5.7 mm (5.7 after 28 ms)",
+     "z": "IMPOSSIBLE lift 3.5 mm (max 14.4)"
     },
     "9": {
-     "Q": "DEVIATES |dQ| 215% (delay-corr. 193%), V 2.97x",
-     "U_perp": "DELIVERED",
-     "u0": "DEVIATES -26%",
-     "exit_h": "DELIVERED",
-     "uh": "DELIVERED",
-     "tan": "DEVIATES -16%",
-     "r": "DEVIATES +104%",
-     "foot": "DEVIATES rms 11.3 mm (11.3 after 0 ms)",
-     "z": "IMPOSSIBLE lift 6.5 mm (max 14.5)"
+     "Q": "DEVIATES |dQ| 355% (delay-corr. 331%), V 4.43x",
+     "U_perp": "DEVIATES +17%",
+     "u0": "DELIVERED",
+     "exit_h": "DEVIATES +16%",
+     "uh": "DEVIATES +15%",
+     "tan": "DELIVERED",
+     "r": "DEVIATES +128%",
+     "foot": "DEVIATES rms 13.2 mm (13.2 after 0 ms)",
+     "z": "IMPOSSIBLE lift 9.2 mm (max 17.3)"
     }
    },
    "worst": {
     "Q": [
      "IMPOSSIBLE no stream",
-     5
+     4
     ],
     "pulse": [
      "n/a",
      null
     ],
     "U_perp": [
-     "DEVIATES +40%",
+     "DEVIATES +53%",
      3
     ],
     "u0": [
-     "DEVIATES -55%",
+     "DEVIATES -61%",
      5
     ],
     "exit_h": [
-     "DEVIATES +80%",
+     "DEVIATES +62%",
      2
     ],
     "tan": [
-     "DEVIATES -37%",
-     5
+     "DEVIATES -45%",
+     4
     ],
     "uh": [
-     "DEVIATES +68%",
+     "DEVIATES +52%",
      2
     ],
     "r": [
-     "DEVIATES +113%",
-     8
+     "DEVIATES +128%",
+     9
     ],
     "foot": [
-     "DEVIATES rms 14.7 mm (14.7 after 0 ms)",
+     "DEVIATES rms 15.3 mm (15.3 after 0 ms)",
      2
     ],
     "z": [
-     "IMPOSSIBLE lift 7.9 mm (max 9.9)",
+     "IMPOSSIBLE lift 10.8 mm (max 17.4)",
      3
     ]
    }
@@ -8255,12 +8255,12 @@
     "dt": 0.001,
     "nr": 6,
     "steps": 14300,
-    "wall_s": 47.78196120262146,
-    "n_ff_solves": 269,
+    "wall_s": 48.389963150024414,
+    "n_ff_solves": 163,
     "ff_tol": 0.03,
     "lift_smooth": false,
-    "wall_want_s": 1.2003459930419922,
-    "wall_sim_s": 46.384520053863525,
+    "wall_want_s": 1.1473190784454346,
+    "wall_sim_s": 47.08981990814209,
     "onset_tilt_deg": 37.32788760680706,
     "tilt0_deg": 35.32788760680705,
     "law": {
@@ -8293,21 +8293,21 @@
    },
    "total": {
     "V_w_mL": 194.93416233007437,
-    "V_d_mL": 196.30130680542285,
-    "V_d_in_T_mL": 195.47604514398134,
-    "V_after_T_mL": 0.825261661441502,
-    "milk_used_mL": 196.31466727527368,
+    "V_d_mL": 178.93720582140634,
+    "V_d_in_T_mL": 178.5907702879222,
+    "V_after_T_mL": 0.34643553348410255,
+    "milk_used_mL": 178.9431361455317,
     "fill_mL": 350.0,
-    "V_end_mL": 153.68533272472632,
+    "V_end_mL": 171.05686385446833,
     "overflow_mL": 0.0,
-    "V_cup_mL": 196.30130680542263,
-    "Q_delay_s": 0.341,
-    "Q_delay_vs_intent_s": 0.46,
-    "Q_err_rel": 0.6711554919651274,
-    "Q_err_rel_delayed": 0.6100861207955988,
+    "V_cup_mL": 178.93720582140608,
+    "Q_delay_s": 0.34,
+    "Q_delay_vs_intent_s": 0.446,
+    "Q_err_rel": 0.6098438629779009,
+    "Q_err_rel_delayed": 0.5683116906536774,
     "tilt_range_deg": [
-     35.387887606807055,
-     73.5841306892069
+     34.71659106865479,
+     71.80847711168944
     ],
     "tilt_rate_max": 60.00000000000583,
     "yaw_rate_max": 0.0,
@@ -8316,72 +8316,72 @@
      -90.00021045914971
     ],
     "lift_max_mm": 20.361328125,
-    "lift_time_s": 5.46,
-    "tip_speed_max": 1.5000000000000002,
-    "acc_max": 9.532839920881932,
+    "lift_time_s": 5.553,
+    "tip_speed_max": 1.5,
+    "acc_max": 8.790095921646461,
     "slope_max_deg": 19.798876354524932,
-    "incoherent_frac": 0.0425322958374254,
-    "Q_hit_max_mLs": 228.86616753739983,
+    "incoherent_frac": 0.05000754261577915,
+    "Q_hit_max_mLs": 200.27231043095267,
     "Q_w_max_mLs": 22.499967914198958
    },
    "classes": {
     "1": {
-     "Q": "DEVIATES |dQ| 38% (delay-corr. 41%), V 0.62x",
+     "Q": "DEVIATES |dQ| 26% (delay-corr. 40%), V 0.89x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -15%",
-     "exit_h": "DEVIATES +22%",
-     "uh": "DEVIATES +20%",
-     "tan": "DELIVERED",
-     "r": "DEVIATES -18%",
-     "foot": "DEVIATES rms 2.1 mm (2.1 after 0 ms)",
-     "z": "IMPOSSIBLE lift 4.6 mm (max 20.4)"
-    },
-    "2": {
-     "Q": "DEVIATES |dQ| 97% (delay-corr. 97%), V 1.65x",
-     "U_perp": "DEVIATES +15%",
-     "u0": "DELIVERED",
-     "exit_h": "DEVIATES +61%",
-     "uh": "DEVIATES +54%",
-     "tan": "DEVIATES +35%",
-     "r": "DEVIATES +49%",
-     "foot": "DEVIATES rms 5.1 mm (5.1 after 14 ms)",
-     "z": "IMPOSSIBLE lift 3.4 mm (max 6.9)"
-    },
-    "3": {
-     "Q": "DEVIATES |dQ| 78% (delay-corr. 78%), V 0.72x",
-     "U_perp": "DEVIATES +19%",
      "u0": "DELIVERED",
      "exit_h": "DEVIATES +27%",
-     "uh": "DEVIATES +24%",
-     "tan": "DELIVERED",
+     "uh": "DEVIATES +25%",
+     "tan": "DEVIATES +19%",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 3.6 mm (3.6 after 138 ms)",
-     "z": "IMPOSSIBLE lift 6.4 mm (max 9.4)"
+     "foot": "DEVIATES rms 2.3 mm (2.3 after 0 ms)",
+     "z": "IMPOSSIBLE lift 3.5 mm (max 20.4)"
+    },
+    "2": {
+     "Q": "DEVIATES |dQ| 58% (delay-corr. 58%), V 1.33x",
+     "U_perp": "DELIVERED",
+     "u0": "DELIVERED",
+     "exit_h": "DEVIATES +45%",
+     "uh": "DEVIATES +39%",
+     "tan": "DEVIATES +28%",
+     "r": "DEVIATES +24%",
+     "foot": "DEVIATES rms 2.2 mm (2.1 after 20 ms)",
+     "z": "IMPOSSIBLE lift 2.7 mm (max 6.2)"
+    },
+    "3": {
+     "Q": "DEVIATES |dQ| 75% (delay-corr. 75%), V 0.30x",
+     "U_perp": "DELIVERED",
+     "u0": "DEVIATES -40%",
+     "exit_h": "DELIVERED",
+     "uh": "DELIVERED",
+     "tan": "DEVIATES -20%",
+     "r": "DEVIATES -25%",
+     "foot": "DEVIATES rms 5.3 mm (5.3 after 6 ms)",
+     "z": "IMPOSSIBLE lift 6.8 mm (max 9.6)"
     },
     "4": {
-     "Q": "DEVIATES |dQ| 80% (delay-corr. 80%), V 0.30x",
-     "U_perp": "DEVIATES +34%",
-     "u0": "DEVIATES -29%",
+     "Q": "DEVIATES |dQ| 76% (delay-corr. 76%), V 0.25x",
+     "U_perp": "DEVIATES +19%",
+     "u0": "DEVIATES -25%",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
-     "r": "DELIVERED",
-     "foot": "DEVIATES rms 14.6 mm (14.6 after 0 ms)",
-     "z": "IMPOSSIBLE lift 7.0 mm (max 10.0)"
+     "r": "DEVIATES -35%",
+     "foot": "DEVIATES rms 6.0 mm (6.0 after 0 ms)",
+     "z": "IMPOSSIBLE lift 7.3 mm (max 9.8)"
     },
     "5": {
-     "Q": "DEVIATES |dQ| 76% (delay-corr. 87%), V 0.27x",
+     "Q": "DEVIATES |dQ| 79% (delay-corr. 90%), V 0.22x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -36%",
-     "exit_h": "DEVIATES -21%",
-     "uh": "DEVIATES -19%",
-     "tan": "DEVIATES -17%",
-     "r": "DEVIATES -32%",
-     "foot": "DEVIATES rms 2.2 mm (2.2 after 0 ms)",
-     "z": "IMPOSSIBLE lift 2.8 mm (max 9.4)"
+     "u0": "DEVIATES -40%",
+     "exit_h": "DEVIATES -24%",
+     "uh": "DEVIATES -21%",
+     "tan": "DEVIATES -18%",
+     "r": "DEVIATES -41%",
+     "foot": "DEVIATES rms 2.1 mm (2.1 after 0 ms)",
+     "z": "IMPOSSIBLE lift 2.7 mm (max 9.2)"
     },
     "7": {
-     "Q": "DEVIATES |dQ| 30% (delay-corr. 11%), V 0.70x",
+     "Q": "DEVIATES |dQ| 28% (delay-corr. 13%), V 0.73x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
@@ -8392,46 +8392,46 @@
      "z": "DELIVERED"
     },
     "8": {
-     "Q": "DEVIATES |dQ| 34% (delay-corr. 30%), V 0.86x",
-     "U_perp": "DEVIATES +17%",
+     "Q": "DEVIATES |dQ| 36% (delay-corr. 32%), V 0.79x",
+     "U_perp": "DEVIATES +16%",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +19%",
+     "exit_h": "DEVIATES +21%",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 2.3 mm (2.2 after 24 ms)",
+     "foot": "DEVIATES rms 2.6 mm (2.6 after 20 ms)",
      "z": "DELIVERED"
     },
     "9": {
-     "Q": "DEVIATES |dQ| 122% (delay-corr. 125%), V 1.27x",
-     "U_perp": "DELIVERED",
-     "u0": "DELIVERED",
-     "exit_h": "DEVIATES +26%",
-     "uh": "DEVIATES +26%",
+     "Q": "DEVIATES |dQ| 139% (delay-corr. 141%), V 1.51x",
+     "U_perp": "DEVIATES +21%",
+     "u0": "DEVIATES +20%",
+     "exit_h": "DEVIATES +40%",
+     "uh": "DEVIATES +39%",
      "tan": "DELIVERED",
-     "r": "DEVIATES +69%",
-     "foot": "DEVIATES rms 3.2 mm (3.1 after 102 ms)",
-     "z": "IMPOSSIBLE lift 4.9 mm (max 7.7)"
+     "r": "DEVIATES +75%",
+     "foot": "DEVIATES rms 4.9 mm (4.9 after 118 ms)",
+     "z": "IMPOSSIBLE lift 5.2 mm (max 9.5)"
     },
     "10": {
-     "Q": "DEVIATES |dQ| 149% (delay-corr. 92%), V 0.95x",
-     "U_perp": "DEVIATES +22%",
-     "u0": "DEVIATES +43%",
-     "exit_h": "DEVIATES +67%",
+     "Q": "DEVIATES |dQ| 128% (delay-corr. 93%), V 0.57x",
+     "U_perp": "DEVIATES +25%",
+     "u0": "DEVIATES +39%",
+     "exit_h": "DEVIATES +68%",
      "uh": "DEVIATES +51%",
-     "tan": "DEVIATES +19%",
-     "r": "DEVIATES +57%",
+     "tan": "DEVIATES +18%",
+     "r": "DEVIATES +45%",
      "foot": "DEVIATES rms 5.9 mm (5.9 after 0 ms)",
-     "z": "IMPOSSIBLE lift 2.3 mm (max 7.1)"
+     "z": "IMPOSSIBLE lift 3.1 mm (max 8.9)"
     },
     "12": {
-     "Q": "DEVIATES |dQ| 70% (delay-corr. 26%), V 0.30x",
+     "Q": "DEVIATES |dQ| 76% (delay-corr. 15%), V 0.24x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
-     "r": "DEVIATES -22%",
+     "r": "DEVIATES -20%",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
@@ -8439,61 +8439,61 @@
      "Q": "DELIVERED",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -16%",
-     "uh": "DEVIATES -16%",
-     "tan": "DEVIATES -19%",
+     "exit_h": "DELIVERED",
+     "uh": "DELIVERED",
+     "tan": "DELIVERED",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "14": {
-     "Q": "DEVIATES |dQ| 21% (delay-corr. 21%), V 0.86x",
+     "Q": "DEVIATES |dQ| 30% (delay-corr. 30%), V 0.71x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -29%",
-     "uh": "DEVIATES -25%",
-     "tan": "DEVIATES -28%",
+     "exit_h": "DEVIATES -26%",
+     "uh": "DEVIATES -23%",
+     "tan": "DEVIATES -24%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "15": {
-     "Q": "DEVIATES |dQ| 37% (delay-corr. 38%), V 1.01x",
+     "Q": "DEVIATES |dQ| 24% (delay-corr. 27%), V 0.86x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -34%",
-     "uh": "DEVIATES -32%",
-     "tan": "DEVIATES -32%",
+     "exit_h": "DEVIATES -31%",
+     "uh": "DEVIATES -28%",
+     "tan": "DEVIATES -29%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "16": {
-     "Q": "DEVIATES |dQ| 81% (delay-corr. 56%), V 1.39x",
+     "Q": "DEVIATES |dQ| 63% (delay-corr. 57%), V 1.05x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -44%",
-     "uh": "DEVIATES -41%",
-     "tan": "DEVIATES -35%",
-     "r": "DEVIATES +51%",
-     "foot": "DEVIATES rms 1.5 mm (1.1 after 20 ms)",
+     "exit_h": "DEVIATES -40%",
+     "uh": "DEVIATES -38%",
+     "tan": "DEVIATES -31%",
+     "r": "DEVIATES +33%",
+     "foot": "DEVIATES rms 1.6 mm (1.2 after 22 ms)",
      "z": "DELIVERED"
     },
     "17": {
-     "Q": "DEVIATES |dQ| 427% (delay-corr. 171%), V 5.11x",
+     "Q": "DEVIATES |dQ| 425% (delay-corr. 176%), V 5.03x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -52%",
-     "uh": "DEVIATES -41%",
-     "tan": "DEVIATES -40%",
-     "r": "DEVIATES +172%",
-     "foot": "DEVIATES rms 3.0 mm (1.6 after 28 ms)",
+     "exit_h": "DEVIATES -45%",
+     "uh": "DEVIATES -36%",
+     "tan": "DEVIATES -35%",
+     "r": "DEVIATES +176%",
+     "foot": "DEVIATES rms 2.9 mm (1.7 after 26 ms)",
      "z": "DELIVERED"
     }
    },
    "worst": {
     "Q": [
-     "DEVIATES |dQ| 427% (delay-corr. 171%), V 5.11x",
+     "DEVIATES |dQ| 425% (delay-corr. 176%), V 5.03x",
      17
     ],
     "pulse": [
@@ -8501,35 +8501,35 @@
      null
     ],
     "U_perp": [
-     "DEVIATES +34%",
-     4
-    ],
-    "u0": [
-     "DEVIATES +43%",
+     "DEVIATES +25%",
      10
     ],
+    "u0": [
+     "DEVIATES -40%",
+     3
+    ],
     "exit_h": [
-     "DEVIATES +67%",
+     "DEVIATES +68%",
      10
     ],
     "tan": [
-     "DEVIATES -40%",
+     "DEVIATES -35%",
      17
     ],
     "uh": [
-     "DEVIATES +54%",
-     2
+     "DEVIATES +51%",
+     10
     ],
     "r": [
-     "DEVIATES +172%",
+     "DEVIATES +176%",
      17
     ],
     "foot": [
-     "DEVIATES rms 14.6 mm (14.6 after 0 ms)",
+     "DEVIATES rms 6.0 mm (6.0 after 0 ms)",
      4
     ],
     "z": [
-     "IMPOSSIBLE lift 7.0 mm (max 10.0)",
+     "IMPOSSIBLE lift 7.3 mm (max 9.8)",
      4
     ]
    }
@@ -8544,12 +8544,12 @@
     "dt": 0.001,
     "nr": 6,
     "steps": 9933,
-    "wall_s": 37.200217962265015,
-    "n_ff_solves": 151,
+    "wall_s": 36.548949003219604,
+    "n_ff_solves": 58,
     "ff_tol": 0.03,
     "lift_smooth": false,
-    "wall_want_s": 1.1185791492462158,
-    "wall_sim_s": 35.90001630783081,
+    "wall_want_s": 1.6956424713134766,
+    "wall_sim_s": 34.55634117126465,
     "onset_tilt_deg": 37.32788760680706,
     "tilt0_deg": 35.32788760680705,
     "law": {
@@ -8582,21 +8582,21 @@
    },
    "total": {
     "V_w_mL": 104.02680687228658,
-    "V_d_mL": 107.01763990766705,
-    "V_d_in_T_mL": 107.0164927032566,
-    "V_after_T_mL": 0.0011472044104474078,
-    "milk_used_mL": 107.01766106481742,
+    "V_d_mL": 123.65330209210383,
+    "V_d_in_T_mL": 123.65133340319616,
+    "V_after_T_mL": 0.00196868890765437,
+    "milk_used_mL": 123.65333840288392,
     "fill_mL": 350.0,
-    "V_end_mL": 242.98233893518258,
+    "V_end_mL": 226.34666159711608,
     "overflow_mL": 0.0,
-    "V_cup_mL": 107.01763990766693,
-    "Q_delay_s": 0.23700000000000002,
-    "Q_delay_vs_intent_s": 0.276,
-    "Q_err_rel": 0.8802327048753649,
-    "Q_err_rel_delayed": 0.8548600751614245,
+    "V_cup_mL": 123.65330209210387,
+    "Q_delay_s": 0.11,
+    "Q_delay_vs_intent_s": 0.157,
+    "Q_err_rel": 1.2829824930398581,
+    "Q_err_rel_delayed": 1.2666672101259568,
     "tilt_range_deg": [
-     35.387887606807055,
-     53.159435836673254
+     33.62900792274283,
+     55.00916521234411
     ],
     "tilt_rate_max": 60.00000000000583,
     "yaw_rate_max": 0.0,
@@ -8604,18 +8604,18 @@
      -90.00021045914971,
      -90.00021045914971
     ],
-    "lift_max_mm": 26.770019531249993,
-    "lift_time_s": 8.321,
+    "lift_max_mm": 25.881958007812496,
+    "lift_time_s": 8.344,
     "tip_speed_max": 1.5000000000000002,
-    "acc_max": 9.226406486832463,
-    "slope_max_deg": 14.514237491936973,
-    "incoherent_frac": 0.2532400504645028,
-    "Q_hit_max_mLs": 158.42874309699408,
+    "acc_max": 9.9556654467278,
+    "slope_max_deg": 18.57157442415467,
+    "incoherent_frac": 0.4320633463392242,
+    "Q_hit_max_mLs": 194.07895787298543,
     "Q_w_max_mLs": 14.999999999999865
    },
    "classes": {
     "1": {
-     "Q": "DEVIATES late start 120 ms > stroke 67 ms, V 0.00x",
+     "Q": "DEVIATES late start 99 ms > stroke 67 ms, V 0.00x",
      "U_perp": "n/a",
      "u0": "n/a",
      "exit_h": "n/a",
@@ -8623,148 +8623,148 @@
      "tan": "n/a",
      "r": "n/a",
      "foot": "n/a",
-     "z": "IMPOSSIBLE lift 7.7 mm (max 10.8)"
+     "z": "IMPOSSIBLE lift 7.3 mm (max 10.8)"
     },
     "2": {
-     "Q": "DEVIATES |dQ| 61% (delay-corr. 107%), V 0.40x",
-     "U_perp": "DELIVERED",
-     "u0": "DEVIATES -17%",
-     "exit_h": "DEVIATES +25%",
-     "uh": "DELIVERED",
+     "Q": "DEVIATES |dQ| 58% (delay-corr. 64%), V 0.79x",
+     "U_perp": "DEVIATES +20%",
+     "u0": "DELIVERED",
+     "exit_h": "DEVIATES +50%",
+     "uh": "DEVIATES +28%",
      "tan": "DELIVERED",
-     "r": "DEVIATES -24%",
-     "foot": "DEVIATES rms 5.5 mm (5.5 after 0 ms)",
-     "z": "IMPOSSIBLE lift 4.8 mm (max 6.1)"
+     "r": "DELIVERED",
+     "foot": "DEVIATES rms 3.8 mm (3.8 after 0 ms)",
+     "z": "IMPOSSIBLE lift 2.5 mm (max 5.5)"
     },
     "3": {
-     "Q": "DEVIATES |dQ| 54% (delay-corr. 54%), V 0.87x",
-     "U_perp": "DELIVERED",
+     "Q": "DEVIATES |dQ| 118% (delay-corr. 118%), V 0.56x",
+     "U_perp": "DEVIATES +16%",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +34%",
-     "uh": "DEVIATES +30%",
-     "tan": "DEVIATES +19%",
-     "r": "DELIVERED",
-     "foot": "DEVIATES rms 5.7 mm (5.6 after 46 ms)",
-     "z": "IMPOSSIBLE lift 4.2 mm (max 8.6)"
+     "exit_h": "DEVIATES +61%",
+     "uh": "DEVIATES +55%",
+     "tan": "DEVIATES +32%",
+     "r": "DEVIATES +92%",
+     "foot": "DEVIATES rms 6.6 mm (6.6 after 20 ms)",
+     "z": "IMPOSSIBLE lift 8.1 mm (max 15.3)"
     },
     "4": {
-     "Q": "DEVIATES |dQ| 90% (delay-corr. 90%), V 0.13x",
-     "U_perp": "DEVIATES +37%",
-     "u0": "DEVIATES -47%",
-     "exit_h": "DEVIATES -18%",
-     "uh": "DEVIATES -16%",
-     "tan": "DEVIATES -35%",
-     "r": "DEVIATES -29%",
-     "foot": "DEVIATES rms 17.6 mm (17.6 after 0 ms)",
-     "z": "IMPOSSIBLE lift 11.6 mm (max 20.2)"
+     "Q": "DEVIATES late start 1460 ms > stroke 1276 ms, V 0.01x",
+     "U_perp": "DEVIATES +28%",
+     "u0": "DEVIATES -61%",
+     "exit_h": "DEVIATES -40%",
+     "uh": "DEVIATES -39%",
+     "tan": "DEVIATES -51%",
+     "r": "DEVIATES -90%",
+     "foot": "DEVIATES rms 4.0 mm (3.9 after 20 ms)",
+     "z": "IMPOSSIBLE lift 14.7 mm (max 23.2)"
     },
     "6": {
-     "Q": "DEVIATES |dQ| 83% (delay-corr. 87%), V 1.00x",
-     "U_perp": "DEVIATES +43%",
+     "Q": "DEVIATES |dQ| 35% (delay-corr. 35%), V 0.90x",
+     "U_perp": "DEVIATES +35%",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +32%",
-     "uh": "DEVIATES +29%",
+     "exit_h": "DEVIATES +29%",
+     "uh": "DEVIATES +26%",
      "tan": "DELIVERED",
-     "r": "DEVIATES +16%",
-     "foot": "DEVIATES rms 7.8 mm (7.8 after 10 ms)",
-     "z": "IMPOSSIBLE lift 14.5 mm (max 19.5)"
+     "r": "DELIVERED",
+     "foot": "DEVIATES rms 1.5 mm (1.5 after 16 ms)",
+     "z": "IMPOSSIBLE lift 14.0 mm (max 21.2)"
     },
     "7": {
-     "Q": "DEVIATES |dQ| 61% (delay-corr. 60%), V 0.69x",
-     "U_perp": "DEVIATES +54%",
-     "u0": "DELIVERED",
-     "exit_h": "DEVIATES +27%",
-     "uh": "DEVIATES +22%",
-     "tan": "DEVIATES -17%",
-     "r": "DELIVERED",
-     "foot": "DEVIATES rms 11.2 mm (11.2 after 0 ms)",
-     "z": "IMPOSSIBLE lift 17.0 mm (max 20.7)"
+     "Q": "DEVIATES |dQ| 103% (delay-corr. 101%), V 1.77x",
+     "U_perp": "DEVIATES +45%",
+     "u0": "DEVIATES +21%",
+     "exit_h": "DEVIATES +55%",
+     "uh": "DEVIATES +47%",
+     "tan": "DELIVERED",
+     "r": "DEVIATES +32%",
+     "foot": "DEVIATES rms 5.1 mm (5.1 after 0 ms)",
+     "z": "IMPOSSIBLE lift 13.8 mm (max 18.2)"
     },
     "8": {
-     "Q": "DEVIATES |dQ| 130% (delay-corr. 122%), V 2.00x",
+     "Q": "DEVIATES |dQ| 198% (delay-corr. 190%), V 2.77x",
      "U_perp": "DEVIATES +40%",
      "u0": "DELIVERED",
      "exit_h": "DEVIATES +41%",
-     "uh": "DEVIATES +34%",
+     "uh": "DEVIATES +35%",
      "tan": "DELIVERED",
-     "r": "DEVIATES +57%",
-     "foot": "DEVIATES rms 11.9 mm (11.9 after 0 ms)",
-     "z": "IMPOSSIBLE lift 11.8 mm (max 20.7)"
+     "r": "DEVIATES +79%",
+     "foot": "DEVIATES rms 13.0 mm (13.0 after 0 ms)",
+     "z": "IMPOSSIBLE lift 12.0 mm (max 19.1)"
     },
     "9": {
-     "Q": "DEVIATES |dQ| 166% (delay-corr. 142%), V 2.41x",
-     "U_perp": "DEVIATES +39%",
-     "u0": "DELIVERED",
-     "exit_h": "DEVIATES +38%",
-     "uh": "DEVIATES +26%",
+     "Q": "DEVIATES |dQ| 262% (delay-corr. 244%), V 3.39x",
+     "U_perp": "DEVIATES +47%",
+     "u0": "DEVIATES +33%",
+     "exit_h": "DEVIATES +74%",
+     "uh": "DEVIATES +51%",
      "tan": "DELIVERED",
-     "r": "DEVIATES +62%",
-     "foot": "DEVIATES rms 7.9 mm (7.9 after 0 ms)",
-     "z": "IMPOSSIBLE lift 15.5 mm (max 23.6)"
+     "r": "DEVIATES +105%",
+     "foot": "DEVIATES rms 6.0 mm (5.6 after 64 ms)",
+     "z": "IMPOSSIBLE lift 14.9 mm (max 24.6)"
     },
     "10": {
-     "Q": "DEVIATES |dQ| 111% (delay-corr. 84%), V 2.03x",
-     "U_perp": "DEVIATES +34%",
-     "u0": "DEVIATES -19%",
-     "exit_h": "DELIVERED",
-     "uh": "DELIVERED",
-     "tan": "DEVIATES -21%",
-     "r": "DEVIATES +40%",
-     "foot": "DEVIATES rms 17.8 mm (17.8 after 0 ms)",
-     "z": "IMPOSSIBLE lift 15.9 mm (max 19.5)"
+     "Q": "DEVIATES |dQ| 380% (delay-corr. 351%), V 4.69x",
+     "U_perp": "DEVIATES +43%",
+     "u0": "DELIVERED",
+     "exit_h": "DEVIATES +32%",
+     "uh": "DEVIATES +36%",
+     "tan": "DELIVERED",
+     "r": "DEVIATES +118%",
+     "foot": "DEVIATES rms 21.6 mm (21.6 after 0 ms)",
+     "z": "IMPOSSIBLE lift 15.7 mm (max 25.9)"
     },
     "11": {
-     "Q": "DEVIATES |dQ| 235% (delay-corr. 170%), V 3.11x",
-     "U_perp": "DEVIATES +42%",
-     "u0": "DELIVERED",
-     "exit_h": "DEVIATES +26%",
-     "uh": "DEVIATES +19%",
-     "tan": "DELIVERED",
-     "r": "DEVIATES +85%",
-     "foot": "DEVIATES rms 8.0 mm (8.0 after 30 ms)",
-     "z": "IMPOSSIBLE lift 18.7 mm (max 26.8)"
+     "Q": "DEVIATES |dQ| 232% (delay-corr. 194%), V 3.15x",
+     "U_perp": "DEVIATES +32%",
+     "u0": "DEVIATES -17%",
+     "exit_h": "DELIVERED",
+     "uh": "DELIVERED",
+     "tan": "DEVIATES -22%",
+     "r": "DEVIATES +100%",
+     "foot": "DEVIATES rms 10.9 mm (10.9 after 0 ms)",
+     "z": "IMPOSSIBLE lift 15.6 mm (max 23.5)"
     }
    },
    "worst": {
     "Q": [
-     "DEVIATES |dQ| 235% (delay-corr. 170%), V 3.11x",
-     11
+     "DEVIATES |dQ| 380% (delay-corr. 351%), V 4.69x",
+     10
     ],
     "pulse": [
      "n/a",
      null
     ],
     "U_perp": [
-     "DEVIATES +54%",
-     7
+     "DEVIATES +47%",
+     9
     ],
     "u0": [
-     "DEVIATES -47%",
+     "DEVIATES -61%",
      4
     ],
     "exit_h": [
-     "DEVIATES +41%",
-     8
+     "DEVIATES +74%",
+     9
     ],
     "tan": [
-     "DEVIATES -35%",
+     "DEVIATES -51%",
      4
     ],
     "uh": [
-     "DEVIATES +34%",
-     8
+     "DEVIATES +55%",
+     3
     ],
     "r": [
-     "DEVIATES +85%",
-     11
+     "DEVIATES +118%",
+     10
     ],
     "foot": [
-     "DEVIATES rms 17.8 mm (17.8 after 0 ms)",
+     "DEVIATES rms 21.6 mm (21.6 after 0 ms)",
      10
     ],
     "z": [
-     "IMPOSSIBLE lift 18.7 mm (max 26.8)",
-     11
+     "IMPOSSIBLE lift 15.7 mm (max 25.9)",
+     10
     ]
    }
   },
@@ -8778,12 +8778,12 @@
     "dt": 0.001,
     "nr": 6,
     "steps": 15690,
-    "wall_s": 47.305845499038696,
-    "n_ff_solves": 288,
+    "wall_s": 35.98481011390686,
+    "n_ff_solves": 186,
     "ff_tol": 0.03,
     "lift_smooth": false,
-    "wall_want_s": 1.2333314418792725,
-    "wall_sim_s": 45.8532989025116,
+    "wall_want_s": 1.5269944667816162,
+    "wall_sim_s": 34.143269300460815,
     "onset_tilt_deg": 37.32788760680706,
     "tilt0_deg": 35.32788760680705,
     "law": {
@@ -8816,21 +8816,21 @@
    },
    "total": {
     "V_w_mL": 154.03953250861477,
-    "V_d_mL": 152.08629658893457,
-    "V_d_in_T_mL": 152.08621292883691,
-    "V_after_T_mL": 8.36600976706994e-05,
-    "milk_used_mL": 152.08629813150648,
+    "V_d_mL": 154.38388150832228,
+    "V_d_in_T_mL": 154.38383144334702,
+    "V_after_T_mL": 5.006497524439254e-05,
+    "milk_used_mL": 154.38388243144604,
     "fill_mL": 350.0,
-    "V_end_mL": 197.91370186849355,
+    "V_end_mL": 195.61611756855396,
     "overflow_mL": 0.0,
-    "V_cup_mL": 152.08629658893472,
-    "Q_delay_s": 0.17,
-    "Q_delay_vs_intent_s": 0.24,
-    "Q_err_rel": 0.6502694663712215,
-    "Q_err_rel_delayed": 0.5897965711192317,
+    "V_cup_mL": 154.38388150832145,
+    "Q_delay_s": 0.137,
+    "Q_delay_vs_intent_s": 0.20800000000000002,
+    "Q_err_rel": 0.6960990149763273,
+    "Q_err_rel_delayed": 0.6645194361254938,
     "tilt_range_deg": [
      35.387887606807055,
-     61.56551605000128
+     61.46537082326683
     ],
     "tilt_rate_max": 60.00000000000583,
     "yaw_rate_max": 0.0,
@@ -8838,84 +8838,84 @@
      -90.00021045914971,
      -90.00021045914971
     ],
-    "lift_max_mm": 25.4150390625,
-    "lift_time_s": 5.317,
-    "tip_speed_max": 1.5000000000000002,
-    "acc_max": 10.565982546109835,
-    "slope_max_deg": 19.798876354524932,
-    "incoherent_frac": 0.25877401398411515,
-    "Q_hit_max_mLs": 299.0493520300337,
+    "lift_max_mm": 24.0875244140625,
+    "lift_time_s": 5.5440000000000005,
+    "tip_speed_max": 1.5000000000000004,
+    "acc_max": 10.43409776662466,
+    "slope_max_deg": 17.376370610104374,
+    "incoherent_frac": 0.30526531448473676,
+    "Q_hit_max_mLs": 176.9892297466587,
     "Q_w_max_mLs": 20.989829361154566
    },
    "classes": {
     "1": {
-     "Q": "DEVIATES |dQ| 32% (delay-corr. 18%), V 0.72x",
+     "Q": "DEVIATES |dQ| 40% (delay-corr. 39%), V 0.83x",
      "U_perp": "DEVIATES +17%",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +29%",
+     "exit_h": "DEVIATES +31%",
      "uh": "DEVIATES +23%",
      "tan": "DELIVERED",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 3.1 mm (3.1 after 0 ms)",
-     "z": "IMPOSSIBLE lift 10.8 mm (max 24.1)"
+     "foot": "DEVIATES rms 3.5 mm (3.5 after 0 ms)",
+     "z": "IMPOSSIBLE lift 10.2 mm (max 24.1)"
     },
     "2": {
-     "Q": "DEVIATES |dQ| 65% (delay-corr. 65%), V 0.53x",
-     "U_perp": "DEVIATES +17%",
+     "Q": "DEVIATES |dQ| 91% (delay-corr. 91%), V 0.52x",
+     "U_perp": "DEVIATES +29%",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +21%",
-     "uh": "DEVIATES +18%",
+     "exit_h": "DEVIATES +47%",
+     "uh": "DEVIATES +38%",
      "tan": "DELIVERED",
-     "r": "DELIVERED",
-     "foot": "DEVIATES rms 2.9 mm (2.3 after 50 ms)",
-     "z": "IMPOSSIBLE lift 11.5 mm (max 16.1)"
+     "r": "DEVIATES +26%",
+     "foot": "DEVIATES rms 12.0 mm (11.9 after 24 ms)",
+     "z": "IMPOSSIBLE lift 11.9 mm (max 16.5)"
     },
     "3": {
-     "Q": "DEVIATES |dQ| 187% (delay-corr. 190%), V 2.17x",
-     "U_perp": "DEVIATES +43%",
-     "u0": "DEVIATES +30%",
-     "exit_h": "DEVIATES +78%",
-     "uh": "DEVIATES +61%",
-     "tan": "DEVIATES +16%",
-     "r": "DEVIATES +96%",
-     "foot": "DEVIATES rms 13.7 mm (13.7 after 0 ms)",
-     "z": "IMPOSSIBLE lift 11.8 mm (max 25.3)"
+     "Q": "DEVIATES |dQ| 131% (delay-corr. 132%), V 1.66x",
+     "U_perp": "DEVIATES +50%",
+     "u0": "DEVIATES +25%",
+     "exit_h": "DEVIATES +61%",
+     "uh": "DEVIATES +46%",
+     "tan": "DELIVERED",
+     "r": "DEVIATES +52%",
+     "foot": "DEVIATES rms 17.3 mm (17.3 after 0 ms)",
+     "z": "IMPOSSIBLE lift 10.6 mm (max 21.4)"
     },
     "4": {
-     "Q": "DEVIATES |dQ| 64% (delay-corr. 56%), V 1.30x",
-     "U_perp": "DEVIATES +49%",
-     "u0": "DEVIATES -30%",
-     "exit_h": "DELIVERED",
-     "uh": "DELIVERED",
-     "tan": "DEVIATES -25%",
-     "r": "DELIVERED",
-     "foot": "DEVIATES rms 16.6 mm (16.5 after 72 ms)",
-     "z": "IMPOSSIBLE lift 18.9 mm (max 25.4)"
+     "Q": "DEVIATES |dQ| 75% (delay-corr. 83%), V 0.30x",
+     "U_perp": "DEVIATES +55%",
+     "u0": "DEVIATES -53%",
+     "exit_h": "DEVIATES -35%",
+     "uh": "DEVIATES -18%",
+     "tan": "DEVIATES -46%",
+     "r": "DEVIATES -44%",
+     "foot": "DEVIATES rms 14.4 mm (14.4 after 14 ms)",
+     "z": "IMPOSSIBLE lift 19.3 mm (max 21.3)"
     },
     "6": {
-     "Q": "DEVIATES late start 213 ms > stroke 170 ms, V 0.00x",
+     "Q": "DEVIATES late start 209 ms > stroke 170 ms, V 0.00x",
      "U_perp": "DELIVERED",
      "u0": "DEVIATES -64%",
-     "exit_h": "DEVIATES -46%",
+     "exit_h": "DEVIATES -45%",
      "uh": "DEVIATES -49%",
-     "tan": "DEVIATES -40%",
-     "r": "DEVIATES -97%",
-     "foot": "DELIVERED",
+     "tan": "DEVIATES -41%",
+     "r": "DEVIATES -99%",
+     "foot": "DEVIATES rms 1.0 mm (1.0 after 2 ms)",
      "z": "DELIVERED"
     },
     "7": {
-     "Q": "DEVIATES |dQ| 47% (delay-corr. 46%), V 0.78x",
+     "Q": "DEVIATES |dQ| 106% (delay-corr. 125%), V 1.46x",
      "U_perp": "DELIVERED",
-     "u0": "DELIVERED",
-     "exit_h": "DEVIATES +25%",
-     "uh": "DEVIATES +23%",
-     "tan": "DEVIATES +23%",
-     "r": "DELIVERED",
+     "u0": "DEVIATES +18%",
+     "exit_h": "DEVIATES +36%",
+     "uh": "DEVIATES +35%",
+     "tan": "DEVIATES +26%",
+     "r": "DEVIATES +45%",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "8": {
-     "Q": "DEVIATES |dQ| 46% (delay-corr. 42%), V 0.71x",
+     "Q": "DEVIATES |dQ| 31% (delay-corr. 35%), V 1.15x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
@@ -8926,40 +8926,40 @@
      "z": "DELIVERED"
     },
     "9": {
-     "Q": "DEVIATES |dQ| 41% (delay-corr. 42%), V 0.85x",
+     "Q": "DEVIATES |dQ| 91% (delay-corr. 92%), V 1.29x",
+     "U_perp": "DELIVERED",
+     "u0": "DELIVERED",
+     "exit_h": "DEVIATES +36%",
+     "uh": "DEVIATES +31%",
+     "tan": "DEVIATES +17%",
+     "r": "DEVIATES +42%",
+     "foot": "DEVIATES rms 3.3 mm (3.1 after 68 ms)",
+     "z": "DELIVERED"
+    },
+    "10": {
+     "Q": "DEVIATES |dQ| 32% (delay-corr. 34%), V 1.17x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 1.1 mm (0.9 after 28 ms)",
+     "foot": "DEVIATES rms 5.1 mm (5.0 after 56 ms)",
      "z": "DELIVERED"
     },
-    "10": {
-     "Q": "DEVIATES |dQ| 137% (delay-corr. 140%), V 1.87x",
-     "U_perp": "DEVIATES +30%",
-     "u0": "DEVIATES +38%",
-     "exit_h": "DEVIATES +57%",
-     "uh": "DEVIATES +49%",
-     "tan": "DEVIATES +19%",
-     "r": "DEVIATES +56%",
-     "foot": "DEVIATES rms 3.1 mm (3.1 after 20 ms)",
-     "z": "IMPOSSIBLE lift 2.3 mm (max 7.3)"
-    },
     "11": {
-     "Q": "DEVIATES |dQ| 123% (delay-corr. 47%), V 2.19x",
+     "Q": "DEVIATES |dQ| 252% (delay-corr. 115%), V 3.46x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -31%",
-     "exit_h": "DEVIATES -21%",
-     "uh": "DEVIATES -16%",
-     "tan": "DEVIATES -24%",
-     "r": "DEVIATES +58%",
-     "foot": "DEVIATES rms 14.3 mm (14.3 after 0 ms)",
-     "z": "IMPOSSIBLE lift 2.7 mm (max 6.3)"
+     "u0": "DELIVERED",
+     "exit_h": "DELIVERED",
+     "uh": "DELIVERED",
+     "tan": "DELIVERED",
+     "r": "DEVIATES +88%",
+     "foot": "DEVIATES rms 4.8 mm (4.8 after 0 ms)",
+     "z": "IMPOSSIBLE lift 2.3 mm (max 5.0)"
     },
     "13": {
-     "Q": "DEVIATES |dQ| 22% (delay-corr. 12%), V 0.79x",
+     "Q": "DEVIATES |dQ| 21% (delay-corr. 15%), V 0.86x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
@@ -8970,72 +8970,72 @@
      "z": "DELIVERED"
     },
     "14": {
-     "Q": "DEVIATES |dQ| 30% (delay-corr. 31%), V 0.84x",
+     "Q": "DEVIATES |dQ| 28% (delay-corr. 28%), V 0.85x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -20%",
-     "uh": "DEVIATES -20%",
+     "exit_h": "DEVIATES -21%",
+     "uh": "DEVIATES -21%",
      "tan": "DEVIATES -19%",
      "r": "DELIVERED",
      "foot": "DEVIATES rms 1.4 mm (1.4 after 0 ms)",
      "z": "DELIVERED"
     },
     "15": {
-     "Q": "DEVIATES |dQ| 50% (delay-corr. 37%), V 1.27x",
+     "Q": "DEVIATES |dQ| 47% (delay-corr. 38%), V 1.17x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -25%",
-     "uh": "DEVIATES -26%",
-     "tan": "DEVIATES -24%",
-     "r": "DEVIATES +26%",
+     "exit_h": "DEVIATES -26%",
+     "uh": "DEVIATES -28%",
+     "tan": "DEVIATES -25%",
+     "r": "DEVIATES +24%",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "16": {
-     "Q": "DEVIATES |dQ| 71% (delay-corr. 48%), V 1.71x",
+     "Q": "DEVIATES |dQ| 62% (delay-corr. 46%), V 1.60x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -16%",
-     "exit_h": "DEVIATES -26%",
-     "uh": "DEVIATES -26%",
-     "tan": "DEVIATES -24%",
-     "r": "DEVIATES +40%",
+     "u0": "DEVIATES -17%",
+     "exit_h": "DEVIATES -27%",
+     "uh": "DEVIATES -27%",
+     "tan": "DEVIATES -26%",
+     "r": "DEVIATES +34%",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "17": {
-     "Q": "DEVIATES |dQ| 33% (delay-corr. 32%), V 0.96x",
+     "Q": "DEVIATES |dQ| 33% (delay-corr. 32%), V 0.94x",
      "U_perp": "DELIVERED",
      "u0": "DEVIATES -29%",
-     "exit_h": "DEVIATES -34%",
+     "exit_h": "DEVIATES -35%",
      "uh": "DEVIATES -33%",
-     "tan": "DEVIATES -30%",
+     "tan": "DEVIATES -31%",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 1.7 mm (0.6 after 46 ms)",
+     "foot": "DEVIATES rms 1.6 mm (0.6 after 46 ms)",
      "z": "DELIVERED"
     },
     "18": {
-     "Q": "DEVIATES |dQ| 60% (delay-corr. 56%), V 1.32x",
+     "Q": "DEVIATES |dQ| 60% (delay-corr. 57%), V 1.26x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -32%",
-     "exit_h": "DEVIATES -35%",
-     "uh": "DEVIATES -32%",
-     "tan": "DEVIATES -28%",
-     "r": "DEVIATES +38%",
+     "u0": "DEVIATES -33%",
+     "exit_h": "DEVIATES -36%",
+     "uh": "DEVIATES -33%",
+     "tan": "DEVIATES -29%",
+     "r": "DEVIATES +35%",
      "foot": "DEVIATES rms 1.3 mm (1.1 after 78 ms)",
      "z": "DELIVERED"
     }
    },
    "worst": {
     "Q": [
-     "DEVIATES |dQ| 187% (delay-corr. 190%), V 2.17x",
-     3
+     "DEVIATES |dQ| 252% (delay-corr. 115%), V 3.46x",
+     11
     ],
     "pulse": [
      "n/a",
      null
     ],
     "U_perp": [
-     "DEVIATES +49%",
+     "DEVIATES +55%",
      4
     ],
     "u0": [
@@ -9043,27 +9043,27 @@
      6
     ],
     "exit_h": [
-     "DEVIATES +78%",
-     3
-    ],
-    "tan": [
-     "DEVIATES -40%",
-     6
-    ],
-    "uh": [
      "DEVIATES +61%",
      3
     ],
+    "tan": [
+     "DEVIATES -46%",
+     4
+    ],
+    "uh": [
+     "DEVIATES -49%",
+     6
+    ],
     "r": [
-     "DEVIATES -97%",
+     "DEVIATES -99%",
      6
     ],
     "foot": [
-     "DEVIATES rms 16.6 mm (16.5 after 72 ms)",
-     4
+     "DEVIATES rms 17.3 mm (17.3 after 0 ms)",
+     3
     ],
     "z": [
-     "IMPOSSIBLE lift 18.9 mm (max 25.4)",
+     "IMPOSSIBLE lift 19.3 mm (max 21.3)",
      4
     ]
    }
@@ -9078,12 +9078,12 @@
     "dt": 0.001,
     "nr": 6,
     "steps": 11340,
-    "wall_s": 34.22342824935913,
-    "n_ff_solves": 105,
+    "wall_s": 22.753302335739136,
+    "n_ff_solves": 51,
     "ff_tol": 0.03,
     "lift_smooth": false,
-    "wall_want_s": 0.9922666549682617,
-    "wall_sim_s": 33.07759356498718,
+    "wall_want_s": 1.261436939239502,
+    "wall_sim_s": 21.225233793258667,
     "onset_tilt_deg": 37.32788760680706,
     "tilt0_deg": 35.32788760680705,
     "law": {
@@ -9116,21 +9116,21 @@
    },
    "total": {
     "V_w_mL": 130.62878767493257,
-    "V_d_mL": 98.99344015749429,
-    "V_d_in_T_mL": 98.97494574182109,
-    "V_after_T_mL": 0.018494415673190535,
-    "milk_used_mL": 98.99377609394023,
+    "V_d_mL": 112.87616540863475,
+    "V_d_in_T_mL": 112.8602017233027,
+    "V_after_T_mL": 0.01596368533205781,
+    "milk_used_mL": 112.87645539722364,
     "fill_mL": 350.0,
-    "V_end_mL": 251.0062239060598,
+    "V_end_mL": 237.12354460277638,
     "overflow_mL": 0.0,
-    "V_cup_mL": 98.99344015749394,
-    "Q_delay_s": 0.148,
-    "Q_delay_vs_intent_s": 0.198,
-    "Q_err_rel": 0.4031202256218734,
-    "Q_err_rel_delayed": 0.39099036177482493,
+    "V_cup_mL": 112.87616540863468,
+    "Q_delay_s": 0.121,
+    "Q_delay_vs_intent_s": 0.17500000000000002,
+    "Q_err_rel": 0.2893255102408929,
+    "Q_err_rel_delayed": 0.2818884127184727,
     "tilt_range_deg": [
      35.387887606807055,
-     58.24029725871734
+     59.392855726491256
     ],
     "tilt_rate_max": 60.00000000000583,
     "yaw_rate_max": 0.0,
@@ -9139,17 +9139,17 @@
      90.00021045914971
     ],
     "lift_max_mm": 19.940185546875,
-    "lift_time_s": 4.298,
+    "lift_time_s": 4.285,
     "tip_speed_max": 1.5000000000000002,
-    "acc_max": 2.7133120071535948,
-    "slope_max_deg": 16.560737652061885,
-    "incoherent_frac": 0.04290709762782346,
-    "Q_hit_max_mLs": 34.621463099759055,
+    "acc_max": 3.003251572795011,
+    "slope_max_deg": 16.821526334296394,
+    "incoherent_frac": 0.04084520328270918,
+    "Q_hit_max_mLs": 68.98339709971115,
     "Q_w_max_mLs": 14.999999999999865
    },
    "classes": {
     "1": {
-     "Q": "DEVIATES late start 131 ms > stroke 70 ms, V 0.00x",
+     "Q": "DEVIATES late start 150 ms > stroke 70 ms, V 0.00x",
      "U_perp": "n/a",
      "u0": "n/a",
      "exit_h": "n/a",
@@ -9157,50 +9157,50 @@
      "tan": "n/a",
      "r": "n/a",
      "foot": "n/a",
-     "z": "IMPOSSIBLE lift 17.8 mm (max 19.9)"
+     "z": "IMPOSSIBLE lift 17.7 mm (max 19.9)"
     },
     "2": {
-     "Q": "DEVIATES |dQ| 48% (delay-corr. 43%), V 0.87x",
+     "Q": "DEVIATES |dQ| 77% (delay-corr. 84%), V 1.46x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +35%",
-     "uh": "DEVIATES +26%",
-     "tan": "DELIVERED",
-     "r": "DELIVERED",
-     "foot": "DEVIATES rms 4.0 mm (4.0 after 0 ms)",
-     "z": "IMPOSSIBLE lift 9.2 mm (max 15.3)"
+     "exit_h": "DEVIATES +43%",
+     "uh": "DEVIATES +33%",
+     "tan": "DEVIATES +17%",
+     "r": "DEVIATES +34%",
+     "foot": "DEVIATES rms 4.1 mm (4.1 after 0 ms)",
+     "z": "IMPOSSIBLE lift 7.3 mm (max 15.2)"
     },
     "3": {
-     "Q": "DEVIATES |dQ| 39% (delay-corr. 39%), V 0.78x",
+     "Q": "DEVIATES |dQ| 21% (delay-corr. 21%), V 0.83x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +18%",
-     "uh": "DEVIATES +16%",
+     "exit_h": "DELIVERED",
+     "uh": "DELIVERED",
      "tan": "DELIVERED",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 2.7 mm (1.9 after 52 ms)",
-     "z": "IMPOSSIBLE lift 5.9 mm (max 8.8)"
+     "foot": "DEVIATES rms 2.8 mm (1.3 after 68 ms)",
+     "z": "IMPOSSIBLE lift 5.1 mm (max 6.4)"
     },
     "4": {
-     "Q": "DEVIATES |dQ| 63% (delay-corr. 63%), V 0.38x",
+     "Q": "DEVIATES |dQ| 33% (delay-corr. 33%), V 0.68x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -24%",
+     "u0": "DELIVERED",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
-     "r": "DEVIATES -34%",
-     "foot": "DEVIATES rms 2.4 mm (2.1 after 20 ms)",
-     "z": "IMPOSSIBLE lift 2.6 mm (max 7.0)"
+     "r": "DEVIATES -17%",
+     "foot": "DEVIATES rms 1.8 mm (1.3 after 24 ms)",
+     "z": "IMPOSSIBLE lift 1.9 mm (max 5.7)"
     },
     "5": {
-     "Q": "DEVIATES |dQ| 62% (delay-corr. 62%), V 0.40x",
+     "Q": "DEVIATES |dQ| 38% (delay-corr. 38%), V 0.64x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -18%",
+     "u0": "DELIVERED",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
-     "r": "DEVIATES -20%",
-     "foot": "DEVIATES rms 3.2 mm (2.1 after 68 ms)",
+     "r": "DEVIATES -16%",
+     "foot": "DEVIATES rms 2.8 mm (1.8 after 56 ms)",
      "z": "DELIVERED"
     },
     "6": {
@@ -9215,12 +9215,12 @@
      "z": "DELIVERED"
     },
     "7": {
-     "Q": "DEVIATES |dQ| 30% (delay-corr. 30%), V 0.98x",
+     "Q": "DEVIATES |dQ| 30% (delay-corr. 30%), V 0.95x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -16%",
-     "uh": "DEVIATES -16%",
-     "tan": "DEVIATES -15%",
+     "exit_h": "DEVIATES -21%",
+     "uh": "DEVIATES -20%",
+     "tan": "DEVIATES -19%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
@@ -9228,7 +9228,7 @@
    },
    "worst": {
     "Q": [
-     "DEVIATES late start 131 ms > stroke 70 ms, V 0.00x",
+     "DEVIATES late start 150 ms > stroke 70 ms, V 0.00x",
      1
     ],
     "pulse": [
@@ -9240,31 +9240,31 @@
      2
     ],
     "u0": [
-     "DEVIATES -24%",
-     4
+     "DELIVERED",
+     5
     ],
     "exit_h": [
-     "DEVIATES +35%",
+     "DEVIATES +43%",
      2
     ],
     "tan": [
-     "DEVIATES -15%",
+     "DEVIATES -19%",
      7
     ],
     "uh": [
-     "DEVIATES +26%",
+     "DEVIATES +33%",
      2
     ],
     "r": [
-     "DEVIATES -34%",
-     4
+     "DEVIATES +34%",
+     2
     ],
     "foot": [
-     "DEVIATES rms 4.0 mm (4.0 after 0 ms)",
+     "DEVIATES rms 4.1 mm (4.1 after 0 ms)",
      2
     ],
     "z": [
-     "IMPOSSIBLE lift 17.8 mm (max 19.9)",
+     "IMPOSSIBLE lift 17.7 mm (max 19.9)",
      1
     ]
    }
@@ -9279,12 +9279,12 @@
     "dt": 0.001,
     "nr": 6,
     "steps": 18500,
-    "wall_s": 53.08239531517029,
-    "n_ff_solves": 289,
+    "wall_s": 37.8437077999115,
+    "n_ff_solves": 202,
     "ff_tol": 0.03,
     "lift_smooth": false,
-    "wall_want_s": 1.4342517852783203,
-    "wall_sim_s": 51.497758626937866,
+    "wall_want_s": 1.162285566329956,
+    "wall_sim_s": 36.54138994216919,
     "onset_tilt_deg": 37.32788760680706,
     "tilt0_deg": 35.32788760680705,
     "law": {
@@ -9317,21 +9317,21 @@
    },
    "total": {
     "V_w_mL": 120.91661439768893,
-    "V_d_mL": 102.4464346082893,
-    "V_d_in_T_mL": 102.4464346081652,
-    "V_after_T_mL": 1.2406436870148953e-10,
-    "milk_used_mL": 102.44643460829285,
+    "V_d_mL": 105.08583889724386,
+    "V_d_in_T_mL": 105.08583889716073,
+    "V_after_T_mL": 8.313724647696923e-11,
+    "milk_used_mL": 105.08583889724426,
     "fill_mL": 350.0,
-    "V_end_mL": 247.55356539170717,
+    "V_end_mL": 244.91416110275577,
     "overflow_mL": 0.0,
-    "V_cup_mL": 102.44643460828911,
-    "Q_delay_s": 0.148,
-    "Q_delay_vs_intent_s": 0.209,
-    "Q_err_rel": 0.4146264178856689,
-    "Q_err_rel_delayed": 0.3908975197236005,
+    "V_cup_mL": 105.0858388972435,
+    "Q_delay_s": 0.108,
+    "Q_delay_vs_intent_s": 0.17,
+    "Q_err_rel": 0.3834700600171302,
+    "Q_err_rel_delayed": 0.3695521500122319,
     "tilt_range_deg": [
-     33.384366348187115,
-     56.00768914728398
+     33.24561453714381,
+     56.33586637478936
     ],
     "tilt_rate_max": 60.00000000000583,
     "yaw_rate_max": 0.0,
@@ -9339,143 +9339,143 @@
      44.97718691776962,
      44.97718691776962
     ],
-    "lift_max_mm": 25.4425048828125,
-    "lift_time_s": 5.686,
+    "lift_max_mm": 26.1383056640625,
+    "lift_time_s": 5.434,
     "tip_speed_max": 1.5000000000000002,
-    "acc_max": 5.1611922331084505,
-    "slope_max_deg": 10.533288247726793,
-    "incoherent_frac": 0.24099441907661084,
-    "Q_hit_max_mLs": 71.0889897965122,
+    "acc_max": 5.235796704271802,
+    "slope_max_deg": 10.551273680129855,
+    "incoherent_frac": 0.24500733385986687,
+    "Q_hit_max_mLs": 54.83481894018716,
     "Q_w_max_mLs": 14.999999999999865
    },
    "classes": {
     "1": {
-     "Q": "DEVIATES |dQ| 44% (delay-corr. 25%), V 0.57x",
+     "Q": "DEVIATES |dQ| 35% (delay-corr. 27%), V 0.71x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -28%",
+     "u0": "DEVIATES -25%",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
-     "r": "DEVIATES -15%",
-     "foot": "DEVIATES rms 2.9 mm (2.9 after 0 ms)",
-     "z": "IMPOSSIBLE lift 7.5 mm (max 15.5)"
+     "r": "DELIVERED",
+     "foot": "DEVIATES rms 3.3 mm (3.3 after 0 ms)",
+     "z": "IMPOSSIBLE lift 7.2 mm (max 15.5)"
     },
     "2": {
-     "Q": "DEVIATES |dQ| 28% (delay-corr. 30%), V 0.94x",
+     "Q": "DEVIATES |dQ| 25% (delay-corr. 27%), V 0.98x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DEVIATES +25%",
      "uh": "DEVIATES +24%",
-     "tan": "DEVIATES +19%",
+     "tan": "DEVIATES +20%",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 3.5 mm (3.2 after 46 ms)",
-     "z": "IMPOSSIBLE lift 3.1 mm (max 6.5)"
+     "foot": "DEVIATES rms 3.2 mm (2.8 after 48 ms)",
+     "z": "IMPOSSIBLE lift 3.0 mm (max 6.3)"
     },
     "3": {
-     "Q": "DEVIATES |dQ| 17% (delay-corr. 17%), V 0.84x",
+     "Q": "DEVIATES |dQ| 18% (delay-corr. 18%), V 0.82x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DEVIATES +21%",
      "uh": "DEVIATES +21%",
      "tan": "DEVIATES +23%",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 1.1 mm (0.9 after 22 ms)",
+     "foot": "DEVIATES rms 1.0 mm (0.9 after 18 ms)",
      "z": "DELIVERED"
     },
     "4": {
-     "Q": "DEVIATES |dQ| 48% (delay-corr. 48%), V 1.16x",
+     "Q": "DEVIATES |dQ| 39% (delay-corr. 39%), V 1.06x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +35%",
-     "uh": "DEVIATES +32%",
-     "tan": "DEVIATES +22%",
+     "exit_h": "DEVIATES +32%",
+     "uh": "DEVIATES +29%",
+     "tan": "DEVIATES +21%",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 3.2 mm (2.9 after 74 ms)",
-     "z": "IMPOSSIBLE lift 2.6 mm (max 5.4)"
+     "foot": "DEVIATES rms 3.0 mm (2.8 after 60 ms)",
+     "z": "IMPOSSIBLE lift 2.7 mm (max 5.1)"
     },
     "5": {
-     "Q": "DEVIATES |dQ| 83% (delay-corr. 83%), V 0.21x",
+     "Q": "DEVIATES |dQ| 79% (delay-corr. 79%), V 0.24x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -41%",
-     "exit_h": "DEVIATES -19%",
-     "uh": "DEVIATES -15%",
-     "tan": "DEVIATES -21%",
-     "r": "DEVIATES -33%",
-     "foot": "DEVIATES rms 13.2 mm (13.2 after 26 ms)",
-     "z": "IMPOSSIBLE lift 2.7 mm (max 5.4)"
+     "u0": "DEVIATES -39%",
+     "exit_h": "DEVIATES -16%",
+     "uh": "DELIVERED",
+     "tan": "DEVIATES -16%",
+     "r": "DEVIATES -39%",
+     "foot": "DEVIATES rms 10.3 mm (10.3 after 22 ms)",
+     "z": "IMPOSSIBLE lift 2.3 mm (max 5.1)"
     },
     "6": {
-     "Q": "DEVIATES |dQ| 27% (delay-corr. 27%), V 0.78x",
+     "Q": "DEVIATES |dQ| 23% (delay-corr. 23%), V 0.82x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 1.7 mm (0.7 after 48 ms)",
+     "foot": "DEVIATES rms 1.6 mm (0.7 after 46 ms)",
      "z": "DELIVERED"
     },
     "7": {
-     "Q": "DEVIATES |dQ| 36% (delay-corr. 37%), V 0.86x",
+     "Q": "DEVIATES |dQ| 38% (delay-corr. 41%), V 0.77x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -21%",
+     "u0": "DEVIATES -24%",
      "exit_h": "DELIVERED",
-     "uh": "DELIVERED",
+     "uh": "DEVIATES -17%",
      "tan": "DELIVERED",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "8": {
-     "Q": "DEVIATES |dQ| 102% (delay-corr. 84%), V 1.87x",
+     "Q": "DEVIATES |dQ| 97% (delay-corr. 85%), V 1.76x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -20%",
+     "u0": "DEVIATES -21%",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
-     "r": "DEVIATES +68%",
-     "foot": "DEVIATES rms 1.0 mm (0.8 after 30 ms)",
+     "r": "DEVIATES +64%",
+     "foot": "DEVIATES rms 1.1 mm (0.9 after 30 ms)",
      "z": "DELIVERED"
     },
     "9": {
-     "Q": "DEVIATES |dQ| 68% (delay-corr. 61%), V 1.44x",
+     "Q": "DEVIATES |dQ| 65% (delay-corr. 61%), V 1.37x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -31%",
-     "exit_h": "DEVIATES -17%",
-     "uh": "DEVIATES -18%",
+     "u0": "DEVIATES -32%",
+     "exit_h": "DEVIATES -18%",
+     "uh": "DEVIATES -19%",
      "tan": "DELIVERED",
-     "r": "DEVIATES +42%",
+     "r": "DEVIATES +39%",
      "foot": "DEVIATES rms 1.1 mm (0.7 after 62 ms)",
      "z": "DELIVERED"
     },
     "11": {
-     "Q": "DEVIATES |dQ| 36% (delay-corr. 28%), V 0.72x",
-     "U_perp": "DEVIATES +20%",
-     "u0": "DEVIATES -28%",
+     "Q": "DEVIATES |dQ| 37% (delay-corr. 35%), V 0.86x",
+     "U_perp": "DEVIATES +21%",
+     "u0": "DEVIATES -26%",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
-     "tan": "DEVIATES -27%",
+     "tan": "DEVIATES -25%",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 1.4 mm (1.2 after 54 ms)",
-     "z": "IMPOSSIBLE lift 13.0 mm (max 25.4)"
+     "foot": "DEVIATES rms 1.5 mm (1.4 after 58 ms)",
+     "z": "IMPOSSIBLE lift 12.8 mm (max 26.1)"
     },
     "12": {
-     "Q": "DEVIATES |dQ| 61% (delay-corr. 62%), V 1.34x",
+     "Q": "DEVIATES |dQ| 88% (delay-corr. 89%), V 1.71x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -15%",
+     "u0": "DELIVERED",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
-     "r": "DEVIATES +26%",
+     "r": "DEVIATES +43%",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 2.8 mm (max 8.1)"
+     "z": "IMPOSSIBLE lift 2.6 mm (max 8.0)"
     },
     "13": {
-     "Q": "DEVIATES |dQ| 36% (delay-corr. 35%), V 0.66x",
+     "Q": "DEVIATES |dQ| 28% (delay-corr. 28%), V 0.83x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -27%",
+     "u0": "DEVIATES -23%",
      "exit_h": "DELIVERED",
-     "uh": "DEVIATES -15%",
+     "uh": "DELIVERED",
      "tan": "DELIVERED",
      "r": "DELIVERED",
      "foot": "DELIVERED",
@@ -9493,7 +9493,7 @@
      "z": "DELIVERED"
     },
     "15": {
-     "Q": "DEVIATES |dQ| 22% (delay-corr. 17%), V 0.88x",
+     "Q": "DEVIATES |dQ| 21% (delay-corr. 18%), V 0.90x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
@@ -9504,20 +9504,20 @@
      "z": "DELIVERED"
     },
     "16": {
-     "Q": "DEVIATES |dQ| 79% (delay-corr. 33%), V 1.72x",
+     "Q": "DEVIATES |dQ| 71% (delay-corr. 31%), V 1.60x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -20%",
-     "exit_h": "DEVIATES -18%",
-     "uh": "DEVIATES -18%",
+     "u0": "DEVIATES -22%",
+     "exit_h": "DEVIATES -19%",
+     "uh": "DEVIATES -20%",
      "tan": "DELIVERED",
-     "r": "DEVIATES +42%",
+     "r": "DEVIATES +41%",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     }
    },
    "worst": {
     "Q": [
-     "DEVIATES |dQ| 102% (delay-corr. 84%), V 1.87x",
+     "DEVIATES |dQ| 97% (delay-corr. 85%), V 1.76x",
      8
     ],
     "pulse": [
@@ -9525,35 +9525,35 @@
      null
     ],
     "U_perp": [
-     "DEVIATES +20%",
+     "DEVIATES +21%",
      11
     ],
     "u0": [
-     "DEVIATES -41%",
+     "DEVIATES -39%",
      5
     ],
     "exit_h": [
-     "DEVIATES +35%",
-     4
-    ],
-    "tan": [
-     "DEVIATES -27%",
-     11
-    ],
-    "uh": [
      "DEVIATES +32%",
      4
     ],
+    "tan": [
+     "DEVIATES -25%",
+     11
+    ],
+    "uh": [
+     "DEVIATES +29%",
+     4
+    ],
     "r": [
-     "DEVIATES +68%",
+     "DEVIATES +64%",
      8
     ],
     "foot": [
-     "DEVIATES rms 13.2 mm (13.2 after 26 ms)",
+     "DEVIATES rms 10.3 mm (10.3 after 22 ms)",
      5
     ],
     "z": [
-     "IMPOSSIBLE lift 13.0 mm (max 25.4)",
+     "IMPOSSIBLE lift 12.8 mm (max 26.1)",
      11
     ]
    }
@@ -9568,12 +9568,12 @@
     "dt": 0.001,
     "nr": 6,
     "steps": 14300,
-    "wall_s": 46.982839584350586,
-    "n_ff_solves": 1501,
+    "wall_s": 50.16237163543701,
+    "n_ff_solves": 1013,
     "ff_tol": 0.005,
     "lift_smooth": true,
-    "wall_want_s": 0.9662349224090576,
-    "wall_sim_s": 45.869826793670654,
+    "wall_want_s": 1.3177454471588135,
+    "wall_sim_s": 48.47517275810242,
     "onset_tilt_deg": 49.874154687859125,
     "tilt0_deg": 47.87415468785912,
     "law": {
@@ -9606,21 +9606,21 @@
    },
    "total": {
     "V_w_mL": 194.93416233007437,
-    "V_d_mL": 193.01356627456536,
-    "V_d_in_T_mL": 192.93280414150317,
-    "V_after_T_mL": 0.08076213306215489,
-    "milk_used_mL": 193.01505273153407,
+    "V_d_mL": 188.48999387370776,
+    "V_d_in_T_mL": 188.41995216323633,
+    "V_after_T_mL": 0.07004171047144638,
+    "milk_used_mL": 188.49128377372176,
     "fill_mL": 250.0,
-    "V_end_mL": 56.98494726846595,
+    "V_end_mL": 61.508716226278274,
     "overflow_mL": 0.0,
-    "V_cup_mL": 193.01356627456488,
-    "Q_delay_s": 0.252,
-    "Q_delay_vs_intent_s": 0.325,
-    "Q_err_rel": 0.21145552644202134,
-    "Q_err_rel_delayed": 0.1497712320826608,
+    "V_cup_mL": 188.48999387370884,
+    "Q_delay_s": 0.227,
+    "Q_delay_vs_intent_s": 0.293,
+    "Q_err_rel": 0.18009677679074587,
+    "Q_err_rel_delayed": 0.13910979403142568,
     "tilt_range_deg": [
      47.93415468785912,
-     81.3449510174513
+     81.19624374215977
     ],
     "tilt_rate_max": 60.00000000000583,
     "yaw_rate_max": 0.0,
@@ -9629,12 +9629,12 @@
      -90.00021045914971
     ],
     "lift_max_mm": 5.914306640625,
-    "lift_time_s": 0.249,
-    "tip_speed_max": 0.8017882502672146,
-    "acc_max": 2.7599112446976557,
-    "slope_max_deg": 11.232726261825205,
-    "incoherent_frac": 0.024603527493700903,
-    "Q_hit_max_mLs": 63.14202882861237,
+    "lift_time_s": 0.218,
+    "tip_speed_max": 0.8017355952915739,
+    "acc_max": 2.778303750414854,
+    "slope_max_deg": 10.980702821088329,
+    "incoherent_frac": 0.04291113910916772,
+    "Q_hit_max_mLs": 50.15967649351801,
     "Q_w_max_mLs": 22.499967914198958
    },
    "classes": {
@@ -9675,7 +9675,7 @@
      "Q": "DELIVERED",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -21%",
+     "exit_h": "DEVIATES -22%",
      "uh": "DEVIATES -21%",
      "tan": "DEVIATES -21%",
      "r": "DELIVERED",
@@ -9683,23 +9683,23 @@
      "z": "DELIVERED"
     },
     "5": {
-     "Q": "DEVIATES |dQ| 49% (delay-corr. 48%), V 1.12x",
+     "Q": "DEVIATES |dQ| 45% (delay-corr. 50%), V 0.99x",
      "U_perp": "DELIVERED",
-     "u0": "DELIVERED",
+     "u0": "DEVIATES -18%",
      "exit_h": "DEVIATES -41%",
      "uh": "DEVIATES -39%",
      "tan": "DEVIATES -33%",
-     "r": "DEVIATES +18%",
-     "foot": "DEVIATES rms 1.8 mm (1.7 after 16 ms)",
+     "r": "DEVIATES +16%",
+     "foot": "DEVIATES rms 1.9 mm (1.8 after 20 ms)",
      "z": "DELIVERED"
     },
     "7": {
-     "Q": "DEVIATES |dQ| 25% (delay-corr. 7%), V 0.76x",
+     "Q": "DEVIATES |dQ| 24% (delay-corr. 7%), V 0.77x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DEVIATES -30%",
-     "uh": "DEVIATES -29%",
-     "tan": "DEVIATES -32%",
+     "uh": "DEVIATES -28%",
+     "tan": "DEVIATES -31%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
@@ -9709,8 +9709,8 @@
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DEVIATES -37%",
-     "uh": "DEVIATES -34%",
-     "tan": "DEVIATES -37%",
+     "uh": "DEVIATES -33%",
+     "tan": "DEVIATES -36%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
@@ -9719,31 +9719,31 @@
      "Q": "DELIVERED",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -43%",
-     "uh": "DEVIATES -42%",
-     "tan": "DEVIATES -45%",
+     "exit_h": "DEVIATES -42%",
+     "uh": "DEVIATES -41%",
+     "tan": "DEVIATES -44%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "10": {
-     "Q": "DEVIATES |dQ| 83% (delay-corr. 36%), V 1.63x",
+     "Q": "DEVIATES |dQ| 58% (delay-corr. 42%), V 1.36x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DEVIATES -46%",
      "uh": "DEVIATES -46%",
-     "tan": "DEVIATES -45%",
-     "r": "DEVIATES +29%",
-     "foot": "DEVIATES rms 1.2 mm (1.2 after 0 ms)",
+     "tan": "DEVIATES -44%",
+     "r": "DEVIATES +21%",
+     "foot": "DEVIATES rms 1.3 mm (1.3 after 0 ms)",
      "z": "DELIVERED"
     },
     "12": {
-     "Q": "DEVIATES |dQ| 58% (delay-corr. 10%), V 0.42x",
+     "Q": "DEVIATES |dQ| 55% (delay-corr. 14%), V 0.45x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -50%",
-     "uh": "DEVIATES -45%",
-     "tan": "DEVIATES -47%",
+     "exit_h": "DEVIATES -49%",
+     "uh": "DEVIATES -43%",
+     "tan": "DEVIATES -46%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
@@ -9752,9 +9752,9 @@
      "Q": "DELIVERED",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -67%",
-     "uh": "DEVIATES -66%",
-     "tan": "DEVIATES -68%",
+     "exit_h": "DEVIATES -65%",
+     "uh": "DEVIATES -64%",
+     "tan": "DEVIATES -66%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
@@ -9763,50 +9763,50 @@
      "Q": "DELIVERED",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -86%",
-     "uh": "DEVIATES -68%",
-     "tan": "DEVIATES -70%",
+     "exit_h": "DEVIATES -84%",
+     "uh": "DEVIATES -66%",
+     "tan": "DEVIATES -69%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "15": {
-     "Q": "DEVIATES |dQ| 23% (delay-corr. 25%), V 1.00x",
+     "Q": "DEVIATES |dQ| 24% (delay-corr. 26%), V 0.97x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -86%",
-     "uh": "DEVIATES -79%",
-     "tan": "DEVIATES -80%",
+     "exit_h": "DEVIATES -83%",
+     "uh": "DEVIATES -77%",
+     "tan": "DEVIATES -77%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "16": {
-     "Q": "DEVIATES |dQ| 62% (delay-corr. 43%), V 1.21x",
+     "Q": "DEVIATES |dQ| 51% (delay-corr. 46%), V 1.03x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -92%",
-     "uh": "DEVIATES -75%",
-     "tan": "DEVIATES -74%",
-     "r": "DEVIATES +30%",
-     "foot": "DEVIATES rms 1.3 mm (0.5 after 26 ms)",
+     "exit_h": "DEVIATES -88%",
+     "uh": "DEVIATES -74%",
+     "tan": "DEVIATES -72%",
+     "r": "DEVIATES +23%",
+     "foot": "DEVIATES rms 1.2 mm (0.5 after 24 ms)",
      "z": "DELIVERED"
     },
     "17": {
-     "Q": "DEVIATES |dQ| 99% (delay-corr. 59%), V 1.59x",
+     "Q": "DEVIATES |dQ| 109% (delay-corr. 68%), V 1.50x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -94%",
-     "uh": "DEVIATES -66%",
-     "tan": "DEVIATES -66%",
-     "r": "DEVIATES +43%",
-     "foot": "DEVIATES rms 3.7 mm (1.0 after 42 ms)",
+     "exit_h": "DEVIATES -92%",
+     "uh": "DEVIATES -63%",
+     "tan": "DEVIATES -62%",
+     "r": "DEVIATES +45%",
+     "foot": "DEVIATES rms 3.7 mm (1.1 after 40 ms)",
      "z": "DELIVERED"
     }
    },
    "worst": {
     "Q": [
-     "DEVIATES |dQ| 99% (delay-corr. 59%), V 1.59x",
+     "DEVIATES |dQ| 109% (delay-corr. 68%), V 1.50x",
      17
     ],
     "pulse": [
@@ -9815,30 +9815,30 @@
     ],
     "U_perp": [
      "DELIVERED",
-     13
+     16
     ],
     "u0": [
-     "DELIVERED",
+     "DEVIATES -18%",
      5
     ],
     "exit_h": [
-     "DEVIATES -94%",
+     "DEVIATES -92%",
      17
     ],
     "tan": [
-     "DEVIATES -80%",
+     "DEVIATES -77%",
      15
     ],
     "uh": [
-     "DEVIATES -79%",
+     "DEVIATES -77%",
      15
     ],
     "r": [
-     "DEVIATES +43%",
+     "DEVIATES +45%",
      17
     ],
     "foot": [
-     "DEVIATES rms 3.7 mm (1.0 after 42 ms)",
+     "DEVIATES rms 3.7 mm (1.1 after 40 ms)",
      17
     ],
     "z": [
@@ -9857,12 +9857,12 @@
     "dt": 0.001,
     "nr": 6,
     "steps": 15690,
-    "wall_s": 57.289499044418335,
-    "n_ff_solves": 1513,
+    "wall_s": 59.23320436477661,
+    "n_ff_solves": 944,
     "ff_tol": 0.005,
     "lift_smooth": true,
-    "wall_want_s": 1.0694751739501953,
-    "wall_sim_s": 56.06392979621887,
+    "wall_want_s": 1.5262298583984375,
+    "wall_sim_s": 57.45705223083496,
     "onset_tilt_deg": 49.874154687859125,
     "tilt0_deg": 47.87415468785912,
     "law": {
@@ -9895,21 +9895,21 @@
    },
    "total": {
     "V_w_mL": 154.03953250861477,
-    "V_d_mL": 142.87691789796816,
-    "V_d_in_T_mL": 142.87686654771863,
-    "V_after_T_mL": 5.135024951965111e-05,
-    "milk_used_mL": 142.87691884426636,
+    "V_d_mL": 136.90917878292754,
+    "V_d_in_T_mL": 136.9091443366627,
+    "V_after_T_mL": 3.44462648385552e-05,
+    "milk_used_mL": 136.90917941773964,
     "fill_mL": 250.0,
-    "V_end_mL": 107.12308115573366,
+    "V_end_mL": 113.09082058226039,
     "overflow_mL": 0.0,
-    "V_cup_mL": 142.8769178979685,
-    "Q_delay_s": 0.196,
-    "Q_delay_vs_intent_s": 0.248,
-    "Q_err_rel": 0.3001906850670292,
-    "Q_err_rel_delayed": 0.2202060436253413,
+    "V_cup_mL": 136.90917878292808,
+    "Q_delay_s": 0.129,
+    "Q_delay_vs_intent_s": 0.209,
+    "Q_err_rel": 0.28118110837710697,
+    "Q_err_rel_delayed": 0.23284453758438575,
     "tilt_range_deg": [
      47.93415468785912,
-     70.7456545608407
+     69.86049476147538
     ],
     "tilt_rate_max": 60.00000000000583,
     "yaw_rate_max": 0.0,
@@ -9918,99 +9918,99 @@
      -90.00021045914971
     ],
     "lift_max_mm": 8.074951171874996,
-    "lift_time_s": 2.654,
-    "tip_speed_max": 1.4999999999999998,
-    "acc_max": 2.5524862246180677,
-    "slope_max_deg": 10.962298637562208,
-    "incoherent_frac": 0.1902749832327297,
-    "Q_hit_max_mLs": 41.22212715726218,
+    "lift_time_s": 2.975,
+    "tip_speed_max": 1.5,
+    "acc_max": 2.4767305836933455,
+    "slope_max_deg": 10.929385745527526,
+    "incoherent_frac": 0.21891148245084222,
+    "Q_hit_max_mLs": 31.40877879027293,
     "Q_w_max_mLs": 20.989829361154566
    },
    "classes": {
     "1": {
-     "Q": "DEVIATES |dQ| 30% (delay-corr. 13%), V 0.76x",
+     "Q": "DEVIATES |dQ| 24% (delay-corr. 10%), V 0.82x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 1.3 mm (1.3 after 0 ms)",
-     "z": "IMPOSSIBLE lift 2.0 mm (max 8.1)"
+     "foot": "DEVIATES rms 1.4 mm (1.4 after 0 ms)",
+     "z": "IMPOSSIBLE lift 1.8 mm (max 8.1)"
     },
     "2": {
-     "Q": "DEVIATES |dQ| 31% (delay-corr. 31%), V 0.80x",
+     "Q": "DEVIATES |dQ| 33% (delay-corr. 33%), V 0.75x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DELIVERED",
+     "exit_h": "DEVIATES -15%",
      "uh": "DELIVERED",
-     "tan": "DEVIATES -15%",
+     "tan": "DEVIATES -16%",
      "r": "DELIVERED",
      "foot": "DEVIATES rms 1.4 mm (0.7 after 36 ms)",
-     "z": "DELIVERED"
+     "z": "IMPOSSIBLE lift 1.1 mm (max 2.2)"
     },
     "3": {
-     "Q": "DEVIATES |dQ| 25% (delay-corr. 24%), V 0.92x",
+     "Q": "DEVIATES |dQ| 28% (delay-corr. 27%), V 0.85x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DEVIATES -20%",
      "uh": "DEVIATES -16%",
      "tan": "DEVIATES -18%",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 2.0 mm (1.9 after 24 ms)",
-     "z": "IMPOSSIBLE lift 1.4 mm (max 5.1)"
+     "foot": "DEVIATES rms 1.9 mm (1.7 after 24 ms)",
+     "z": "IMPOSSIBLE lift 1.5 mm (max 5.2)"
     },
     "4": {
-     "Q": "DEVIATES |dQ| 69% (delay-corr. 12%), V 1.64x",
+     "Q": "DEVIATES |dQ| 49% (delay-corr. 10%), V 1.45x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DEVIATES -20%",
-     "uh": "DEVIATES -19%",
+     "uh": "DEVIATES -20%",
      "tan": "DEVIATES -27%",
-     "r": "DEVIATES +17%",
+     "r": "DELIVERED",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 5.3 mm (max 6.0)"
+     "z": "IMPOSSIBLE lift 6.0 mm (max 7.9)"
     },
     "6": {
-     "Q": "DEVIATES late start 205 ms > stroke 170 ms, V 0.00x",
+     "Q": "DEVIATES late start 202 ms > stroke 170 ms, V 0.00x",
      "U_perp": "DELIVERED",
      "u0": "DEVIATES -64%",
      "exit_h": "DEVIATES -60%",
      "uh": "DEVIATES -60%",
      "tan": "DEVIATES -53%",
-     "r": "DEVIATES -97%",
+     "r": "DEVIATES -98%",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "7": {
-     "Q": "DEVIATES |dQ| 45% (delay-corr. 53%), V 0.81x",
+     "Q": "DEVIATES |dQ| 66% (delay-corr. 74%), V 1.11x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
-     "r": "DELIVERED",
+     "r": "DEVIATES +21%",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "8": {
-     "Q": "DEVIATES |dQ| 36% (delay-corr. 31%), V 0.74x",
+     "Q": "DEVIATES |dQ| 37% (delay-corr. 34%), V 0.69x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -30%",
-     "uh": "DEVIATES -28%",
-     "tan": "DEVIATES -30%",
+     "exit_h": "DEVIATES -32%",
+     "uh": "DEVIATES -31%",
+     "tan": "DEVIATES -31%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "9": {
-     "Q": "DEVIATES |dQ| 22% (delay-corr. 23%), V 1.04x",
+     "Q": "DEVIATES |dQ| 21% (delay-corr. 22%), V 1.01x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -27%",
-     "uh": "DEVIATES -25%",
-     "tan": "DEVIATES -28%",
+     "exit_h": "DEVIATES -26%",
+     "uh": "DEVIATES -24%",
+     "tan": "DEVIATES -27%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
@@ -10019,94 +10019,94 @@
      "Q": "DELIVERED",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -36%",
-     "uh": "DEVIATES -33%",
-     "tan": "DEVIATES -36%",
+     "exit_h": "DEVIATES -34%",
+     "uh": "DEVIATES -32%",
+     "tan": "DEVIATES -35%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "11": {
-     "Q": "DEVIATES |dQ| 67% (delay-corr. 22%), V 1.63x",
+     "Q": "DEVIATES |dQ| 43% (delay-corr. 22%), V 1.37x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -40%",
+     "exit_h": "DEVIATES -39%",
      "uh": "DEVIATES -39%",
-     "tan": "DEVIATES -39%",
-     "r": "DEVIATES +26%",
+     "tan": "DEVIATES -38%",
+     "r": "DEVIATES +22%",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "13": {
-     "Q": "DEVIATES |dQ| 17% (delay-corr. 6%), V 0.83x",
+     "Q": "DEVIATES |dQ| 16% (delay-corr. 9%), V 0.84x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -44%",
-     "uh": "DEVIATES -44%",
-     "tan": "DEVIATES -47%",
+     "exit_h": "DEVIATES -42%",
+     "uh": "DEVIATES -42%",
+     "tan": "DEVIATES -44%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "14": {
-     "Q": "DEVIATES |dQ| 18% (delay-corr. 18%), V 0.94x",
+     "Q": "DEVIATES |dQ| 17% (delay-corr. 18%), V 0.94x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -56%",
-     "uh": "DEVIATES -52%",
-     "tan": "DEVIATES -52%",
+     "exit_h": "DEVIATES -54%",
+     "uh": "DEVIATES -50%",
+     "tan": "DEVIATES -50%",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 1.2 mm (1.2 after 14 ms)",
+     "foot": "DEVIATES rms 1.2 mm (1.2 after 12 ms)",
      "z": "DELIVERED"
     },
     "15": {
-     "Q": "DEVIATES |dQ| 32% (delay-corr. 24%), V 1.17x",
+     "Q": "DEVIATES |dQ| 30% (delay-corr. 24%), V 1.07x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -60%",
-     "uh": "DEVIATES -56%",
-     "tan": "DEVIATES -55%",
+     "exit_h": "DEVIATES -58%",
+     "uh": "DEVIATES -54%",
+     "tan": "DEVIATES -53%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "16": {
-     "Q": "DEVIATES |dQ| 46% (delay-corr. 25%), V 1.44x",
+     "Q": "DEVIATES |dQ| 36% (delay-corr. 25%), V 1.32x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -18%",
-     "exit_h": "DEVIATES -59%",
-     "uh": "DEVIATES -56%",
-     "tan": "DEVIATES -55%",
-     "r": "DEVIATES +27%",
+     "u0": "DEVIATES -20%",
+     "exit_h": "DEVIATES -57%",
+     "uh": "DEVIATES -54%",
+     "tan": "DEVIATES -53%",
+     "r": "DEVIATES +21%",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "17": {
-     "Q": "DEVIATES |dQ| 24% (delay-corr. 24%), V 0.93x",
-     "U_perp": "DELIVERED",
-     "u0": "DEVIATES -29%",
-     "exit_h": "DEVIATES -63%",
-     "uh": "DEVIATES -56%",
-     "tan": "DEVIATES -54%",
-     "r": "DELIVERED",
-     "foot": "DEVIATES rms 1.5 mm (0.3 after 44 ms)",
-     "z": "DELIVERED"
-    },
-    "18": {
-     "Q": "DEVIATES |dQ| 53% (delay-corr. 44%), V 1.31x",
+     "Q": "DEVIATES |dQ| 23% (delay-corr. 24%), V 0.90x",
      "U_perp": "DELIVERED",
      "u0": "DEVIATES -30%",
      "exit_h": "DEVIATES -61%",
-     "uh": "DEVIATES -57%",
-     "tan": "DEVIATES -55%",
-     "r": "DEVIATES +29%",
-     "foot": "DELIVERED",
+     "uh": "DEVIATES -54%",
+     "tan": "DEVIATES -53%",
+     "r": "DELIVERED",
+     "foot": "DEVIATES rms 1.6 mm (0.3 after 44 ms)",
+     "z": "DELIVERED"
+    },
+    "18": {
+     "Q": "DEVIATES |dQ| 50% (delay-corr. 45%), V 1.24x",
+     "U_perp": "DELIVERED",
+     "u0": "DEVIATES -31%",
+     "exit_h": "DEVIATES -59%",
+     "uh": "DEVIATES -56%",
+     "tan": "DEVIATES -54%",
+     "r": "DEVIATES +27%",
+     "foot": "DEVIATES rms 1.0 mm (0.7 after 88 ms)",
      "z": "DELIVERED"
     }
    },
    "worst": {
     "Q": [
-     "DEVIATES late start 205 ms > stroke 170 ms, V 0.00x",
+     "DEVIATES late start 202 ms > stroke 170 ms, V 0.00x",
      6
     ],
     "pulse": [
@@ -10122,11 +10122,11 @@
      6
     ],
     "exit_h": [
-     "DEVIATES -63%",
+     "DEVIATES -61%",
      17
     ],
     "tan": [
-     "DEVIATES -55%",
+     "DEVIATES -54%",
      18
     ],
     "uh": [
@@ -10134,15 +10134,15 @@
      6
     ],
     "r": [
-     "DEVIATES -97%",
+     "DEVIATES -98%",
      6
     ],
     "foot": [
-     "DEVIATES rms 2.0 mm (1.9 after 24 ms)",
+     "DEVIATES rms 1.9 mm (1.7 after 24 ms)",
      3
     ],
     "z": [
-     "IMPOSSIBLE lift 5.3 mm (max 6.0)",
+     "IMPOSSIBLE lift 6.0 mm (max 7.9)",
      4
     ]
    }
@@ -10157,12 +10157,12 @@
     "dt": 0.001,
     "nr": 6,
     "steps": 14300,
-    "wall_s": 55.974804639816284,
-    "n_ff_solves": 1076,
+    "wall_s": 60.808443784713745,
+    "n_ff_solves": 647,
     "ff_tol": 0.005,
     "lift_smooth": true,
-    "wall_want_s": 1.1413993835449219,
-    "wall_sim_s": 54.63024687767029,
+    "wall_want_s": 1.1232068538665771,
+    "wall_sim_s": 59.54760241508484,
     "onset_tilt_deg": 7.585753337480126,
     "tilt0_deg": 5.585753337480127,
     "law": {
@@ -10195,21 +10195,21 @@
    },
    "total": {
     "V_w_mL": 194.93416233007437,
-    "V_d_mL": 245.56171161226086,
-    "V_d_in_T_mL": 243.66372104490833,
-    "V_after_T_mL": 1.8979905673525357,
-    "milk_used_mL": 245.59100169069833,
+    "V_d_mL": 225.89749385390564,
+    "V_d_in_T_mL": 224.98869878894018,
+    "V_after_T_mL": 0.9087950649654115,
+    "milk_used_mL": 225.9120632558969,
     "fill_mL": 500.0,
-    "V_end_mL": 254.4089983093017,
+    "V_end_mL": 274.08793674410316,
     "overflow_mL": 0.0,
-    "V_cup_mL": 245.5617116122602,
-    "Q_delay_s": 0.5,
+    "V_cup_mL": 225.8974938539065,
+    "Q_delay_s": 0.465,
     "Q_delay_vs_intent_s": 0.5,
-    "Q_err_rel": 0.6438006440585601,
-    "Q_err_rel_delayed": 0.535498440589216,
+    "Q_err_rel": 0.5508509193919677,
+    "Q_err_rel_delayed": 0.45234302657458136,
     "tilt_range_deg": [
      5.6457533374801265,
-     63.80263582341019
+     61.79168157938507
     ],
     "tilt_rate_max": 60.00000000000583,
     "yaw_rate_max": 0.0,
@@ -10218,87 +10218,87 @@
      -90.00021045914971
     ],
     "lift_max_mm": 86.71875000000001,
-    "lift_time_s": 9.346,
-    "tip_speed_max": 0.8044798170512014,
-    "acc_max": 6.156756351628552,
+    "lift_time_s": 9.567,
+    "tip_speed_max": 0.8053781001596757,
+    "acc_max": 6.037311584502947,
     "slope_max_deg": 19.798876354524932,
-    "incoherent_frac": 0.016984661429105874,
-    "Q_hit_max_mLs": 304.65684739388485,
+    "incoherent_frac": 0.031425364758698095,
+    "Q_hit_max_mLs": 275.2153053028482,
     "Q_w_max_mLs": 22.499967914198958
    },
    "classes": {
     "1": {
-     "Q": "DEVIATES |dQ| 26% (delay-corr. 30%), V 0.79x",
-     "U_perp": "DEVIATES +71%",
-     "u0": "DEVIATES -32%",
-     "exit_h": "DEVIATES +47%",
-     "uh": "DEVIATES +42%",
+     "Q": "DEVIATES |dQ| 29% (delay-corr. 37%), V 0.84x",
+     "U_perp": "DEVIATES +72%",
+     "u0": "DEVIATES -31%",
+     "exit_h": "DEVIATES +48%",
+     "uh": "DEVIATES +43%",
      "tan": "DELIVERED",
-     "r": "DEVIATES -26%",
-     "foot": "DEVIATES rms 3.7 mm (3.7 after 0 ms)",
-     "z": "IMPOSSIBLE lift 48.1 mm (max 86.7)"
+     "r": "DEVIATES -23%",
+     "foot": "DEVIATES rms 4.4 mm (4.4 after 0 ms)",
+     "z": "IMPOSSIBLE lift 47.4 mm (max 86.7)"
     },
     "2": {
-     "Q": "DEVIATES |dQ| 16% (delay-corr. 15%), V 0.84x",
-     "U_perp": "DEVIATES +46%",
+     "Q": "DEVIATES |dQ| 17% (delay-corr. 15%), V 0.83x",
+     "U_perp": "DEVIATES +45%",
      "u0": "DEVIATES -28%",
      "exit_h": "DEVIATES +50%",
      "uh": "DEVIATES +46%",
      "tan": "DELIVERED",
      "r": "DEVIATES -24%",
-     "foot": "DEVIATES rms 1.7 mm (0.9 after 46 ms)",
-     "z": "IMPOSSIBLE lift 28.5 mm (max 29.4)"
+     "foot": "DEVIATES rms 1.6 mm (0.8 after 44 ms)",
+     "z": "IMPOSSIBLE lift 28.3 mm (max 29.1)"
     },
     "3": {
      "Q": "DEVIATES |dQ| 16% (delay-corr. 16%), V 0.84x",
      "U_perp": "DEVIATES +44%",
      "u0": "DEVIATES -26%",
-     "exit_h": "DEVIATES +51%",
+     "exit_h": "DEVIATES +52%",
      "uh": "DEVIATES +51%",
      "tan": "DELIVERED",
      "r": "DEVIATES -24%",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 27.1 mm (max 29.3)"
+     "z": "IMPOSSIBLE lift 26.7 mm (max 29.1)"
     },
     "4": {
-     "Q": "DEVIATES |dQ| 15% (delay-corr. 15%), V 0.85x",
-     "U_perp": "DEVIATES +39%",
-     "u0": "DEVIATES -23%",
+     "Q": "DELIVERED",
+     "U_perp": "DEVIATES +38%",
+     "u0": "DEVIATES -22%",
      "exit_h": "DEVIATES +53%",
      "uh": "DEVIATES +51%",
      "tan": "DELIVERED",
-     "r": "DEVIATES -22%",
+     "r": "DEVIATES -21%",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 25.3 mm (max 26.2)"
+     "z": "IMPOSSIBLE lift 24.7 mm (max 25.9)"
     },
     "5": {
-     "Q": "DEVIATES |dQ| 35% (delay-corr. 57%), V 0.98x",
-     "U_perp": "DEVIATES +17%",
-     "u0": "DEVIATES -32%",
+     "Q": "DEVIATES |dQ| 34% (delay-corr. 59%), V 0.92x",
+     "U_perp": "DEVIATES +16%",
+     "u0": "DEVIATES -33%",
      "exit_h": "DEVIATES +28%",
      "uh": "DEVIATES +24%",
      "tan": "DELIVERED",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 4.1 mm (3.7 after 80 ms)",
-     "z": "IMPOSSIBLE lift 17.6 mm (max 25.8)"
+     "foot": "DEVIATES rms 3.8 mm (3.5 after 78 ms)",
+     "z": "IMPOSSIBLE lift 17.7 mm (max 25.5)"
     },
     "7": {
-     "Q": "DEVIATES |dQ| 45% (delay-corr. 15%), V 0.56x",
+     "Q": "DEVIATES |dQ| 44% (delay-corr. 12%), V 0.56x",
      "U_perp": "DEVIATES +21%",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +49%",
+     "exit_h": "DEVIATES +50%",
      "uh": "DEVIATES +49%",
-     "tan": "DEVIATES +24%",
+     "tan": "DEVIATES +25%",
      "r": "DELIVERED",
      "foot": "DEVIATES rms 1.1 mm (1.1 after 18 ms)",
      "z": "IMPOSSIBLE lift 13.5 mm (max 24.2)"
     },
     "8": {
-     "Q": "DEVIATES |dQ| 17% (delay-corr. 9%), V 0.86x",
+     "Q": "DEVIATES |dQ| 16% (delay-corr. 9%), V 0.87x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DEVIATES +51%",
-     "uh": "DEVIATES +45%",
+     "uh": "DEVIATES +46%",
      "tan": "DEVIATES +28%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
@@ -10313,54 +10313,54 @@
      "tan": "DEVIATES +22%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 11.2 mm (max 11.9)"
+     "z": "IMPOSSIBLE lift 11.3 mm (max 11.9)"
     },
     "10": {
-     "Q": "DEVIATES |dQ| 115% (delay-corr. 53%), V 1.96x",
-     "U_perp": "DEVIATES +15%",
+     "Q": "DEVIATES |dQ| 98% (delay-corr. 52%), V 1.75x",
+     "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +68%",
-     "uh": "DEVIATES +57%",
-     "tan": "DEVIATES +31%",
-     "r": "DEVIATES +46%",
-     "foot": "DEVIATES rms 4.1 mm (4.1 after 0 ms)",
-     "z": "IMPOSSIBLE lift 8.7 mm (max 11.9)"
+     "exit_h": "DEVIATES +66%",
+     "uh": "DEVIATES +53%",
+     "tan": "DEVIATES +29%",
+     "r": "DEVIATES +38%",
+     "foot": "DEVIATES rms 4.2 mm (4.2 after 2 ms)",
+     "z": "IMPOSSIBLE lift 9.0 mm (max 12.0)"
     },
     "12": {
-     "Q": "DEVIATES |dQ| 76% (delay-corr. 2257%), V 0.24x",
+     "Q": "DEVIATES |dQ| 82% (delay-corr. 342%), V 0.18x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -18%",
-     "exit_h": "DELIVERED",
-     "uh": "DELIVERED",
+     "u0": "DELIVERED",
+     "exit_h": "DEVIATES +25%",
+     "uh": "DEVIATES +21%",
      "tan": "DELIVERED",
      "r": "DEVIATES -33%",
-     "foot": "DEVIATES rms 1.5 mm (1.3 after 38 ms)",
-     "z": "IMPOSSIBLE lift 5.3 mm (max 12.8)"
+     "foot": "DEVIATES rms 1.6 mm (1.4 after 42 ms)",
+     "z": "IMPOSSIBLE lift 8.1 mm (max 16.1)"
     },
     "13": {
      "Q": "DELIVERED",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +21%",
-     "uh": "DEVIATES +22%",
-     "tan": "DEVIATES +22%",
+     "exit_h": "DEVIATES +27%",
+     "uh": "DEVIATES +28%",
+     "tan": "DEVIATES +29%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
      "z": "DELIVERED"
     },
     "14": {
-     "Q": "DEVIATES |dQ| 20% (delay-corr. 20%), V 0.89x",
+     "Q": "DEVIATES |dQ| 19% (delay-corr. 19%), V 0.88x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DELIVERED",
+     "exit_h": "DEVIATES +15%",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
      "r": "DELIVERED",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 1.5 mm (max 6.1)"
+     "z": "IMPOSSIBLE lift 1.9 mm (max 7.5)"
     },
     "15": {
-     "Q": "DEVIATES |dQ| 39% (delay-corr. 40%), V 1.02x",
+     "Q": "DEVIATES |dQ| 40% (delay-corr. 41%), V 1.00x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
@@ -10368,34 +10368,34 @@
      "tan": "DELIVERED",
      "r": "DELIVERED",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 6.1 mm (max 8.0)"
+     "z": "IMPOSSIBLE lift 7.4 mm (max 9.3)"
     },
     "16": {
-     "Q": "DEVIATES |dQ| 85% (delay-corr. 59%), V 1.42x",
+     "Q": "DEVIATES |dQ| 80% (delay-corr. 59%), V 1.31x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
-     "r": "DEVIATES +54%",
-     "foot": "DEVIATES rms 2.0 mm (1.5 after 28 ms)",
-     "z": "DELIVERED"
+     "r": "DEVIATES +49%",
+     "foot": "DEVIATES rms 2.1 mm (1.6 after 30 ms)",
+     "z": "IMPOSSIBLE lift 1.2 mm (max 3.3)"
     },
     "17": {
-     "Q": "DEVIATES |dQ| 367% (delay-corr. 84%), V 4.50x",
+     "Q": "DEVIATES |dQ| 323% (delay-corr. 86%), V 4.02x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES -18%",
-     "uh": "DEVIATES -21%",
-     "tan": "DEVIATES -18%",
-     "r": "DEVIATES +156%",
-     "foot": "DEVIATES rms 3.1 mm (2.3 after 24 ms)",
+     "exit_h": "DELIVERED",
+     "uh": "DEVIATES -18%",
+     "tan": "DELIVERED",
+     "r": "DEVIATES +146%",
+     "foot": "DEVIATES rms 3.2 mm (2.4 after 24 ms)",
      "z": "DELIVERED"
     }
    },
    "worst": {
     "Q": [
-     "DEVIATES |dQ| 367% (delay-corr. 84%), V 4.50x",
+     "DEVIATES |dQ| 323% (delay-corr. 86%), V 4.02x",
      17
     ],
     "pulse": [
@@ -10403,35 +10403,35 @@
      null
     ],
     "U_perp": [
-     "DEVIATES +71%",
+     "DEVIATES +72%",
      1
     ],
     "u0": [
-     "DEVIATES -32%",
+     "DEVIATES -33%",
      5
     ],
     "exit_h": [
-     "DEVIATES +68%",
+     "DEVIATES +66%",
      10
     ],
     "tan": [
-     "DEVIATES +31%",
+     "DEVIATES +29%",
      10
     ],
     "uh": [
-     "DEVIATES +57%",
+     "DEVIATES +53%",
      10
     ],
     "r": [
-     "DEVIATES +156%",
+     "DEVIATES +146%",
      17
     ],
     "foot": [
-     "DEVIATES rms 4.1 mm (4.1 after 0 ms)",
-     10
+     "DEVIATES rms 4.4 mm (4.4 after 0 ms)",
+     1
     ],
     "z": [
-     "IMPOSSIBLE lift 48.1 mm (max 86.7)",
+     "IMPOSSIBLE lift 47.4 mm (max 86.7)",
      1
     ]
    }
@@ -10446,12 +10446,12 @@
     "dt": 0.001,
     "nr": 6,
     "steps": 15690,
-    "wall_s": 62.8548264503479,
-    "n_ff_solves": 1430,
+    "wall_s": 55.07798671722412,
+    "n_ff_solves": 887,
     "ff_tol": 0.005,
     "lift_smooth": true,
-    "wall_want_s": 1.2769560813903809,
-    "wall_sim_s": 61.41795229911804,
+    "wall_want_s": 0.9979443550109863,
+    "wall_sim_s": 53.911460161209106,
     "onset_tilt_deg": 7.585753337480126,
     "tilt0_deg": 5.585753337480127,
     "law": {
@@ -10484,21 +10484,21 @@
    },
    "total": {
     "V_w_mL": 154.03953250861477,
-    "V_d_mL": 155.76411975670013,
-    "V_d_in_T_mL": 155.76400927123635,
-    "V_after_T_mL": 0.00011048546378421918,
-    "milk_used_mL": 155.76412179551062,
+    "V_d_mL": 155.61902040858968,
+    "V_d_in_T_mL": 155.61894357732683,
+    "V_after_T_mL": 7.683126287696305e-05,
+    "milk_used_mL": 155.61902182638934,
     "fill_mL": 500.0,
-    "V_end_mL": 344.23587820448944,
+    "V_end_mL": 344.3809781736107,
     "overflow_mL": 0.0,
-    "V_cup_mL": 155.7641197566998,
-    "Q_delay_s": 0.248,
-    "Q_delay_vs_intent_s": 0.28200000000000003,
-    "Q_err_rel": 0.45318404498005055,
-    "Q_err_rel_delayed": 0.37897580327209285,
+    "V_cup_mL": 155.61902040858806,
+    "Q_delay_s": 0.199,
+    "Q_delay_vs_intent_s": 0.251,
+    "Q_err_rel": 0.46840982776080087,
+    "Q_err_rel_delayed": 0.4157632891159026,
     "tilt_range_deg": [
-     5.258557754708518,
-     46.083710163583994
+     5.004051885153276,
+     45.699803898198745
     ],
     "tilt_rate_max": 60.00000000000583,
     "yaw_rate_max": 0.0,
@@ -10507,171 +10507,171 @@
      -90.00021045914971
     ],
     "lift_max_mm": 83.71582031250001,
-    "lift_time_s": 11.801,
-    "tip_speed_max": 1.4999999999999998,
-    "acc_max": 4.229205000331332,
+    "lift_time_s": 11.816,
+    "tip_speed_max": 1.5,
+    "acc_max": 4.227010692986705,
     "slope_max_deg": 19.798876354524932,
-    "incoherent_frac": 0.21014590651175358,
-    "Q_hit_max_mLs": 65.36997621263419,
+    "incoherent_frac": 0.22545773934193636,
+    "Q_hit_max_mLs": 70.00290655595037,
     "Q_w_max_mLs": 20.989829361154566
    },
    "classes": {
     "1": {
-     "Q": "DEVIATES |dQ| 44% (delay-corr. 23%), V 0.60x",
+     "Q": "DEVIATES |dQ| 49% (delay-corr. 33%), V 0.70x",
      "U_perp": "DEVIATES +101%",
-     "u0": "DEVIATES -33%",
-     "exit_h": "DEVIATES +45%",
+     "u0": "DEVIATES -32%",
+     "exit_h": "DEVIATES +47%",
      "uh": "DEVIATES +29%",
      "tan": "DEVIATES -36%",
-     "r": "DEVIATES -35%",
-     "foot": "DEVIATES rms 6.8 mm (6.8 after 0 ms)",
+     "r": "DEVIATES -28%",
+     "foot": "DEVIATES rms 7.9 mm (7.9 after 0 ms)",
      "z": "IMPOSSIBLE lift 78.4 mm (max 83.7)"
     },
     "2": {
-     "Q": "DEVIATES |dQ| 57% (delay-corr. 57%), V 1.28x",
+     "Q": "DEVIATES |dQ| 69% (delay-corr. 69%), V 1.35x",
      "U_perp": "DEVIATES +97%",
-     "u0": "DEVIATES -24%",
-     "exit_h": "DEVIATES +63%",
+     "u0": "DEVIATES -22%",
+     "exit_h": "DEVIATES +66%",
      "uh": "DEVIATES +56%",
-     "tan": "DEVIATES -20%",
+     "tan": "DEVIATES -21%",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 17.3 mm (15.1 after 198 ms)",
-     "z": "IMPOSSIBLE lift 72.5 mm (max 83.3)"
+     "foot": "DEVIATES rms 17.9 mm (15.3 after 194 ms)",
+     "z": "IMPOSSIBLE lift 72.6 mm (max 83.2)"
     },
     "3": {
-     "Q": "DEVIATES |dQ| 43% (delay-corr. 46%), V 1.08x",
-     "U_perp": "DEVIATES +63%",
-     "u0": "DEVIATES -24%",
-     "exit_h": "DEVIATES +48%",
-     "uh": "DEVIATES +33%",
-     "tan": "DEVIATES -18%",
+     "Q": "DEVIATES |dQ| 51% (delay-corr. 53%), V 0.96x",
+     "U_perp": "DEVIATES +60%",
+     "u0": "DEVIATES -26%",
+     "exit_h": "DEVIATES +43%",
+     "uh": "DEVIATES +29%",
+     "tan": "DEVIATES -19%",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 8.7 mm (8.7 after 0 ms)",
-     "z": "IMPOSSIBLE lift 46.9 mm (max 61.7)"
+     "foot": "DEVIATES rms 8.6 mm (8.6 after 0 ms)",
+     "z": "IMPOSSIBLE lift 45.9 mm (max 56.9)"
     },
     "4": {
-     "Q": "DEVIATES |dQ| 45% (delay-corr. 45%), V 1.01x",
+     "Q": "DEVIATES |dQ| 59% (delay-corr. 51%), V 0.88x",
      "U_perp": "DEVIATES +71%",
-     "u0": "DEVIATES -34%",
-     "exit_h": "DEVIATES +27%",
-     "uh": "DEVIATES +26%",
-     "tan": "DEVIATES -26%",
-     "r": "DEVIATES -26%",
-     "foot": "DEVIATES rms 4.1 mm (3.6 after 164 ms)",
-     "z": "IMPOSSIBLE lift 56.2 mm (max 58.3)"
+     "u0": "DEVIATES -29%",
+     "exit_h": "DEVIATES +36%",
+     "uh": "DEVIATES +33%",
+     "tan": "DEVIATES -22%",
+     "r": "DEVIATES -29%",
+     "foot": "DEVIATES rms 4.5 mm (4.1 after 148 ms)",
+     "z": "IMPOSSIBLE lift 55.2 mm (max 57.5)"
     },
     "6": {
-     "Q": "DEVIATES late start 256 ms > stroke 170 ms, V 0.00x",
-     "U_perp": "DEVIATES +30%",
+     "Q": "DEVIATES late start 241 ms > stroke 170 ms, V 0.00x",
+     "U_perp": "DEVIATES +28%",
      "u0": "DEVIATES -64%",
-     "exit_h": "DEVIATES -24%",
-     "uh": "DEVIATES -39%",
+     "exit_h": "DEVIATES -26%",
+     "uh": "DEVIATES -40%",
      "tan": "DEVIATES -53%",
-     "r": "DEVIATES -97%",
-     "foot": "DEVIATES rms 1.5 mm (1.2 after 22 ms)",
-     "z": "IMPOSSIBLE lift 19.9 mm (max 21.1)"
+     "r": "DEVIATES -98%",
+     "foot": "DEVIATES rms 1.3 mm (0.9 after 20 ms)",
+     "z": "IMPOSSIBLE lift 18.5 mm (max 19.8)"
     },
     "7": {
-     "Q": "DEVIATES |dQ| 61% (delay-corr. 28%), V 0.39x",
-     "U_perp": "DEVIATES +26%",
+     "Q": "DEVIATES |dQ| 74% (delay-corr. 90%), V 0.84x",
+     "U_perp": "DEVIATES +25%",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +71%",
-     "uh": "DEVIATES +66%",
-     "tan": "DEVIATES +32%",
-     "r": "DEVIATES -21%",
-     "foot": "DEVIATES rms 2.9 mm (2.5 after 104 ms)",
-     "z": "IMPOSSIBLE lift 15.5 mm (max 18.1)"
+     "exit_h": "DEVIATES +87%",
+     "uh": "DEVIATES +83%",
+     "tan": "DEVIATES +47%",
+     "r": "DELIVERED",
+     "foot": "DEVIATES rms 2.6 mm (2.3 after 94 ms)",
+     "z": "IMPOSSIBLE lift 13.4 mm (max 16.5)"
     },
     "8": {
-     "Q": "DEVIATES |dQ| 42% (delay-corr. 37%), V 0.66x",
-     "U_perp": "DEVIATES +17%",
-     "u0": "DEVIATES -17%",
-     "exit_h": "DEVIATES +48%",
-     "uh": "DEVIATES +37%",
-     "tan": "DEVIATES +17%",
-     "r": "DEVIATES -18%",
-     "foot": "DEVIATES rms 1.3 mm (0.9 after 30 ms)",
-     "z": "IMPOSSIBLE lift 10.3 mm (max 14.2)"
+     "Q": "DEVIATES |dQ| 35% (delay-corr. 32%), V 0.77x",
+     "U_perp": "DEVIATES +16%",
+     "u0": "DEVIATES -23%",
+     "exit_h": "DEVIATES +37%",
+     "uh": "DEVIATES +25%",
+     "tan": "DELIVERED",
+     "r": "DELIVERED",
+     "foot": "DEVIATES rms 1.6 mm (1.2 after 32 ms)",
+     "z": "IMPOSSIBLE lift 9.9 mm (max 12.5)"
     },
     "9": {
-     "Q": "DEVIATES |dQ| 22% (delay-corr. 23%), V 0.97x",
-     "U_perp": "DEVIATES +15%",
+     "Q": "DEVIATES |dQ| 27% (delay-corr. 28%), V 0.88x",
+     "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +55%",
-     "uh": "DEVIATES +52%",
-     "tan": "DEVIATES +31%",
+     "exit_h": "DEVIATES +52%",
+     "uh": "DEVIATES +49%",
+     "tan": "DEVIATES +29%",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 2.2 mm (1.3 after 108 ms)",
-     "z": "IMPOSSIBLE lift 9.8 mm (max 13.7)"
+     "foot": "DEVIATES rms 1.8 mm (1.2 after 88 ms)",
+     "z": "IMPOSSIBLE lift 9.9 mm (max 13.4)"
     },
     "10": {
-     "Q": "DEVIATES |dQ| 37% (delay-corr. 34%), V 0.63x",
-     "U_perp": "DEVIATES +23%",
-     "u0": "DEVIATES -15%",
-     "exit_h": "DEVIATES +42%",
-     "uh": "DEVIATES +39%",
-     "tan": "DELIVERED",
-     "r": "DEVIATES -27%",
-     "foot": "DEVIATES rms 1.1 mm (1.0 after 10 ms)",
-     "z": "IMPOSSIBLE lift 13.6 mm (max 14.1)"
+     "Q": "DEVIATES |dQ| 31% (delay-corr. 29%), V 0.69x",
+     "U_perp": "DEVIATES +22%",
+     "u0": "DELIVERED",
+     "exit_h": "DEVIATES +45%",
+     "uh": "DEVIATES +42%",
+     "tan": "DEVIATES +16%",
+     "r": "DEVIATES -23%",
+     "foot": "DEVIATES rms 1.0 mm (1.0 after 10 ms)",
+     "z": "IMPOSSIBLE lift 12.9 mm (max 13.9)"
     },
     "11": {
-     "Q": "DEVIATES |dQ| 60% (delay-corr. 28%), V 1.55x",
+     "Q": "DEVIATES |dQ| 44% (delay-corr. 29%), V 1.38x",
      "U_perp": "DEVIATES +21%",
-     "u0": "DEVIATES -17%",
-     "exit_h": "DEVIATES +36%",
-     "uh": "DEVIATES +36%",
+     "u0": "DEVIATES -19%",
+     "exit_h": "DEVIATES +33%",
+     "uh": "DEVIATES +33%",
      "tan": "DELIVERED",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 1.4 mm (1.3 after 84 ms)",
-     "z": "IMPOSSIBLE lift 13.4 mm (max 14.2)"
+     "foot": "DEVIATES rms 1.5 mm (1.4 after 74 ms)",
+     "z": "IMPOSSIBLE lift 14.2 mm (max 15.6)"
     },
     "13": {
-     "Q": "DEVIATES |dQ| 24% (delay-corr. 9%), V 0.77x",
+     "Q": "DEVIATES |dQ| 20% (delay-corr. 8%), V 0.81x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
      "exit_h": "DEVIATES +42%",
-     "uh": "DEVIATES +43%",
+     "uh": "DEVIATES +42%",
      "tan": "DEVIATES +25%",
      "r": "DELIVERED",
      "foot": "DELIVERED",
-     "z": "IMPOSSIBLE lift 8.1 mm (max 21.4)"
+     "z": "IMPOSSIBLE lift 7.6 mm (max 20.1)"
     },
     "14": {
-     "Q": "DEVIATES |dQ| 29% (delay-corr. 30%), V 0.86x",
+     "Q": "DEVIATES |dQ| 28% (delay-corr. 29%), V 0.86x",
      "U_perp": "DELIVERED",
      "u0": "DELIVERED",
-     "exit_h": "DEVIATES +29%",
+     "exit_h": "DEVIATES +28%",
      "uh": "DEVIATES +25%",
      "tan": "DEVIATES +29%",
      "r": "DELIVERED",
-     "foot": "DEVIATES rms 1.9 mm (1.9 after 16 ms)",
+     "foot": "DEVIATES rms 2.0 mm (2.0 after 14 ms)",
      "z": "DELIVERED"
     },
     "15": {
-     "Q": "DEVIATES |dQ| 57% (delay-corr. 47%), V 1.29x",
+     "Q": "DEVIATES |dQ| 55% (delay-corr. 47%), V 1.20x",
      "U_perp": "DELIVERED",
-     "u0": "DELIVERED",
-     "exit_h": "DEVIATES +21%",
+     "u0": "DEVIATES -16%",
+     "exit_h": "DEVIATES +19%",
      "uh": "DELIVERED",
-     "tan": "DEVIATES +21%",
-     "r": "DEVIATES +34%",
-     "foot": "DEVIATES rms 1.2 mm (1.0 after 34 ms)",
+     "tan": "DEVIATES +19%",
+     "r": "DEVIATES +32%",
+     "foot": "DEVIATES rms 1.3 mm (1.0 after 38 ms)",
      "z": "DELIVERED"
     },
     "16": {
-     "Q": "DEVIATES |dQ| 99% (delay-corr. 56%), V 1.99x",
+     "Q": "DEVIATES |dQ| 84% (delay-corr. 54%), V 1.84x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -18%",
-     "exit_h": "DEVIATES +19%",
-     "uh": "DEVIATES +15%",
-     "tan": "DEVIATES +19%",
-     "r": "DEVIATES +54%",
-     "foot": "DELIVERED",
+     "u0": "DEVIATES -20%",
+     "exit_h": "DEVIATES +18%",
+     "uh": "DELIVERED",
+     "tan": "DEVIATES +18%",
+     "r": "DEVIATES +47%",
+     "foot": "DEVIATES rms 1.0 mm (1.0 after 24 ms)",
      "z": "DELIVERED"
     },
     "17": {
-     "Q": "DEVIATES |dQ| 25% (delay-corr. 27%), V 0.91x",
+     "Q": "DEVIATES |dQ| 25% (delay-corr. 27%), V 0.88x",
      "U_perp": "DELIVERED",
      "u0": "DEVIATES -33%",
      "exit_h": "DELIVERED",
@@ -10679,23 +10679,23 @@
      "tan": "DELIVERED",
      "r": "DELIVERED",
      "foot": "DEVIATES rms 1.9 mm (1.2 after 40 ms)",
-     "z": "IMPOSSIBLE lift 1.7 mm (max 8.6)"
+     "z": "IMPOSSIBLE lift 1.8 mm (max 8.7)"
     },
     "18": {
-     "Q": "DEVIATES |dQ| 49% (delay-corr. 47%), V 1.14x",
+     "Q": "DEVIATES |dQ| 50% (delay-corr. 48%), V 1.09x",
      "U_perp": "DELIVERED",
-     "u0": "DEVIATES -38%",
+     "u0": "DEVIATES -39%",
      "exit_h": "DELIVERED",
      "uh": "DELIVERED",
      "tan": "DELIVERED",
-     "r": "DEVIATES +20%",
-     "foot": "DEVIATES rms 1.7 mm (1.6 after 52 ms)",
-     "z": "IMPOSSIBLE lift 9.4 mm (max 12.3)"
+     "r": "DEVIATES +19%",
+     "foot": "DEVIATES rms 1.8 mm (1.6 after 52 ms)",
+     "z": "IMPOSSIBLE lift 9.7 mm (max 12.5)"
     }
    },
    "worst": {
     "Q": [
-     "DEVIATES late start 256 ms > stroke 170 ms, V 0.00x",
+     "DEVIATES late start 241 ms > stroke 170 ms, V 0.00x",
      6
     ],
     "pulse": [
@@ -10711,7 +10711,7 @@
      6
     ],
     "exit_h": [
-     "DEVIATES +71%",
+     "DEVIATES +87%",
      7
     ],
     "tan": [
@@ -10719,15 +10719,15 @@
      6
     ],
     "uh": [
-     "DEVIATES +66%",
+     "DEVIATES +83%",
      7
     ],
     "r": [
-     "DEVIATES -97%",
+     "DEVIATES -98%",
      6
     ],
     "foot": [
-     "DEVIATES rms 17.3 mm (15.1 after 198 ms)",
+     "DEVIATES rms 17.9 mm (15.3 after 194 ms)",
      2
     ],
     "z": [
@@ -10741,15 +10741,5 @@
   "rel": 0.15,
   "mm": 1.0,
   "deg": 10.0
- },
- "headline": {
-  "height": "350 mL: 18/27 FS strokes and 36/72 real stages need a collision lift > 1 mm (flow-weighted 1-30 mm); swan neck/head 0.30-0.32 cm -> 3.1-3.3 cm (250 mL: 2.3 cm); lowest tip height at 45 deg tilt: 3.5 cm at the cup centre, 1.5 cm at +20 mm, 0.7 cm at +30 mm towards the near rim",
-  "exit_horizontal": "pitcher u0 cos(tilt+10 deg): 0.11-0.20 m/s at 350 mL (FS 0.10), 0.08-0.14 at 250 mL, 0.16-0.25 at 500 mL; |u_h| +6..+87 %",
-  "exit_speed": "u0 = sqrt(2 g h_bar): 0.21-0.35 m/s (FS 0.35)",
-  "pulsation": "stock barista 0.02-0.06 (want 0.41), phase off 127-177 deg; ideal tip-pivot 5 Hz tilt +-4-6 deg (160-230 deg/s): 0.32-0.48, phase -9..+11 deg",
-  "bridges": "0.3 s bridges: pitcher never drops below 1 mL/s in push_heart (x3), tulip #3/#5, swan #3; leaks 2-9 mL (FS 0.4-0.9)",
-  "flow_timing": "overall delay 100-300 ms vs FS; restart arrives 140-180 ms late; cuts after a base get 2.2-2.6x the milk",
-  "delivered": "U_perp where the height is reachable (-10..+1 %), continuity footprint (<= 15 %), foot position (median rms 1.5 mm, 0.8 mm after the 25-40 ms flight delay), milk volume",
-  "yaw": "swan needs 145 deg yaw turns in 0.3 s bridges (757 deg/s)"
  }
 }
