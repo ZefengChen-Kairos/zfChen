@@ -345,12 +345,54 @@ def real_wanted(pattern, dt=DT):
 
 
 # --------------------------------------------------------------------------- the barista
-class TableBarista(Barista):
-    """pitcher.Barista with the controller unchanged; intent() returns the wanted table (foot path [D], z [m], flow
-    [m^3/s] from column qkey) and the pose carries the wanted yaw."""
+class _HandProxy:
+    """Proxy pitcher seen by the barista (the barista's own tilt / height state is untouched):
+      * adds the owner's open-loop tilt oscillation `osc_val` to every pose that reaches required_lift / step;
+      * lift_hold: the applied collision lift rises at once to Pitcher.required_lift but comes down at most
+        `lift_down` m/s.  required_lift bisects a clearance test that is not monotone in the lift (a wall point beside
+        the tilted cup can move from 'outside' to 'over the rim' when raised) on a coarse wall sampling, so its answer
+        flips by 0.5-2.8 mm from one 1 ms step to the next; applied raw, that is a 1.5 m/s / 30 m/s^2 hand jerk
+        (the kinematics clip) that sloshes the milk and makes 50-75 mL/s bursts.  The hold keeps the upper envelope.
+    Everything else is forwarded to the real pitcher."""
 
-    def __init__(self, pitcher, W, meta, coupling, qkey="Q", **kw):
+    def __init__(self, P, owner, lift_hold=False, lift_down=0.10):
+        self._P, self._owner = P, owner
+        self.lift_hold, self.lift_down = lift_hold, lift_down
+        self.lift_prev = 0.0
+        self.lift_raw = 0.0
+
+    def __getattr__(self, k):
+        return getattr(self._P, k)
+
+    def _p(self, pose):
+        return Pose(pose.tip, pose.yaw, max(0.0, pose.tilt + self._owner.osc_val), pose.roll)
+
+    def required_lift(self, pose, cup, iters=14):
+        L = self._P.required_lift(self._p(pose), cup, iters)
+        self.lift_raw = L
+        if self.lift_hold:
+            L = max(L, self.lift_prev - self.lift_down * self._owner.dt_step)
+        self.lift_prev = L
+        return L
+
+    def step(self, pose, dt, z_surface=0.0):
+        return self._P.step(self._p(pose), dt, z_surface)
+
+
+class TableBarista(Barista):
+    """pitcher.Barista with its controller; intent() returns the wanted table (foot path [D], z [m], flow [m^3/s] from
+    column qkey) and the pose carries the wanted yaw.
+      ff_tol    None: the stock feed-forward cache (re-solve tilt_for_flow when Q_want or the fill changed by > 3 %);
+                a number: the same with this tolerance (0.005 in 'main': with 3 % the cached tilt is held while the fill
+                drops ~10 mL, and at dlnQ/dtilt ~ 0.37 /deg the flow sags by up to ~40 % before the next re-solve)
+      lift_hold see _HandProxy."""
+
+    def __init__(self, pitcher, W, meta, coupling, qkey="Q", ff_tol=None, lift_hold=False, **kw):
         self.W, self.meta, self.qkey = W, meta, qkey
+        self.ff_tol = ff_tol
+        self.osc_val = 0.0
+        self.dt_step = DT
+        self.real = pitcher
         self.dt_tab = meta["dt"]
         self.n_tab = len(W["t"])
         self.T_tab = self.n_tab * self.dt_tab
@@ -358,8 +400,9 @@ class TableBarista(Barista):
         self._q = np.nan_to_num(self._q)
         self._yaw = np.asarray(W["yaw"], float)
         self._k = np.asarray(W["k"], float)
+        self.n_ff = 0
         mv = [Move(self.T_tab, (self._x[0], self._y[0]), (self._x[-1], self._y[-1]), z0=float(self._z[0]))]
-        super().__init__(pitcher, mv, coupling, yaw=float(self._yaw[0]), **kw)
+        super().__init__(_HandProxy(pitcher, self, lift_hold=lift_hold), mv, coupling, yaw=float(self._yaw[0]), **kw)
 
     def _at(self, a, t):
         u = t / self.dt_tab
@@ -385,25 +428,29 @@ class TableBarista(Barista):
         self.yaw = yaw
         return pose, Q, name
 
+    def _tilt_ff(self, pose, Q_want):
+        if self.ff_tol is None:
+            q0, v0, _ = self._ff
+            V = self.pitcher.state.V
+            if not (q0 is not None and abs(Q_want - q0) <= 0.03 * q0 and abs(V - v0) <= 0.03 * v0):
+                self.n_ff += 1
+            return super()._tilt_ff(pose, Q_want)
+        q0, v0, t0 = self._ff
+        V = self.pitcher.state.V
+        tol = self.ff_tol
+        if q0 is not None and abs(Q_want - q0) <= tol * q0 and abs(V - v0) <= tol * v0:
+            return t0
+        lo, hi = max(0.0, self.tilt - math.radians(12)), min(math.radians(150), self.tilt + math.radians(12))
+        t = self.pitcher.tilt_for_flow(pose, Q_want, V=V, lo=lo, hi=hi, iters=10)
+        self._ff = (Q_want, V, t)
+        self.n_ff += 1
+        return t
 
-class _OscPitcher:
-    """Proxy pitcher seen by the barista: adds the barista's open-loop tilt oscillation `osc_val` to every pose that
-    reaches required_lift / step; everything else is forwarded to the real pitcher."""
-
-    def __init__(self, P, owner):
-        self._P, self._owner = P, owner
-
-    def __getattr__(self, k):
-        return getattr(self._P, k)
-
-    def _p(self, pose):
-        return Pose(pose.tip, pose.yaw, max(0.0, pose.tilt + self._owner.osc_val), pose.roll)
-
-    def required_lift(self, pose, cup, iters=14):
-        return self._P.required_lift(self._p(pose), cup, iters)
-
-    def step(self, pose, dt, z_surface=0.0):
-        return self._P.step(self._p(pose), dt, z_surface)
+    def step(self, dt):
+        self.dt_step = dt
+        rec, name = super().step(dt)
+        rec["lift_raw"] = self.pitcher.lift_raw
+        return rec, name
 
 
 class PulseBarista(TableBarista):
@@ -413,9 +460,8 @@ class PulseBarista(TableBarista):
     is corrected once per cycle by a lock-in on the arriving flow: C <- C (c_want / c_meas)^0.5, |C| <= amp_max."""
 
     def __init__(self, pitcher, W, meta, coupling, amp_max=math.radians(12.0), gain=0.5, **kw):
+        super().__init__(pitcher, W, meta, coupling, qkey="Q_env", **kw)
         self.real = pitcher
-        self.osc_val = 0.0
-        super().__init__(_OscPitcher(pitcher, self), W, meta, coupling, qkey="Q_env", **kw)
         self.pulsed = [s for s in meta["strokes"] if s.get("pulse")]
         self.amp_max, self.gain = amp_max, gain
         self.C = None
