@@ -67,6 +67,13 @@ BEST CASE (ideal hand, section 'best case' below; output v05pitcher/best/):
                                                                   # Cd055, Cd065, tau004, tau015, hon125, hon375
   python3 -m latte_imex.v05_pitcher_check best_batch --which all --jobs 2
   python3 -m latte_imex.v05_pitcher_check best_report             # best/summary_tables.md, best/summary.json
+SOLVE (V0.5 solver, FS closure, with the pitcher-delivered inlet; section 'SOLVE' below; output v05pitcher/solve/):
+  python3 -m latte_imex.v05_pitcher_check solve_table             # raw 1 ms tables (delivered 350 / 250 mL + FS-wanted)
+  python3 -m latte_imex.v05_pitcher_check solve_check             # records bitwise = drvf (exact times and table times)
+  python3 -m latte_imex.v05_pitcher_check solve_run tulip --source pitcher   # sources: pitcher, pitcher250, wanted,
+                                                                  # fsexact, pitcher_zfs (diagnostic)
+  python3 -m latte_imex.v05_pitcher_check solve_batch --jobs 2 --list heart:fsexact,heart:pitcher
+  python3 -m latte_imex.v05_pitcher_check solve_report            # solve/ana.json, FS_vs_pitcher(_diag).png
 """
 import argparse
 import copy
@@ -2446,6 +2453,7 @@ def best_static(patterns=PATTERNS, fills=(350, 300, 250, 200), rolls=(-20, -10, 
 #   wanted   the FS-wanted 1 ms table (fs_wanted: drvf sampled at t_k), held over [t_k, t_k + dt)
 #   pitcher  the pitcher-delivered 1 ms arrival record (best/runs/<run>.npz, ideal hand at 350 mL; Track 'main' if no
 #            ideal-hand run exists): record k = what arrives during [t_k, t_k + dt), held over that interval
+#   pitcher250  as 'pitcher' with the ideal-hand run at 250 mL fill (steeper tilt: more strokes reach their height)
 #   pitcher_zfs  (diagnostic, not pourable) 'pitcher' with U_perp replaced by FS's sqrt(0.35^2 + 2 g z_FS(t)) at the same t
 #            (z_FS = drvf.z_at, the FS height schedule incl. --ztr transitions and bridges): what the delivered flow, foot
 #            and u_h give if the spout could reach FS's heights with FS's 0.35 m/s exit speed
@@ -2454,16 +2462,16 @@ def best_static(patterns=PATTERNS, fills=(350, 300, 250, 200), rolls=(-20, -10, 
 # that is faster (the delivered foot jumps at wiggle reversals and with the lift / yaw of
 # the hand), the latter capped at 0.5 h / dt_table (h = 1/N) so that no frame is asked to be shorter than the 1 ms table.
 SOLVE = os.path.join(REVIEW, "v05pitcher", "solve")
-SOLVE_TAGS = dict(pitcher="PD", wanted="PW", fsexact="FX", pitcher_zfs="PDz")
+SOLVE_TAGS = dict(pitcher="PD", wanted="PW", fsexact="FX", pitcher_zfs="PDz", pitcher250="PD250")
 _D_M, _ML_D3 = 0.08, 512.0           # drvf's constants (D_M, ML)
 
 
-def solve_source_run(pattern):
+def solve_source_run(pattern, fill=350):
     """(directory, run name) of the pitcher run that supplies the delivered inlet."""
-    nm = best_name(pattern, "ideal", 350)
+    nm = best_name(pattern, "ideal", fill)
     if os.path.exists(os.path.join(BEST, "runs", nm + ".npz")):
         return BEST, nm
-    return OUT, run_name("fs", pattern, "main", 350)
+    return OUT, run_name("fs", pattern, "main", fill)
 
 
 def _foot_speed(on, x, y, dt, win=11, vmax=12.5):
@@ -2475,10 +2483,10 @@ def _foot_speed(on, x, y, dt, win=11, vmax=12.5):
     return np.minimum(maximum_filter1d(v, win), vmax)
 
 
-def solve_table(pattern, rebuild=False):
+def solve_table(pattern, rebuild=False, fill=350):
     """solve/tables/<run>.npz: raw (no rule applied) 1 ms inlet quantities of the delivered ('p_') and the FS-wanted ('w_')
     inlet: on, x, y [D], Q [D^3/s], U [D/s], ux, uy [D/s], vfoot [D/s]."""
-    d, nm = solve_source_run(pattern)
+    d, nm = solve_source_run(pattern, fill)
     path = os.path.join(SOLVE, "tables", nm + ".npz")
     if os.path.exists(path) and not rebuild:
         return path
@@ -2517,7 +2525,7 @@ def solve_table(pattern, rebuild=False):
 class _SolveTable:
     def __init__(self, path, kind):
         z = np.load(path)
-        pre = dict(pitcher="p_", wanted="w_", pitcher_zfs="p_")[kind]
+        pre = dict(pitcher="p_", wanted="w_", pitcher_zfs="p_", pitcher250="p_")[kind]
         self.dt = float(z["dt"])
         self.c = {k: np.asarray(z[pre + k]) for k in ("on", "x", "y", "Q", "U", "ux", "uy", "vfoot")}
         self.n = len(self.c["on"])
@@ -2602,7 +2610,8 @@ def solve_program(pattern, source, N=256):
     prog = SolveProgram(pattern, sp["U"], sp["kappa_Q"], params, 0.41, FS_FLOW_PHASE[pattern], ramp=0.1, lat="exitmin",
                         lag=0.08, stop=False, ztr=True)
     prog.source = source
-    prog.tab = None if source == "fsexact" else _SolveTable(solve_table(pattern), source)
+    prog.tab = None if source == "fsexact" else _SolveTable(solve_table(pattern, fill=250 if source == "pitcher250" else 350),
+                                                          source)
     prog.n_mismatch = 0
     prog.slog = []
     prog.vcap = 0.5 / (N * DT)
@@ -2729,7 +2738,7 @@ def _phase_volumes(run_dir, kQ=KAPPA_Q):
     return out
 
 
-def solve_figure(name="FS_vs_pitcher", cols=(("V05", "V0.5 (Codex)"), ("f:FS", "FS (wanted inlet)"),
+def solve_figure(name="FS_vs_pitcher", cols=(("V05", "V0.5"), ("f:FS", "FS (wanted inlet)"),
                                               ("s:PD", "FS closure, pitcher-delivered inlet")), patterns=PATTERNS):
     import matplotlib
     matplotlib.use("Agg")
@@ -2767,7 +2776,7 @@ def solve_figure(name="FS_vs_pitcher", cols=(("V05", "V0.5 (Codex)"), ("f:FS", "
     return path
 
 
-def solve_report(srcs=("f:FS", "s:PD", "s:PW", "s:FX")):
+def solve_report(srcs=("f:FS", "s:PD", "s:PW", "s:FX", "s:PDz", "s:PD250")):
     """ana.py metrics (section 3.1 criteria: struct measures, IoU vs V0.5, r_hp, high-pass box) for FS and the solve runs,
     IoU vs FS, per-stroke chi and injected milk (wanted = FS run, delivered = PD, table floor = PW); FS_vs_pitcher.png."""
     ana = _ana()
@@ -2815,6 +2824,10 @@ def solve_report(srcs=("f:FS", "s:PD", "s:PW", "s:FX")):
     with open(out_json, "w") as f:
         json.dump(A, f, indent=1, default=float)
     solve_figure()
+    solve_figure(name="FS_vs_pitcher_diag", cols=(("V05", "V0.5"), ("f:FS", "FS (wanted inlet)"),
+                                                  ("s:PW", "FS 1 ms table (sampling check)"),
+                                                  ("s:PD", "delivered, ideal hand 350 mL"), ("s:PD250", "delivered, ideal hand 250 mL"),
+                                                  ("s:PDz", "diag: delivered + FS heights")))
     return A
 
 
@@ -2971,7 +2984,8 @@ def main(argv=None):
         best_report()
     elif a.cmd == "solve_table":
         for p in a.patterns.split(","):
-            print(solve_table(p, rebuild=True), flush=True)
+            for fl in (350, 250):
+                print(solve_table(p, rebuild=True, fill=fl), flush=True)
     elif a.cmd == "solve_check":
         r = solve_check(tuple(a.patterns.split(",")))
         os.makedirs(SOLVE, exist_ok=True)

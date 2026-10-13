@@ -1,0 +1,176 @@
+{
+ "heart": {
+  "unit_maxerr": {
+   "Q": 0.0,
+   "x": 0.0,
+   "U": 0.0,
+   "ux": 0.0
+  },
+  "record_time_first": 0.001000000000000223,
+  "delivered_mL": 65.5024015362595,
+  "floor_added_mL": 0.0195706609306974,
+  "floor_steps": 63,
+  "below1_outside_strokes_removed_mL": 0.08846677301784109,
+  "cap32_removed_mL": 0.0,
+  "arriving_after_T_dropped_mL": 0.002771541290740138,
+  "Qmax_mLs": 27.99631357428705,
+  "PW_vs_FS": {
+   "iou04": 0.9997029997029997,
+   "maxabs": 0.011069804430007935,
+   "mean_abs": 2.1417700258191434e-05
+  },
+  "PW_T_vs_FS_T": [
+   6.925,
+   6.925
+  ],
+  "deposited_PW_vs_FS": [
+   0.23910843412232335,
+   0.2391012997828659
+  ]
+ },
+ "push_heart": {
+  "unit_maxerr": {
+   "Q": 0.0,
+   "x": 0.0,
+   "U": 0.0,
+   "ux": 0.0
+  },
+  "record_time_first": 0.001000000000000223,
+  "delivered_mL": 58.591368438586734,
+  "floor_added_mL": 0.026592725593269424,
+  "floor_steps": 88,
+  "below1_outside_strokes_removed_mL": 0.17103010611022973,
+  "cap32_removed_mL": 0.3370670873580693,
+  "arriving_after_T_dropped_mL": 0.008134378939429674,
+  "Qmax_mLs": 49.677501841703574,
+  "PW_vs_FS": {
+   "iou04": 0.9996567112941984,
+   "maxabs": 0.013773471117019653,
+   "mean_abs": 3.1004961913997785e-05
+  },
+  "PW_T_vs_FS_T": [
+   5.449999999999999,
+   5.449999999999999
+  ],
+  "deposited_PW_vs_FS": [
+   0.202464901283575,
+   0.20246431751115354
+  ]
+ },
+ "layered_heart": {
+  "unit_maxerr": {
+   "Q": 0.0,
+   "x": 0.0,
+   "U": 0.0,
+   "ux": 0.0
+  },
+  "record_time_first": 0.001000000000000223,
+  "delivered_mL": 68.6015118360616,
+  "floor_added_mL": 0.02570010744097548,
+  "floor_steps": 83,
+  "below1_outside_strokes_removed_mL": 0.091671580790476,
+  "cap32_removed_mL": 0.041743871828376196,
+  "arriving_after_T_dropped_mL": 0.0007307986182940902,
+  "Qmax_mLs": 46.563684771359824,
+  "PW_vs_FS": {
+   "iou04": 0.9991335561331848,
+   "maxabs": 0.00716736912727356,
+   "mean_abs": 9.50551416672921e-05
+  },
+  "PW_T_vs_FS_T": [
+   8.1,
+   8.1
+  ],
+  "deposited_PW_vs_FS": [
+   0.10249582432427451,
+   0.10249301514943712
+  ]
+ },
+ "tulip": {
+  "unit_maxerr": {
+   "Q": 0.0,
+   "x": 0.0,
+   "U": 0.0,
+   "ux": 0.0
+  },
+  "record_time_first": 0.001000000000000223,
+  "delivered_mL": 86.82712843085707,
+  "floor_added_mL": 0.0419430202590544,
+  "floor_steps": 169,
+  "below1_outside_strokes_removed_mL": 0.2337972869504751,
+  "cap32_removed_mL": 0.011347844455153883,
+  "arriving_after_T_dropped_mL": 0.0007951696243419693,
+  "Qmax_mLs": 38.375530691604965,
+  "PW_vs_FS": {
+   "iou04": 0.9995688168333908,
+   "maxabs": 0.0036788880825042725,
+   "mean_abs": 7.018181539137089e-05
+  },
+  "PW_T_vs_FS_T": [
+   11.05,
+   11.05
+  ],
+  "deposited_PW_vs_FS": [
+   0.13205979830884193,
+   0.13207028365624182
+  ]
+ },
+ "leaf": {
+  "unit_maxerr": {
+   "Q": 0.0,
+   "x": 0.0,
+   "U": 0.0,
+   "ux": 0.0
+  },
+  "record_time_first": 0.001000000000000223,
+  "delivered_mL": 84.29528079809216,
+  "floor_added_mL": 0.05605504152888284,
+  "floor_steps": 241,
+  "below1_outside_strokes_removed_mL": 0.2077210982863078,
+  "cap32_removed_mL": 0.06989582271576814,
+  "arriving_after_T_dropped_mL": 0.0008059874378009123,
+  "Qmax_mLs": 48.87639704013157,
+  "PW_vs_FS": {
+   "iou04": 0.9994940002891427,
+   "maxabs": 0.006309330463409424,
+   "mean_abs": 0.00012431205153290822
+  },
+  "PW_T_vs_FS_T": [
+   11.408823529411766,
+   11.408823529411766
+  ],
+  "deposited_PW_vs_FS": [
+   0.15775398588885514,
+   0.15776076974857453
+  ]
+ },
+ "swan": {
+  "unit_maxerr": {
+   "Q": 0.0,
+   "x": 0.0,
+   "U": 0.0,
+   "ux": 0.0
+  },
+  "record_time_first": 0.001000000000000223,
+  "delivered_mL": 89.15602964596859,
+  "floor_added_mL": 0.1626233084878128,
+  "floor_steps": 431,
+  "below1_outside_strokes_removed_mL": 0.4240317187185602,
+  "cap32_removed_mL": 0.6955296296952808,
+  "arriving_after_T_dropped_mL": 0.0007046260022377651,
+  "Qmax_mLs": 47.222083318055546,
+  "PW_vs_FS": {
+   "iou04": 0.9998466022396073,
+   "maxabs": 0.005010008811950684,
+   "mean_abs": 7.285286770151234e-05
+  },
+  "PW_T_vs_FS_T": [
+   12.820000000000002,
+   12.820000000000002
+  ],
+  "deposited_PW_vs_FS": [
+   0.1503963272272543,
+   0.15040493798256127
+  ]
+ }
+}

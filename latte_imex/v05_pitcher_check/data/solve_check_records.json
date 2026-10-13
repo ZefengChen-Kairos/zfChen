@@ -1,0 +1,44 @@
+{
+ "heart": {
+  "n_exact": 29305,
+  "mismatch_exact": 0,
+  "n_table": 6925,
+  "mismatch_table": 0,
+  "table_scan_raised": 0
+ },
+ "push_heart": {
+  "n_exact": 23375,
+  "mismatch_exact": 0,
+  "n_table": 5450,
+  "mismatch_table": 0,
+  "table_scan_raised": 0
+ },
+ "layered_heart": {
+  "n_exact": 37586,
+  "mismatch_exact": 0,
+  "n_table": 8100,
+  "mismatch_table": 0,
+  "table_scan_raised": 0
+ },
+ "tulip": {
+  "n_exact": 50815,
+  "mismatch_exact": 0,
+  "n_table": 11050,
+  "mismatch_table": 0,
+  "table_scan_raised": 0
+ },
+ "leaf": {
+  "n_exact": 54553,
+  "mismatch_exact": 0,
+  "n_table": 11408,
+  "mismatch_table": 0,
+  "table_scan_raised": 0
+ },
+ "swan": {
+  "n_exact": 61246,
+  "mismatch_exact": 0,
+  "n_table": 12820,
+  "mismatch_table": 0,
+  "table_scan_raised": 0
+ }
+}

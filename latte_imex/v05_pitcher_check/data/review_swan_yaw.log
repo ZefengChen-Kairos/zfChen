@@ -1,0 +1,20 @@
+fill 350 #8 f.02    tilt 38: FS yaw +90 -> 40.2 mm; yaw -90 -> 50.5 mm; best yaw +30 -> 34.0 mm
+fill 350 #8 f.18    tilt 38: FS yaw +90 -> 44.1 mm; yaw -90 -> 44.0 mm; best yaw +0 -> 24.1 mm
+fill 350 #8 f.50    tilt 38: FS yaw +90 -> 57.9 mm; yaw -90 -> 31.9 mm; best yaw -30 -> 21.6 mm
+fill 350 #8 f.82    tilt 38: FS yaw +90 -> 68.6 mm; yaw -90 -> 22.1 mm; best yaw -60 -> 17.9 mm
+fill 350 #9         tilt 39: FS yaw +45 -> 48.8 mm; yaw -90 -> 15.3 mm; best yaw -90 -> 15.3 mm
+fill 250 #8 f.02    tilt 51: FS yaw +90 -> 24.4 mm; yaw -90 -> 30.9 mm; best yaw +0 -> 21.1 mm
+fill 250 #8 f.18    tilt 51: FS yaw +90 -> 27.2 mm; yaw -90 -> 27.2 mm; best yaw -15 -> 14.6 mm
+fill 250 #8 f.50    tilt 51: FS yaw +90 -> 33.7 mm; yaw -90 -> 19.0 mm; best yaw -45 -> 13.0 mm
+fill 250 #8 f.82    tilt 51: FS yaw +90 -> 42.4 mm; yaw -90 -> 12.5 mm; best yaw -60 -> 9.8 mm
+fill 250 #9         tilt 51: FS yaw +45 -> 29.1 mm; yaw -90 -> 9.2 mm; best yaw -75 -> 6.5 mm
+fill 200 #8 f.02    tilt 56: FS yaw +90 -> 19.8 mm; yaw -90 -> 25.6 mm; best yaw +0 -> 16.9 mm
+fill 200 #8 f.18    tilt 56: FS yaw +90 -> 22.1 mm; yaw -90 -> 22.1 mm; best yaw -30 -> 12.6 mm
+fill 200 #8 f.50    tilt 56: FS yaw +90 -> 28.0 mm; yaw -90 -> 14.9 mm; best yaw -45 -> 9.7 mm
+fill 200 #8 f.82    tilt 56: FS yaw +90 -> 35.2 mm; yaw -90 -> 10.6 mm; best yaw -60 -> 8.3 mm
+fill 200 #9         tilt 56: FS yaw +45 -> 23.3 mm; yaw -90 -> 6.2 mm; best yaw -75 -> 5.3 mm
+fill 150 #8 f.02    tilt 61: FS yaw +90 -> 15.9 mm; yaw -90 -> 20.2 mm; best yaw +30 -> 12.8 mm
+fill 150 #8 f.18    tilt 61: FS yaw +90 -> 17.1 mm; yaw -90 -> 17.1 mm; best yaw -15 -> 9.1 mm
+fill 150 #8 f.50    tilt 61: FS yaw +90 -> 22.1 mm; yaw -90 -> 12.2 mm; best yaw -45 -> 7.8 mm
+fill 150 #8 f.82    tilt 61: FS yaw +90 -> 27.7 mm; yaw -90 -> 7.8 mm; best yaw -75 -> 6.6 mm
+fill 150 #9         tilt 61: FS yaw +45 -> 18.1 mm; yaw -90 -> 4.7 mm; best yaw -75 -> 4.1 mm
