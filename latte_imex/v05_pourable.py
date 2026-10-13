@@ -56,6 +56,11 @@ usage (from /home/user/zfChen; NUMBA_NUM_THREADS=1):
   python3 -m latte_imex.v05_pourable report                      # key constraint numbers -> surrogate/key_numbers.json
 Outputs: <review>/v05pour/surrogate/ (flow_<spec>.npz, clear_<spec>_<wall>[_held].npz, jet_<spec>.npz, validation.json,
 key_numbers.json, closed_form_check.json, selftest.json).
+DESIGN (pitcher-constrained inverse design of the V0.5 inlet, prereg <review>/v05pour/design/prereg.json):
+  python3 -m latte_imex.v05_pourable design --spec S1|S2|S3 [--alphas 0,10,20,30]   -> design/<spec>/alpha<a>.json
+  python3 -m latte_imex.v05_pourable finalize --spec S1 [--alpha a]                  -> design/<spec>/final.json, ptab_*.npz
+  python3 -m latte_imex.v05_pourable solve --spec S1 --pattern heart --N 128         -> design/runs/<tag>_<pattern>_N<N>/
+  python3 -m latte_imex.v05_pourable fsrun --pattern heart --N 48 --via drvf|pourf   (driver reproduction check)
 In code: S = Surrogate("b20", wall="resolved", cup="held"); S.tilt(Q, V); S.jet(Q, V, z_tip, roll, alpha);
 S.z_min(foot_x, foot_y, yaw, Q, V, roll); D = deliver(S, sched, fill_mL, alpha=10, hand="ideal"); stroke_summary(D, strokes).
 """
@@ -96,8 +101,17 @@ CUPS = ("table", "held")
 def make_cup(cup="table"):
     """'table': the default Cup (stands on the table, whose plane is 60 mm below the coffee: at tilts <= 40 deg the
     pitcher bottom outside the cup can reach it when the tip is low near the near rim); 'held': the same cup held in the
-    other hand (no table within reach), as the baristas in the clips do."""
-    return Cup() if cup == "table" else Cup(height=1.0)
+    other hand (no table within reach), as the baristas in the clips do.
+    't<deg>' (design extension): held cup tilted <deg> towards the pitcher with a CONSISTENT rim: the near rim sits 1 mm
+    above the coffee (rim_z = r_out tan(tilt) + 1 mm; the default Cup's 20 deg tilt with rim_z 10 mm puts the near rim
+    2.7 mm below the coffee).  A cup that is less full early in the pour can be tilted further without spilling."""
+    if cup == "table":
+        return Cup()
+    if cup.startswith("t"):
+        tl = math.radians(float(cup[1:]))
+        c0 = Cup()
+        return Cup(height=1.0, tilt=tl, rim_z=c0.r_out * math.tan(tl) + 1e-3)
+    return Cup(height=1.0)
 
 
 def _clear_file(name, wall, cup):
@@ -210,8 +224,10 @@ def make_pitcher(spec, V_mL=250.0, wall="mean", law=None):
 
 
 # =========================================================================== map builders
-def build_flow(spec, out=OUT, verbose=True):
-    """Steady flow map on (V, log2 Q, roll); spout direction +x (yaw 0), tip at (0, 0, 2 cm)."""
+def build_flow(spec, out=OUT, verbose=True, V_grid=None):
+    """Steady flow map on (V, log2 Q, roll); spout direction +x (yaw 0), tip at (0, 0, 2 cm).  V_grid [mL] overrides
+    V_GRID (the design uses 20-400 mL: a barista ends the pour with ~60 mL left at 72-77 deg tilt)."""
+    V_GRID = np.asarray(V_grid, float) if V_grid is not None else globals()["V_GRID"]
     P = make_pitcher(spec)
     law = P.law
     shape = (len(V_GRID), len(LQ_GRID), len(ROLLS))
@@ -975,6 +991,911 @@ def selftest(out=OUT):
     return res
 
 
+# =========================================================================== DESIGN: pitcher-constrained inverse design
+# Redo of the FS inverse design (v05allphys/final/fits.py, allphys.design / fit_inverse) with the inlet quantities taken
+# from this surrogate instead of free envelope values.  Pre-registration: <review>/v05pour/design/prereg.json.
+#   shared closure  B_dep, p_dep, kappa_t (grid + refinement), kappa_r (FS's log least squares, after); cp 1.36, beta 3,
+#                   nu 1e-3, D 1e-7, kappa_Q 2, kappa_c 1 fixed (as FS)
+#   pitcher const.  alpha_lip scanned over DS_ALPHAS (one value for all patterns)
+#   per pattern     start fill [mL] (V(t) = fill - poured >= DS_VMIN)
+#   per stroke      wanted tip height z_k (delivered z(t) = max(z_k, Zreq(t)), Zreq = 0.25 s running max of the surrogate
+#                   z_min at the stream foot), flow scale s_k of Codex's F (before the spout lag; 1 for cuts), roll, yaw
+#                   (Codex's jet direction where it is not degenerate, free on a 15 deg grid for FREE_YAW within the
+#                   yaw-rate window of the neighbours)
+#   no 5 Hz pulsation; spout lag 0.08 s, 0.1 s ramps, bridges >= 0.3 s, ztr transitions (drvf rules)
+#   objective       J = J_chi + J_s + J_uh + LAM_OTH J_oth  (see prereg.json; per-stroke additive)
+DSN = os.path.join(PC.REVIEW, "v05pour", "design")
+DSURR = os.path.join(DSN, "surr")
+D_M = 0.08                                   # cup diameter [m] (solver length unit)
+ML_D3 = 512.0                                # mL per D^3
+DS_FILLS = (100.0, 125.0, 150.0, 175.0, 200.0, 250.0, 300.0, 350.0, 400.0)
+DS_S = (0.67, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5)
+DS_ROLLS = (-20.0, 0.0, 20.0)
+DS_ALPHAS = (0.0, 10.0, 20.0, 30.0)
+DS_ZLOW = (0.003, 0.025)
+DS_ZCUT = (0.012, 0.07)
+DS_NZ, DS_NQ = 24, 16
+DS_VMIN = 20.0
+DS_DT = 0.01
+DS_REQWIN = 0.25
+DS_CHI_CLIP = (0.02, 0.98)
+LB_STROKES = (("heart", 1), ("heart", 2), ("tulip", 6), ("leaf", 4), ("swan", 8), ("swan", 9))
+FREE_YAW = (("tulip", 6), ("leaf", 4), ("swan", 8), ("swan", 9))
+LAM_OTH = 0.25
+KT_GRID = tuple(np.round(np.arange(0.05, 1.0001, 0.05), 2))
+DS_SPECS = dict(S1=dict(pitcher="nx", wall="resolved", cup="held"),
+                S2=dict(pitcher="b20", wall="resolved", cup="held"),
+                S3=dict(pitcher="b20", wall="resolved", cup="video"))
+CUP_MAPS = (5.0, 10.0, 20.0, 30.0)
+FS_FIXED = dict(cp=1.36, beta=3.0, nu=1e-3, D=1e-7, kappa_Q=2.0, kappa_c=1.0)
+DS_YAW_RATE = 300.0                          # [deg/s] ideal hand; windows use 0.9 of it
+FLOWING = ("low", "cut")
+
+
+def _prereg():
+    with open(os.path.join(DSN, "prereg.json")) as f:
+        return json.load(f)
+
+
+def _refs():
+    with open(os.path.join(DSN, "refs.json")) as f:
+        return json.load(f)
+
+
+def cup_tilt_fn(pattern):
+    """S3: cup tilt [deg] vs Codex time from the video series (clip time = Codex time, nearest value held outside)."""
+    ser = _prereg()["specs"]["S3"]["cup_tilt_series_deg"][pattern]
+    ts, cs = (np.array(v, float) for v in zip(*ser))
+    return lambda t: np.interp(np.asarray(t, float), ts, cs)
+
+
+class SpecSurrogate:
+    """A design spec: the flow maps of DSURR (V 20-400 mL) and the clearance map(s): one static cup, or (S3) maps at
+    CUP_MAPS cup tilts interpolated linearly in the cup tilt c(t) (clamped to the map range)."""
+
+    def __init__(self, name):
+        d = DS_SPECS[name]
+        self.name, self.pitcher, self.wall, self.cup = name, d["pitcher"], d["wall"], d["cup"]
+        if d["cup"] == "video":
+            self.maps = [Surrogate(d["pitcher"], d["wall"], DSURR, f"t{c:g}") for c in CUP_MAPS]
+            self.S0 = self.maps[CUP_MAPS.index(20.0)]
+        else:
+            self.maps = None
+            self.S0 = Surrogate(d["pitcher"], d["wall"], DSURR, d["cup"])
+        self.b_mm = self.S0.b_mm
+
+    def flow(self, Q, V, roll=0.0):
+        return self.S0.flow(Q, V, roll)
+
+    def z_min(self, fx, fy, yaw, Q, V, roll, alpha, ctilt=None):
+        if self.maps is None:
+            return self.S0.z_min(fx, fy, yaw, Q, V, roll, alpha)[0]
+        Z = np.stack([S.z_min(fx, fy, yaw, Q, V, roll, alpha)[0] for S in self.maps])
+        c = np.clip(np.broadcast_to(np.asarray(ctilt, float), Z.shape[1:]), CUP_MAPS[0], CUP_MAPS[-1])
+        cm = np.asarray(CUP_MAPS)
+        i = np.clip(np.searchsorted(cm, c, side="right") - 1, 0, len(cm) - 2)
+        w = (c - cm[i]) / (cm[i + 1] - cm[i])
+        z0 = np.take_along_axis(Z, i[None], 0)[0]
+        z1 = np.take_along_axis(Z, (i + 1)[None], 0)[0]
+        return z0 + w * (z1 - z0)
+
+
+# ----------------------------------------------------------------------- the inlet program (drvf-compatible driver)
+_POURF = None
+
+
+def pourf_class():
+    """PourF = drvf.PhysF + (a) per-stroke flow scale s_k applied to the command envelope BEFORE the spout lag,
+    (b) ulaw 'pitcher': U_perp = sqrt(vz^2 + 2 g max(z + dz_origin, 0)) with vz, dz_origin tabulated from the pitcher
+    (ulaw 'fs': drvf's sqrt(0.35^2 + 2 g z)), z = drvf's wanted z (ztr) + the hand's planned lift L(t) (table),
+    (c) lat 'pitcher': cup-frame u_h = tabulated pitcher exit vector + hand velocity (drvf.hand_v), |u| <= min(0.40, U).
+    Everything else (Q rules, ztr, footprint, Inlet fields, log columns) is drvf.PhysF.__call__ line for line; with
+    s = 1, ulaw 'fs' or a constant vz = 0.35 / dz_origin = 0 table and lat 'exitmin' it reproduces drvf."""
+    global _POURF
+    if _POURF is not None:
+        return _POURF
+    drvf = PC._drvf()
+    from .v05_program import Program
+    from .solver import Inlet
+
+    class PourF(drvf.PhysF):
+        def __init__(self, pattern, U_ms, kQ, params, pulse_cap, flow_phase=None, s_scale=None, ulaw="fs", **kw):
+            self.s_scale = {int(k): float(v) for k, v in (s_scale or {}).items()}
+            self.ulaw = ulaw
+            self.ptab = None
+            super().__init__(pattern, U_ms, kQ, params, pulse_cap, flow_phase, **kw)
+
+        def envelope(self, t):
+            e = drvf.PhysF.envelope(self, t)
+            if self.s_scale and e > 0:
+                e = e * self.s_scale.get(self.phase_index(t), 1.0)
+            return e
+
+        def _ti(self, key, t):
+            return float(np.interp(t, self.ptab["t"], self.ptab[key]))
+
+        def __call__(self, t):
+            self.ncall += 1
+            k = self.phase_index(t)
+            p = self.phases[k]
+            tt = max(0.0, min(p["duration"], t - self.events[k]))
+            inl0 = Program.__call__(self, t)
+            if self.lag > 0:
+                E = float(np.interp(t, self.tg, self.Ef))
+                fac = 1.0
+                if self.cls[k] in ("low", "cut") and p.get("flow_modulation", 0.0) > 0:
+                    fac = 1 + p["flow_modulation"] * math.cos(2 * math.pi * p.get("flow_frequency", p["frequency"]) * tt
+                                                               + p.get("flow_phase", 0.0))
+                F = E * fac
+            else:
+                F = (inl0.S_eff if inl0.active else 0.0) * self.gain(k, tt) * self.s_scale.get(k, 1.0)
+            off = Inlet(active=False, x_hit=inl0.x_hit, S_eff=0.0, scan_speed=inl0.scan_speed, r1=inl0.r1, r2=inl0.r2)
+            if F <= 0:
+                return off
+            Qraw = F / self.kQ
+            if Qraw < 1.0 / drvf.ML and (self.stop or self.cls[k] not in ("low", "cut")):
+                return off
+            Q = min(max(Qraw, 1.0 / drvf.ML), 32.0 / drvf.ML)
+            ks = k if self.cls[k] in ("low", "cut") else (self.prev_fl[k] if self.prev_fl[k] is not None else self.next_fl[k])
+            z = self.z_at(t, k, tt)
+            tab = self.ptab
+            if tab is not None and tab.get("L") is not None:
+                z = z + self._ti("L", t)
+            if self.ulaw == "fs":
+                U = drvf.U_of_z(z) / drvf.D_M
+            else:
+                vz = self._ti("vz", t)
+                oz = self._ti("oz", t)
+                U = math.sqrt(vz * vz + 2 * drvf.G * max(z + oz, 0.0)) / drvf.D_M
+            ps = self.phases[ks]
+            bx, by = ps["jet"]
+            hi = min(0.40 / drvf.D_M, 1.0 * U)
+            vh = (0.0, 0.0)
+            osc = 0.0
+            if self.lat == "pitcher":
+                vh = self.hand_v(t)
+                jx = self._ti("ex", t) / drvf.D_M + vh[0]
+                jy = self._ti("ey", t) / drvf.D_M + vh[1]
+                v = math.hypot(jx, jy)
+                if v > hi:
+                    jx, jy, v = jx * hi / v, jy * hi / v, hi
+            elif self.lat == "exitmin":
+                vh = self.hand_v(t)
+                nb = math.hypot(bx, by)
+                ex, ey = (bx / nb, by / nb) if nb > 0 else (0.0, -1.0)
+                ue = min(max(nb - (vh[0] * ex + vh[1] * ey), 0.10 / drvf.D_M), 0.27 / drvf.D_M)
+                jx, jy = ue * ex + vh[0], ue * ey + vh[1]
+                v = math.hypot(jx, jy)
+                if v > hi:
+                    jx, jy, v = jx * hi / v, jy * hi / v, hi
+            else:
+                raise ValueError(self.lat)
+            v = math.hypot(jx, jy)
+            spd = math.hypot(U, v)
+            aspect = spd / U
+            r = math.sqrt(Q / (math.pi * U))
+            d = 2 * math.sqrt(Q / spd / math.pi)
+            out = Inlet(active=True, x_hit=inl0.x_hit, S_eff=self.kQ * Q, u_in=(jx, jy), U_perp=U, d_jet=d,
+                        r1=r * math.sqrt(aspect), r2=r / math.sqrt(aspect), phi=math.atan2(jy, jx), scan_speed=inl0.scan_speed)
+            ex_speed = math.hypot(jx - vh[0], jy - vh[1]) * drvf.D_M
+            self.log.append((t, self.ncall % 2, k, ks, Qraw * drvf.ML, Q * drvf.ML, U * drvf.D_M, z * 100, v * drvf.D_M,
+                             jx * drvf.D_M, jy * drvf.D_M, vh[0] * drvf.D_M, vh[1] * drvf.D_M, ex_speed, r * drvf.D_M * 1e3,
+                             d * drvf.D_M * 1e3, F, osc * drvf.D_M))
+            return out
+
+    _POURF = PourF
+    return PourF
+
+
+def make_program(pattern, z_cm=None, s_scale=None, closure=None, lat="exitmin", ulaw="fs", pulse=0.0, flow_phase=None,
+                 lag=0.08):
+    """PourF on Codex's control of `pattern` (drvf flags --lag 0.08 --ztr, bridges 0.3 s, ramps 0.1 s).  z_cm {phase index
+    (0-based): wanted height [cm]} overrides FS's P2 heights; closure: solver parameters (FS's by default); pulse = cap of
+    the 5 Hz flow modulation (0: none)."""
+    PourF = pourf_class()
+    with open(PC.EXPS) as f:
+        e = json.load(f)["P2"]
+    sp = e["inlet"][pattern]
+    params = dict(kappa_Q=2.0, cp=1.36, beta=3.0, nu=1e-3)
+    for key in ("B_dep", "p_dep", "kappa_r"):
+        params[key] = e["params"][key]
+    if closure:
+        params.update(closure)
+    return PourF(pattern, sp["U"], sp["kappa_Q"], params, pulse, flow_phase, s_scale=s_scale, ulaw=ulaw, ramp=0.1,
+                 lat=lat, lag=lag, stop=False, ztr=True, zset=z_cm)
+
+
+def flow_schedule(prog):
+    """Delivered flow [mL/s] on the program's lag grid (drvf rules: F <= 0 off, < 1 mL/s off outside strokes, clip to
+    1-32 mL/s; no 5 Hz factor: the design programs have none), the phase index and the poured volume [mL]."""
+    tg = prog.tg
+    k = np.array([prog.phase_index(t) for t in tg])
+    fl = np.array([prog.cls[i] in FLOWING for i in range(len(prog.phases))])[k]
+    Qraw = prog.Ef / prog.kQ * ML_D3
+    on = (prog.Ef > 0) & ~((Qraw < 1.0) & ~fl)
+    Q = np.where(on, np.clip(Qraw, 1.0, 32.0), 0.0)
+    cum = np.concatenate([[0.0], np.cumsum(0.5 * (Q[1:] + Q[:-1]) * np.diff(tg))])
+    return dict(t=tg, k=k, Q=Q, Qraw=Qraw, cum=cum, on=on)
+
+
+def design_samples(pattern, s_scale=None, dt=DS_DT):
+    """Samples (dt, mid-interval) of the flowing strokes' own phase windows: Qraw [mL/s, before the 1-32 clip], foot x, y
+    [m], hand velocity [m/s], poured volume before t [mL], Codex's jet b [m/s]; per 0-based phase index."""
+    from .v05_program import Program
+    prog = make_program(pattern, s_scale=s_scale)
+    fs_ = flow_schedule(prog)
+    out = {}
+    ts = (np.arange(int(prog.duration / dt)) + 0.5) * dt
+    for t in ts:
+        k = prog.phase_index(t)
+        if prog.cls[k] not in FLOWING:
+            continue
+        E = float(np.interp(t, prog.tg, prog.Ef))
+        if E <= 0:
+            continue
+        x, y = Program.__call__(prog, t).x_hit
+        vh = prog.hand_v(t)
+        o = out.setdefault(k, dict(t=[], Qraw=[], x=[], y=[], vhx=[], vhy=[], cum=[]))
+        o["t"].append(t); o["Qraw"].append(E / prog.kQ * ML_D3); o["x"].append(x * D_M); o["y"].append(y * D_M)
+        o["vhx"].append(vh[0] * D_M); o["vhy"].append(vh[1] * D_M); o["cum"].append(float(np.interp(t, fs_["t"], fs_["cum"])))
+    for k, o in out.items():
+        for key in list(o):
+            o[key] = np.asarray(o[key], float)
+        p = prog.phases[k]
+        o["b"] = (p["jet"][0] * D_M, p["jet"][1] * D_M)
+        o["cls"] = prog.cls[k]
+        o["t0"], o["t1"] = prog.events[k], prog.events[k + 1]
+        o["vh_mean"] = float(np.mean(np.hypot(o["vhx"], o["vhy"])))
+    return dict(strokes=out, total_mL=float(fs_["cum"][-1]), T=prog.duration, prog=prog, sched=fs_)
+
+
+def _wquant(X, W, nq=DS_NQ):
+    """Weighted quantiles (levels (i + 0.5) / nq) along the last axis."""
+    W = np.broadcast_to(W, X.shape)
+    o = np.argsort(X, axis=-1)
+    Xs = np.take_along_axis(X, o, -1)
+    Ws = np.take_along_axis(W, o, -1)
+    c = np.cumsum(Ws, -1)
+    c = c / c[..., -1:]
+    lev = (np.arange(nq) + 0.5) / nq
+    idx = (c[..., None, :] < lev[:, None]).sum(-1)
+    idx = np.minimum(idx, X.shape[-1] - 1)
+    return np.take_along_axis(Xs, idx, -1)
+
+
+def _fw(x, w, axis=-1):
+    w = np.broadcast_to(w, x.shape)
+    return np.sum(x * w, axis) / np.sum(w, axis)
+
+
+def stroke_combos(SS, smp, alpha, fills, s_list, rolls, yaws_deg, ctilt=None):
+    """Closure-independent arrays of one stroke for every combination (fill, s, roll, yaw): ln of the 16 flow-weighted
+    quantiles of X = U^2 / d [D/s^2] on the stroke's z grid (z(t) = max(z_k, Zreq(t))), and the flow-weighted cup-frame
+    |u_h|, pitcher-frame exit speed, Zreq, tilt, fill range."""
+    cls = smp["cls"]
+    n = len(smp["t"])
+    F_, S_, R_, Y_ = len(fills), len(s_list), len(rolls), len(yaws_deg)
+    shp = (F_, S_, R_, Y_, n)
+    Q = np.clip(np.asarray(s_list, float)[:, None] * smp["Qraw"][None, :], 1.0, 32.0)        # (S, n) mL/s
+    V = np.maximum(np.asarray(fills, float)[:, None] - smp["cum"][None, :], DS_VMIN)         # (F, n) mL
+    Qb = np.broadcast_to(Q[None, :, None, None, :], shp)
+    Vb = np.broadcast_to(V[:, None, None, None, :], shp)
+    rb = np.broadcast_to(np.asarray(rolls, float)[None, None, :, None, None], shp)
+    yb = np.broadcast_to(np.radians(np.asarray(yaws_deg, float))[None, None, None, :, None], shp)
+    fx = np.broadcast_to(smp["x"], shp)
+    fy = np.broadcast_to(smp["y"], shp)
+    f = SS.flow(Qb[:, :, :, :1, :], Vb[:, :, :, :1, :], rb[:, :, :, :1, :])
+    ef, es, ez = Surrogate.exit_dir(f["tilt"], rb[:, :, :, :1, :], alpha)
+    u0 = f["u0"]
+    vz, oz = u0 * ez, f["oz"]
+    cy, sy = np.cos(yb), np.sin(yb)
+    exx = u0 * (ef * cy - es * sy)
+    exy = u0 * (ef * sy + es * cy)
+    uabs = np.hypot(exx + smp["vhx"], exy + smp["vhy"])
+    ct = None if ctilt is None else np.broadcast_to(np.asarray(ctilt, float), shp)
+    zmin = SS.z_min(fx, fy, yb, Qb, Vb, rb, alpha, ct)
+    from scipy.ndimage import maximum_filter1d
+    win = max(1, int(round(DS_REQWIN / DS_DT)))
+    Zreq = maximum_filter1d(zmin, size=win, axis=-1, mode="nearest")
+    W = np.broadcast_to(Q[None, :, None, None, :], shp)
+    lo, hi = DS_ZCUT if cls == "cut" else DS_ZLOW
+    zg = np.geomspace(lo, hi, DS_NZ)
+    lnXq = np.empty(shp[:-1] + (DS_NZ, DS_NQ))
+    for j, z0 in enumerate(zg):
+        z = np.maximum(z0, Zreq)
+        U = np.sqrt(vz * vz + 2 * G * np.maximum(z + oz, 0.0))
+        uc = np.minimum(uabs, np.minimum(0.40, U))
+        spd = np.hypot(U, uc)
+        d = 2 * np.sqrt(Qb * ML / (spd * math.pi))
+        X = (U / D_M) ** 2 / (d / D_M)
+        lnXq[..., j, :] = np.log(_wquant(X, W))
+    return dict(zg=zg, lnXq=lnXq, uw=_fw(uabs, W), exitw=_fw(np.broadcast_to(u0 * np.hypot(ef, es), shp), W),
+                Zreq_w=_fw(Zreq, W), Zreq_max=Zreq.max(-1), zmin_w=_fw(zmin, W),
+                tilt_w=_fw(np.broadcast_to(f["tilt"], shp), W), u0_w=_fw(np.broadcast_to(u0, shp), W),
+                V_lo=Vb.min(-1), V_hi=Vb.max(-1), Qw=_fw(Qb, W), shape=shp[:-1])
+
+
+def _logit(x):
+    x = np.clip(x, *DS_CHI_CLIP)
+    return np.log(x / (1 - x))
+
+
+def solve_z(lnXq, zg, tgt, B, p):
+    """Per combination: wanted z_k [m] with flow-weighted chi = clipped target (interpolated in log z), or the grid end
+    if unreachable; returns z, chi achieved, logit error, chi(z_lo), chi(z_hi)."""
+    a = np.clip(p * (lnXq - math.log(B)), -60.0, 60.0)
+    chi = (1.0 / (1.0 + np.exp(a))).mean(-1)                     # (..., NZ) non-increasing in z
+    tc = float(np.clip(tgt, *DS_CHI_CLIP))
+    below = chi <= tc
+    anyb = below.any(-1)
+    j = np.argmax(below, -1)
+    jm = np.maximum(j - 1, 0)
+    L = _logit(chi)
+    Lt = float(_logit(tc))
+    L0 = np.take_along_axis(L, jm[..., None], -1)[..., 0]
+    L1 = np.take_along_axis(L, j[..., None], -1)[..., 0]
+    lz = np.log(zg)
+    fr = np.where(L0 > L1, (L0 - Lt) / np.where(L0 > L1, L0 - L1, 1.0), 0.0)
+    zi = np.exp(lz[jm] + np.clip(fr, 0, 1) * (lz[j] - lz[jm]))
+    z = np.where(~anyb, zg[-1], np.where(j == 0, zg[0], zi))
+    ch = np.where(~anyb, chi[..., -1], np.where(j == 0, chi[..., 0], tc))
+    e = _logit(ch) - Lt
+    return z, ch, e, chi[..., 0], chi[..., -1]
+
+
+DS_TIE = 1e-5                                # tie-break regulariser (correction after the v1 screen, see prereg)
+out_ref = {}
+
+
+def yaw_windows(pattern, smp_all, step=15.0):
+    """Yaw candidates [deg] per flowing stroke: Codex's jet direction (fixed) or, for FREE_YAW, a 15 deg grid inside the
+    window reachable from the fixed neighbours at 0.9 x DS_YAW_RATE (bridge: its duration; directly adjacent: 0.1 s)."""
+    st = smp_all["strokes"]
+    prog = smp_all["prog"]
+    ks = sorted(st)
+    fixed = {k: math.degrees(math.atan2(st[k]["b"][1], st[k]["b"][0])) for k in ks}
+    out, adj = {}, {}
+    for i, k in enumerate(ks):
+        if (pattern, k + 1) not in FREE_YAW:
+            out[k] = [fixed[k]]
+            continue
+        lo, hi = -540.0, 540.0
+        for nb in (ks[i - 1] if i > 0 else None, ks[i + 1] if i + 1 < len(ks) else None):
+            if nb is None:
+                continue
+            gap = (prog.events[k] - prog.events[nb + 1]) if nb < k else (prog.events[nb] - prog.events[k + 1])
+            gap = gap if gap > 1e-9 else 0.1
+            if (pattern, nb + 1) in FREE_YAW:
+                adj[k] = (nb, 0.9 * DS_YAW_RATE * gap)
+                continue
+            c, w = fixed[nb], 0.9 * DS_YAW_RATE * gap
+            lo, hi = max(lo, c - w), min(hi, c + w)
+        g = np.arange(math.ceil(lo / step) * step, hi + 1e-9, step)
+        out[k] = [float(v) for v in g] if len(g) else [fixed[k]]
+    # tie-break reference of the free strokes: circular mean of the nearest fixed strokes before and after
+    ref = {}
+    for i, k in enumerate(ks):
+        if (pattern, k + 1) not in FREE_YAW:
+            ref[k] = fixed[k]
+            continue
+        nb = [kk for kk in reversed(ks[:i]) if (pattern, kk + 1) not in FREE_YAW][:1] + \
+             [kk for kk in ks[i + 1:] if (pattern, kk + 1) not in FREE_YAW][:1]
+        if nb:
+            a = np.radians([fixed[kk] for kk in nb])
+            ref[k] = math.degrees(math.atan2(np.sin(a).mean(), np.cos(a).mean()))
+        else:
+            ref[k] = fixed[k]
+    out_ref.clear(); out_ref.update(ref)
+    return out, adj, fixed
+
+
+class PatternDesign:
+    """Closure-independent precomputation for one pattern / spec / alpha: combos of every flowing stroke."""
+
+    def __init__(self, SS, pattern, alpha, smp_all, fills=DS_FILLS, fixed=None):
+        """fixed: None (pass 1: enumerate fills and s) or dict(fill=, s={k: s}) (pass 2: one fill, chosen s)."""
+        self.pattern, self.alpha = pattern, alpha
+        refs = _refs()[pattern]
+        self.smp = smp_all["strokes"]
+        self.total_mL = smp_all["total_mL"]
+        self.yaws, self.adj, self.fixed_yaw = yaw_windows(pattern, smp_all)
+        self.yaw_ref = dict(out_ref)
+        ctf = cup_tilt_fn(pattern) if SS.maps is not None else None
+        self.fills = list(fills) if fixed is None else [fixed["fill"]]
+        self.C = {}
+        for k, s in sorted(self.smp.items()):
+            if fixed is None:
+                sl = list(DS_S) if s["cls"] != "cut" else [1.0]
+            else:
+                sl = [1.0]                      # the samples already carry the chosen s (exact lagged schedule)
+            ct = None if ctf is None else ctf(s["t"])
+            free = (pattern, k + 1) in FREE_YAW
+            rolls = DS_ROLLS if free else (0.0,)          # fixed-direction strokes: no roll (keeps the jet direction)
+            c = stroke_combos(SS, s, alpha, self.fills, sl, rolls, self.yaws[k], ct)
+            c["rolls"] = list(rolls)
+            dy = (np.asarray(self.yaws[k]) - self.yaw_ref[k] + 180.0) % 360.0 - 180.0
+            c["reg"] = DS_TIE * ((dy[None, None, None, :] / 90.0) ** 2 + (np.asarray(rolls)[None, None, :, None] / 20.0) ** 2)
+            c["s_list"] = sl if fixed is None else [fixed["s"].get(k, 1.0)]
+            r = refs[str(k + 1)]
+            c.update(cls=s["cls"], chi_t=r["chi_t"], dep=r["dep"], F_int=r["F_int"], FS_uh=r["FS_uh_ms"],
+                     lb=(pattern, k + 1) in LB_STROKES, n=k + 1)
+            self.C[k] = c
+        # fill feasibility: V(t) >= DS_VMIN with s = 1 (pass 1) / exact (pass 2)
+        self.fill_ok = np.array([f - self.total_mL >= DS_VMIN - 1e-9 for f in self.fills])
+
+
+def stroke_cost(c, z, ch, e, kt, norms):
+    """Per-combination additive contribution to J_total (and its parts)."""
+    W_dep, F_oth = norms["W_dep"], norms["F_oth"]
+    s = np.asarray(c["s_list"], float)[None, :, None, None]
+    js = (c["dep"] / W_dep) * (0.4 * np.log(s) / math.log(1.25)) ** 2
+    jc = (c["dep"] / W_dep) * e ** 2
+    m = np.log(np.maximum(kt * c["uw"], 1e-9) / (0.7 * c["FS_uh"]))
+    if c["lb"]:
+        ju = np.maximum(m, 0.0) ** 2 / len(LB_STROKES)
+        jo = 0.0 * m
+    else:
+        ju = 0.0 * m
+        jo = LAM_OTH * (c["F_int"] / F_oth) * m ** 2
+    jc, js = np.broadcast_to(jc, m.shape), np.broadcast_to(js, m.shape)
+    return jc + js + ju + jo + c.get("reg", 0.0), dict(chi=jc, s=js, uh=ju, oth=jo)
+
+
+def _norms(designs):
+    W = sum(c["dep"] for d in designs for c in d.C.values())
+    Fo = sum(c["F_int"] for d in designs for c in d.C.values() if not c["lb"])
+    return dict(W_dep=W, F_oth=Fo)
+
+
+def evaluate(designs, B, p, kts=KT_GRID, detail=False):
+    """J_total(B, p) minimised over kappa_t in kts, per pattern over the fill, per stroke over (s, roll, yaw) (pairs of
+    adjacent free-yaw strokes jointly within their yaw window).  detail=True returns the chosen design."""
+    norms = _norms(designs)
+    sol = {}
+    for d in designs:
+        for k, c in d.C.items():
+            sol[(d.pattern, k)] = solve_z(c["lnXq"], c["zg"], c["chi_t"], B, p)
+    best = None
+    for kt in kts:
+        tot = 0.0
+        pick = {}
+        for d in designs:
+            per_fill = np.zeros(len(d.fills))
+            ch_ = {}
+            mins = {}
+            for k, c in d.C.items():
+                z, ch, e, _, _ = sol[(d.pattern, k)]
+                cost, _ = stroke_cost(c, z, ch, e, kt, norms)                      # (F, S, R, Y)
+                cy = cost.min(axis=(1, 2))                                          # (F, Y)
+                mins[k] = cy
+            done = set()
+            for k, c in d.C.items():
+                if k in done:
+                    continue
+                if k in d.adj and d.adj[k][0] in d.C:
+                    k2, w = d.adj[k]
+                    y1, y2 = np.asarray(d.yaws[k]), np.asarray(d.yaws[k2])
+                    ok = np.abs(y1[:, None] - y2[None, :]) <= w + 1e-9
+                    pair = mins[k][:, :, None] + mins[k2][:, None, :]
+                    pair = np.where(ok[None], pair, np.inf)
+                    per_fill += pair.reshape(len(d.fills), -1).min(-1)
+                    done |= {k, k2}
+                else:
+                    per_fill += mins[k].min(-1)
+                    done.add(k)
+            per_fill = np.where(d.fill_ok, per_fill, np.inf)
+            i = int(np.argmin(per_fill))
+            tot += per_fill[i]
+            pick[d.pattern] = (i, per_fill[i])
+        if best is None or tot < best[0]:
+            best = (tot, kt, pick)
+    if not detail:
+        return best[0], best[1]
+    return best[0], best[1], choose(designs, B, p, best[1], best[2], sol, norms)
+
+
+def choose(designs, B, p, kt, pick, sol, norms):
+    """The chosen combination per stroke (given the fill picked per pattern), with its numbers."""
+    out = {}
+    for d in designs:
+        i = pick[d.pattern][0]
+        rows = {}
+        mins = {}
+        for k, c in d.C.items():
+            z, ch, e, c_lo, c_hi = sol[(d.pattern, k)]
+            cost, parts = stroke_cost(c, z, ch, e, kt, norms)
+            mins[k] = (cost[i], parts, z[i], ch[i], e[i], c_lo[i], c_hi[i])
+        ychoice = {}
+        done = set()
+        for k in d.C:
+            if k in done:
+                continue
+            if k in d.adj and d.adj[k][0] in d.C:
+                k2, w = d.adj[k]
+                a = mins[k][0].min(axis=(0, 1))
+                b = mins[k2][0].min(axis=(0, 1))
+                y1, y2 = np.asarray(d.yaws[k]), np.asarray(d.yaws[k2])
+                ok = np.abs(y1[:, None] - y2[None, :]) <= w + 1e-9
+                pr = np.where(ok, a[:, None] + b[None, :], np.inf)
+                j1, j2 = np.unravel_index(int(np.argmin(pr)), pr.shape)
+                ychoice[k], ychoice[k2] = j1, j2
+                done |= {k, k2}
+            else:
+                ychoice[k] = int(np.argmin(mins[k][0].min(axis=(0, 1))))
+                done.add(k)
+        for k, c in d.C.items():
+            cost, parts, z, ch, e, c_lo, c_hi = mins[k]
+            jy = ychoice[k]
+            sub = cost[:, :, jy]
+            js, jr = np.unravel_index(int(np.argmin(sub)), sub.shape)
+            idx = (i, js, jr, jy)
+            rows[k] = dict(n=k + 1, cls=c["cls"], lb=c["lb"], s=float(c["s_list"][js]), roll=float(c["rolls"][jr]),
+                           yaw=float(d.yaws[k][jy]), yaw_free=(d.pattern, k + 1) in FREE_YAW, z_mm=float(z[js, jr, jy] * 1e3),
+                           chi_t=c["chi_t"], chi=float(ch[js, jr, jy]), e=float(e[js, jr, jy]),
+                           chi_zlo=float(c_lo[js, jr, jy]), chi_zhi=float(c_hi[js, jr, jy]),
+                           Zreq_w_mm=float(c["Zreq_w"][idx] * 1e3), Zreq_max_mm=float(c["Zreq_max"][idx] * 1e3),
+                           zmin_w_mm=float(c["zmin_w"][idx] * 1e3), uw=float(c["uw"][idx]), exitw=float(c["exitw"][idx]),
+                           FS_uh=c["FS_uh"], mom_ratio=float(kt * c["uw"][idx] / (0.7 * c["FS_uh"])),
+                           tilt_w=float(c["tilt_w"][idx]), u0_w=float(c["u0_w"][idx]), V_lo=float(c["V_lo"][idx]),
+                           V_hi=float(c["V_hi"][idx]), Qw=float(c["Qw"][idx]), cost=float(sub[js, jr] - c["reg"][0, 0, jr, jy]),
+                           parts={q: float(np.broadcast_to(v, c["uw"].shape)[idx]) for q, v in parts.items()},
+                           zlo_mm=float(c["zg"][0] * 1e3), zhi_mm=float(c["zg"][-1] * 1e3))
+        out[d.pattern] = dict(fill=float(d.fills[i]), J=float(pick[d.pattern][1]), strokes=rows, total_mL=d.total_mL)
+    return dict(B=B, p=p, kt=kt, patterns=out)
+
+
+def fit_closure(designs, B0=None, p0=None, grid=True, log=print):
+    """(B, p, kappa_t): grid p in 1..8 step 0.5 x 25 log B in [300, 6000] (optional), then coordinate refinement."""
+    t0 = time.time()
+    best = None
+    if grid:
+        for p in np.arange(1.0, 8.0001, 0.5):
+            for lB in np.linspace(math.log(300.0), math.log(6000.0), 25):
+                J, kt = evaluate(designs, math.exp(lB), p)
+                if best is None or J < best[0]:
+                    best = (J, lB, p, kt)
+        log(f"    grid best J {best[0]:.4f} B {math.exp(best[1]):.0f} p {best[2]} kt {best[3]} [{time.time() - t0:.0f}s]")
+    else:
+        J, kt = evaluate(designs, B0, p0)
+        best = (J, math.log(B0), p0, kt)
+    J, lB, p, kt = best
+    sl, sp = (math.log(6000.0) - math.log(300.0)) / 24, 0.5
+    for _ in range(40):
+        imp = False
+        for dl, dp in ((sl, 0), (-sl, 0), (0, sp), (0, -sp)):
+            l2 = min(max(lB + dl, math.log(300.0)), math.log(6000.0))
+            p2 = min(max(p + dp, 1.0), 8.0)
+            J2, kt2 = evaluate(designs, math.exp(l2), p2)
+            if J2 < J - 1e-10:
+                J, lB, p, kt, imp = J2, l2, p2, kt2, True
+        if not imp:
+            sl *= 0.5
+            sp *= 0.5
+            if sl < 2e-3:
+                break
+    # kappa_t refinement on a 0.01 grid around the optimum
+    kts = tuple(np.round(np.arange(max(0.01, kt - 0.05), min(1.0, kt + 0.05) + 1e-9, 0.01), 2))
+    J, kt = evaluate(designs, math.exp(lB), p, kts)
+    log(f"    refined J {J:.4f} B {math.exp(lB):.1f} p {p:.3f} kt {kt} [{time.time() - t0:.0f}s]")
+    return dict(J=J, B=math.exp(lB), p=p, kt=kt)
+
+
+def design_spec(spec, alphas=DS_ALPHAS, patterns=PC.PATTERNS, log=print, tag=None):
+    """Pass 1 (fills x s enumerated, s = 1 depletion) and pass 2 (fill and s fixed, exact lagged schedule) per alpha;
+    returns {alpha: result} and writes design/<spec>/alpha<a>.json."""
+    SS = SpecSurrogate(spec)
+    odir = os.path.join(DSN, tag or spec)
+    os.makedirs(odir, exist_ok=True)
+    smp1 = {p: design_samples(p) for p in patterns}
+    res = {}
+    for al in alphas:
+        t0 = time.time()
+        log(f"[{spec}] alpha {al:g}: pass 1 precompute ...")
+        D1 = [PatternDesign(SS, p, al, smp1[p]) for p in patterns]
+        log(f"    precomputed [{time.time() - t0:.0f}s]")
+        f1 = fit_closure(D1, log=log)
+        J1, kt1, ch1 = evaluate(D1, f1["B"], f1["p"], (f1["kt"],), detail=True)
+        # pass 2: exact schedule with the chosen s, the chosen fill
+        D2 = []
+        for p in patterns:
+            P1 = ch1["patterns"][p]
+            s_sc = {k: r["s"] for k, r in P1["strokes"].items() if abs(r["s"] - 1.0) > 1e-9}
+            smp2 = design_samples(p, s_scale=s_sc)
+            fill = P1["fill"]
+            if fill - smp2["total_mL"] < DS_VMIN:            # exact volume > s = 1 estimate: next feasible fill
+                fill = min([f for f in DS_FILLS if f - smp2["total_mL"] >= DS_VMIN] or [DS_FILLS[-1]])
+            D2.append(PatternDesign(SS, p, al, smp2, fixed=dict(fill=fill, s={k: r["s"] for k, r in P1["strokes"].items()})))
+        f2 = fit_closure(D2, B0=f1["B"], p0=f1["p"], grid=False, log=log)
+        J2, kt2, ch2 = evaluate(D2, f2["B"], f2["p"], (f2["kt"],), detail=True)
+        for p in patterns:                                   # carry s (pass 2 enumerates s = [chosen] only)
+            for k, r in ch2["patterns"][p]["strokes"].items():
+                r["s"] = ch1["patterns"][p]["strokes"][k]["s"]
+        out = dict(spec=spec, alpha=al, pass1=dict(J=J1, B=f1["B"], p=f1["p"], kt=f1["kt"]),
+                   pass2=dict(J=J2, B=f2["B"], p=f2["p"], kt=f2["kt"]), design=_jsonable(ch2),
+                   pass1_design=_jsonable(ch1), wall_s=time.time() - t0)
+        with open(os.path.join(odir, f"alpha{al:g}.json"), "w") as fh:
+            json.dump(out, fh, indent=1, default=float)
+        log(f"[{spec}] alpha {al:g}: J pass1 {J1:.4f} pass2 {J2:.4f} B {f2['B']:.0f} p {f2['p']:.2f} kt {f2['kt']} "
+            f"fills {[ch2['patterns'][p]['fill'] for p in patterns]} [{time.time() - t0:.0f}s]")
+        res[al] = out
+    return res
+
+
+def _jsonable(x):
+    if isinstance(x, dict):
+        return {str(k): _jsonable(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [_jsonable(v) for v in x]
+    if isinstance(x, (np.floating, np.integer)):
+        return x.item()
+    if isinstance(x, np.ndarray):
+        return x.tolist()
+    return x
+
+
+# ----------------------------------------------------------------------- final inlet tables, exact chi, kappa_r
+def pitcher_tables(prog, SS, alpha, fill, yaw_deg, roll_deg, ctilt_fn=None, hand="ideal"):
+    """Tables on the program's lag grid for ulaw/lat 'pitcher': delivered Q, fill V, foot, yaw (ideal-hand smoothed),
+    roll, tilt, u0, vz, dz_origin, exit vector (world) [m/s], z_min, wanted z_w and the planned lift L (plan_lift of
+    max(z_min - z_w, 0); 0 in 'stop' phases)."""
+    from .v05_program import Program
+    fs_ = flow_schedule(prog)
+    tg = fs_["t"]
+    dt = float(tg[1] - tg[0])
+    V = np.maximum(fill - fs_["cum"], DS_VMIN)
+    XY = np.array([Program.__call__(prog, t).x_hit for t in tg], float) * D_M
+    segs_y = [(prog.events[k], prog.events[k + 1], math.radians(yaw_deg[k])) for k in sorted(yaw_deg)]
+    segs_r = [(prog.events[k], prog.events[k + 1], math.radians(roll_deg[k])) for k in sorted(roll_deg)]
+    yaw = smooth_yaw(PC._yaw_schedule(tg, segs_y, prog.duration), dt, hand)
+    roll = np.degrees(PC._yaw_schedule(tg, segs_r, prog.duration))
+    kk = fs_["k"]
+    zw = np.array([prog.z_at(t, k, max(0.0, min(prog.phases[k]["duration"], t - prog.events[k]))) for t, k in zip(tg, kk)])
+    Qt = np.maximum(fs_["Q"], 1.0)
+    f = SS.flow(Qt, V, roll)
+    ef, es, ez = Surrogate.exit_dir(f["tilt"], roll, alpha)
+    u0 = f["u0"]
+    ex = u0 * (ef * np.cos(yaw) - es * np.sin(yaw))
+    ey = u0 * (ef * np.sin(yaw) + es * np.cos(yaw))
+    ct = None if ctilt_fn is None else ctilt_fn(tg)
+    zmin = SS.z_min(XY[:, 0], XY[:, 1], yaw, Qt, V, roll, alpha, ct)
+    stop = np.array([prog.cls[k] == "stop" for k in range(len(prog.phases))])[kk]
+    R = np.where(stop, 0.0, np.maximum(zmin - zw, 0.0))
+    L = plan_lift(R, dt, hand)
+    return dict(t=tg, Q=fs_["Q"], V=V, x=XY[:, 0], y=XY[:, 1], yaw=yaw, roll=roll, tilt=f["tilt"], u0=u0, vz=u0 * ez,
+                oz=f["oz"], ex=ex, ey=ey, zmin=zmin, zw=zw, R=R, L=L, k=kk, ctilt=(ct if ct is not None else np.full_like(tg, np.nan)))
+
+
+def build_design_program(spec, D, pattern, kappa_r=None, SS=None):
+    """PourF (lat/ulaw 'pitcher') of one pattern from a design dict D (alpha<a>.json 'design' + closure)."""
+    SS = SS or SpecSurrogate(spec)
+    P = D["patterns"][pattern]
+    st = {int(r["n"]) - 1: r for r in P["strokes"].values()}
+    z_cm = {k: r["z_mm"] / 10.0 for k, r in st.items()}
+    s_sc = {k: r["s"] for k, r in st.items() if abs(r["s"] - 1.0) > 1e-12}
+    clo = dict(FS_FIXED, B_dep=D["B"], p_dep=D["p"], kappa_t=D["kt"])
+    if kappa_r is not None:
+        clo["kappa_r"] = kappa_r
+    prog = make_program(pattern, z_cm=z_cm, s_scale=s_sc, closure=clo, lat="pitcher", ulaw="pitcher", pulse=0.0)
+    ctf = cup_tilt_fn(pattern) if SS.maps is not None else None
+    prog.ptab = pitcher_tables(prog, SS, D["alpha"], P["fill"], {k: r["yaw"] for k, r in st.items()},
+                               {k: r["roll"] for k, r in st.items()}, ctf)
+    return prog
+
+
+def inlet_strokes(prog, B, p, dt=1e-3):
+    """Exact per-stroke numbers of the inlet the solver receives (1 ms samples of prog(t), stroke's own phase window):
+    flow-weighted chi, radial V_R (for kappa_r), U, |u_h|, z, Q, and lifts."""
+    n0 = len(prog.log)
+    acc = {}
+    for t in (np.arange(int(prog.duration / dt)) + 0.5) * dt:
+        k = prog.phase_index(t)
+        if prog.cls[k] not in FLOWING:
+            prog(t)
+            continue
+        inl = prog(t)
+        if not inl.active:
+            continue
+        zc = inl.U_perp ** 2 / (B * max(inl.d_jet, 1e-9))
+        chi = 1.0 / (1.0 + zc ** p)
+        VR = min(inl.U_perp * chi ** (1.0 / (2.0 * p)), inl.U_perp, math.sqrt(B * inl.d_jet))
+        row = prog.log[-1]
+        o = acc.setdefault(k, dict(S=0.0, chi=0.0, VR=0.0, U=0.0, uh=0.0, z=0.0, Q=0.0, L=0.0, Lmax=0.0, vol=0.0,
+                                   zmin=0.0, V=0.0, tilt=0.0, exit=0.0))
+        S = inl.S_eff
+        o["S"] += S; o["chi"] += S * chi; o["VR"] += S * VR; o["U"] += S * row[6]; o["uh"] += S * row[8]
+        o["z"] += S * row[7] * 10.0; o["Q"] += S * row[5]; o["vol"] += row[5] * dt; o["exit"] += S * row[13]
+        if prog.ptab is not None:
+            L = float(np.interp(t, prog.ptab["t"], prog.ptab["L"]))
+            o["L"] += S * L * 1e3; o["Lmax"] = max(o["Lmax"], L * 1e3)
+            o["zmin"] += S * float(np.interp(t, prog.ptab["t"], prog.ptab["zmin"])) * 1e3
+            o["V"] += S * float(np.interp(t, prog.ptab["t"], prog.ptab["V"]))
+            o["tilt"] += S * float(np.interp(t, prog.ptab["t"], prog.ptab["tilt"]))
+    del prog.log[n0:]
+    out = {}
+    for k, o in acc.items():
+        W = o["S"]
+        out[k + 1] = dict(chi=o["chi"] / W, VR=o["VR"] / W, U_ms=o["U"] / W, uh_ms=o["uh"] / W, z_mm=o["z"] / W,
+                          Q_mLs=o["Q"] / W, lift_mm=o["L"] / W, lift_max_mm=o["Lmax"], vol_mL=o["vol"], zmin_mm=o["zmin"] / W,
+                          V_mL=o["V"] / W, tilt=o["tilt"] / W, exit_ms=o["exit"] / W)
+    return out
+
+
+def finalize(spec, alpha=None, patterns=PC.PATTERNS, log=print, tag=None):
+    """Pick the alpha with the lowest pass-2 J (or the given one), build the six programs, fit kappa_r (FS's rule on the
+    exact inlets), recompute chi / J from the exact inlets, hand checks; writes design/<spec>/final.json and the tables."""
+    odir = os.path.join(DSN, tag or spec)
+    scan = {}
+    for al in DS_ALPHAS:
+        f = os.path.join(odir, f"alpha{al:g}.json")
+        if os.path.exists(f):
+            with open(f) as fh:
+                scan[al] = json.load(fh)
+    if alpha is None:
+        alpha = min(scan, key=lambda a: scan[a]["pass2"]["J"])
+    R_ = scan[alpha]
+    D = dict(R_["design"], alpha=alpha)
+    SS = SpecSurrogate(spec)
+    refs = _refs()
+    progs, ex = {}, {}
+    for p in patterns:
+        progs[p] = build_design_program(spec, D, p, SS=SS)
+        ex[p] = inlet_strokes(progs[p], D["B"], D["p"])
+    num = den = 0.0
+    for p in patterns:
+        for n, r in ex[p].items():
+            w = refs[p][str(n)]["F_int"]
+            num += w * math.log(refs[p][str(n)]["radial_t"] / (r["VR"])); den += w
+    kr = math.exp(num / den)
+    kr = min(max(kr, 0.005), 0.2)
+    # exact J with the same per-stroke terms
+    W = sum(refs[p][str(n)]["dep"] for p in patterns for n in ex[p])
+    Fo = sum(refs[p][str(n)]["F_int"] for p in patterns for n in ex[p] if (p, n) not in LB_STROKES)
+    Jp, rows = {}, {}
+    hand = {}
+    for p in patterns:
+        P = D["patterns"][p]
+        Jp[p] = dict(chi=0.0, s=0.0, uh=0.0, oth=0.0)
+        rows[p] = []
+        for n, r in sorted(ex[p].items()):
+            rf = refs[p][str(n)]
+            dsg = P["strokes"][str(n - 1)] if str(n - 1) in P["strokes"] else P["strokes"][n - 1]
+            e = float(_logit(r["chi"]) - _logit(rf["chi_t"]))
+            js = rf["dep"] / W * (0.4 * math.log(dsg["s"]) / math.log(1.25)) ** 2
+            m = math.log(max(D["kt"] * r["uh_ms"], 1e-9) / (0.7 * rf["FS_uh_ms"]))
+            lb = (p, n) in LB_STROKES
+            ju = max(m, 0.0) ** 2 / len(LB_STROKES) if lb else 0.0
+            jo = 0.0 if lb else LAM_OTH * rf["F_int"] / Fo * m * m
+            jc = rf["dep"] / W * e * e
+            Jp[p]["chi"] += jc; Jp[p]["s"] += js; Jp[p]["uh"] += ju; Jp[p]["oth"] += jo
+            unreach = abs(e) > 0.4
+            why = ""
+            if unreach and abs(dsg["e"]) <= 0.4:
+                why = ("matched in the design (chi %.3f) but not in the inlet: the 0.08 s spout lag / ztr height transition "
+                       "carries the previous stroke's flow and height into this one" % dsg["chi"])
+            elif unreach:
+                if e < 0:
+                    why = ("clearance: z pinned at the pitcher's z_min (Zreq %.1f mm > design %.1f mm)" % (dsg["Zreq_w_mm"], dsg["z_mm"])
+                           if dsg["Zreq_w_mm"] > dsg["zlo_mm"] + 0.5 and dsg["Zreq_w_mm"] >= dsg["z_mm"] - 0.3
+                           else "U too high even at the lowest allowed z (%.1f mm)" % dsg["zlo_mm"])
+                else:
+                    why = "U too low even at the highest allowed z (%.0f mm)" % dsg["zhi_mm"]
+            rows[p].append(dict(n=n, cls=dsg["cls"], lb=lb, chi_t=rf["chi_t"], chi_design=dsg["chi"], chi_inlet=r["chi"], e=e,
+                                unreachable=unreach, why=why, z_design_mm=dsg["z_mm"], z_inlet_mm=r["z_mm"],
+                                Zreq_w_mm=dsg["Zreq_w_mm"], zmin_inlet_mm=r["zmin_mm"], lift_mm=r["lift_mm"],
+                                lift_max_mm=r["lift_max_mm"], s=dsg["s"], yaw=dsg["yaw"], yaw_free=dsg["yaw_free"],
+                                roll=dsg["roll"], U_ms=r["U_ms"], uh_ms=r["uh_ms"], exit_ms=r["exit_ms"], FS_uh_ms=rf["FS_uh_ms"],
+                                mom_ratio=D["kt"] * r["uh_ms"] / (0.7 * rf["FS_uh_ms"]), Q_mLs=r["Q_mLs"], vol_mL=r["vol_mL"],
+                                V_mL=r["V_mL"], tilt=r["tilt"], J=jc + js + ju + jo, J_parts=dict(chi=jc, s=js, uh=ju, oth=jo)))
+        Jp[p]["total"] = sum(Jp[p].values())
+        tab = progs[p].ptab
+        on = tab["Q"] > 0
+        t_on = tab["t"][on]
+        trk = track_tilt(tab["tilt"], float(tab["t"][1] - tab["t"][0]), "video")
+        hand[p] = dict(ideal=hand_check(tab["t"], tilt_deg=tab["tilt"], tip=None, yaw=tab["yaw"], hand="ideal"),
+                       video_tilt_track_err_deg=dict(max=float(np.max(np.abs(trk - tab["tilt"])[on])) if on.any() else 0.0,
+                                                     p95=float(np.percentile(np.abs(trk - tab["tilt"])[on], 95)) if on.any() else 0.0),
+                       video=hand_check(tab["t"], tilt_deg=tab["tilt"], tip=None, yaw=tab["yaw"], hand="video"),
+                       lift_max_mm=float(tab["L"].max() * 1e3), V_end=float(tab["V"][-1]),
+                       tilt_range=[float(tab["tilt"][on].min()), float(tab["tilt"][on].max())] if on.any() else None,
+                       t_on=[float(t_on[0]), float(t_on[-1])] if on.any() else None)
+        np.savez_compressed(os.path.join(odir, f"ptab_{p}.npz"), **{k: v for k, v in tab.items()})
+    Jtot = sum(v["total"] for v in Jp.values())
+    out = dict(spec=spec, tag=tag or spec, vmin_mL=DS_VMIN, def_=DS_SPECS[spec], b_mm=SS.b_mm, alpha=alpha,
+               alpha_scan={str(a): dict(J=v["pass2"]["J"], J_pass1=v["pass1"]["J"], B=v["pass2"]["B"], p=v["pass2"]["p"],
+                                        kt=v["pass2"]["kt"], fills={q: v["design"]["patterns"][q]["fill"] for q in patterns})
+                           for a, v in scan.items()},
+               closure=dict(FS_FIXED, B_dep=D["B"], p_dep=D["p"], kappa_t=D["kt"], kappa_r=kr),
+               J_design=R_["pass2"]["J"], J_inlet=Jtot, J_pattern=Jp,
+               patterns={p: dict(fill=D["patterns"][p]["fill"], total_mL=D["patterns"][p]["total_mL"], strokes=rows[p],
+                                 hand=hand[p]) for p in patterns}, design=D)
+    with open(os.path.join(odir, "final.json"), "w") as fh:
+        json.dump(_jsonable(out), fh, indent=1, default=float)
+    log(f"[{spec}] final alpha {alpha:g}: B {D['B']:.0f} p {D['p']:.2f} kt {D['kt']} kr {kr:.4f}  J design "
+        f"{R_['pass2']['J']:.4f} inlet {Jtot:.4f}")
+    return out
+
+
+def load_final(spec):
+    with open(os.path.join(DSN, spec, "final.json")) as fh:
+        return json.load(fh)
+
+
+def solve_design(spec, pattern, N=128, tag=None, snaps=False, prog=None, extra=None):
+    """Run the solver (latte_imex.run.run, unmodified) on the design inlet of one pattern; output like drvf:
+    design/runs/<tag>_<pattern>_N<N>/{c.npz, res.json, trajectory.json, inlet_log.npy, ptab.npz}."""
+    import latte_imex.run as RR
+    drvf = PC._drvf()
+    F = load_final(tag or spec)
+    global DS_VMIN
+    DS_VMIN = F.get("vmin_mL", DS_VMIN)
+    if prog is None:
+        D = F["design"]
+        prog = build_design_program(F["spec"], D, pattern, kappa_r=F["closure"]["kappa_r"])
+    tag = tag or spec
+    RR.v05_program = lambda name: prog
+    out = os.path.join(DSN, "runs", f"{tag}_{pattern}_N{N}")
+    os.makedirs(out, exist_ok=True)
+    t0 = time.time()
+    sol, m = RR.run(pattern, N=N, out=out, video=False, quiet=True, control="v05")
+    wall = time.time() - t0
+    c = sol.concentration()
+    mask = sol.g.mask.copy()
+    np.savez_compressed(os.path.join(out, "c.npz"), c=c.astype(np.float32), mask=mask)
+    np.save(os.path.join(out, "inlet_log.npy"), np.array(prog.log))
+    if prog.ptab is not None:
+        np.savez_compressed(os.path.join(out, "ptab.npz"), **prog.ptab)
+    for fn in (("snapshots_c.npz",) if not snaps else ()) + ("final_state.npz",):
+        try:
+            os.remove(os.path.join(out, fn))
+        except OSError:
+            pass
+    res = dict(tag=tag, spec=spec, pattern=pattern, N=N, params=dict(prog.config["parameters"]), wall_s=wall,
+               stats=m["stats"], ledger=m["ledger"], T=m["T"], extra=extra or {})
+    with open(os.path.join(out, "res.json"), "w") as fh:
+        json.dump(res, fh, indent=1, default=float)
+    print(json.dumps(dict(tag=tag, pattern=pattern, N=N, wall_s=round(wall, 1), deposited=m["ledger"].get("deposited"))),
+          flush=True)
+    return out
+
+
+def solve_fs(pattern, N=128, tag="FSr", via="pourf", pulse=0.41):
+    """FS reference / reproduction runs: via 'drvf' = drvf.PhysF exactly as runs/FS_<p> (flags of PC.fs_program);
+    via 'pourf' = PourF through the pitcher U path with FS's quantities (vz = 0.35 m/s, dz_origin = 0, no lift),
+    lat 'exitmin', s = 1."""
+    import latte_imex.run as RR
+    if via == "drvf":
+        prog = PC.fs_program(pattern)
+    else:
+        with open(PC.EXPS) as f:
+            e = json.load(f)["P2"]
+        sp = e["inlet"][pattern]
+        params = dict(kappa_Q=2.0, cp=1.36, beta=3.0, nu=1e-3)
+        for key in ("B_dep", "p_dep", "kappa_r"):
+            params[key] = e["params"][key]
+        PourF = pourf_class()
+        prog = PourF(pattern, sp["U"], sp["kappa_Q"], params, pulse, PC.FS_FLOW_PHASE[pattern], s_scale={}, ulaw="pitcher",
+                     ramp=0.1, lat="exitmin", lag=0.08, stop=False, ztr=True)
+        prog.ptab = dict(t=prog.tg, vz=np.full_like(prog.tg, 0.35), oz=np.zeros_like(prog.tg), L=None)
+    RR.v05_program = lambda name: prog
+    out = os.path.join(DSN, "runs", f"{tag}_{via}_{pattern}_N{N}")
+    os.makedirs(out, exist_ok=True)
+    t0 = time.time()
+    sol, m = RR.run(pattern, N=N, out=out, video=False, quiet=True, control="v05")
+    c = sol.concentration()
+    np.savez_compressed(os.path.join(out, "c.npz"), c=c.astype(np.float32), mask=sol.g.mask.copy())
+    np.save(os.path.join(out, "inlet_log.npy"), np.array(prog.log))
+    for fn in ("snapshots_c.npz", "final_state.npz"):
+        try:
+            os.remove(os.path.join(out, fn))
+        except OSError:
+            pass
+    with open(os.path.join(out, "res.json"), "w") as fh:
+        json.dump(dict(tag=tag, via=via, pattern=pattern, N=N, wall_s=time.time() - t0, stats=m["stats"], ledger=m["ledger"],
+                       T=m["T"], params=dict(prog.config["parameters"])), fh, indent=1, default=float)
+    print(json.dumps(dict(tag=tag, via=via, pattern=pattern, N=N, wall_s=round(time.time() - t0, 1))), flush=True)
+    return out
+
+
 # =========================================================================== CLI
 def main(argv=None):
     ap = argparse.ArgumentParser()
@@ -986,6 +1907,13 @@ def main(argv=None):
     ap.add_argument("--cups", default="table")
     ap.add_argument("--jobs", type=int, default=2)
     ap.add_argument("--specs", default=",".join(SPECS))
+    ap.add_argument("--alphas", default="0,10,20,30")
+    ap.add_argument("--alpha", default=None)
+    ap.add_argument("--pattern", default="heart")
+    ap.add_argument("--N", type=int, default=128)
+    ap.add_argument("--tag", default=None)
+    ap.add_argument("--via", default="pourf")
+    ap.add_argument("--vmin", default=None)
     a = ap.parse_args(argv)
     os.makedirs(OUT, exist_ok=True)
     if a.cmd == "build":
@@ -1022,6 +1950,18 @@ def main(argv=None):
         selftest()
     elif a.cmd == "validate":
         validate()
+    elif a.cmd == "design":                       # design --spec S1 [--alphas 0,10,20,30] [--vmin 50 --tag S1_V50]
+        if a.vmin is not None:
+            globals()["DS_VMIN"] = float(a.vmin)
+        design_spec(a.spec, tuple(float(x) for x in a.alphas.split(",")), tag=a.tag)
+    elif a.cmd == "finalize":                     # finalize --spec S1 [--alpha 10] [--vmin 50 --tag S1_V50]
+        if a.vmin is not None:
+            globals()["DS_VMIN"] = float(a.vmin)
+        finalize(a.spec, None if a.alpha is None else float(a.alpha), tag=a.tag)
+    elif a.cmd == "solve":                        # solve --spec S1 --pattern heart --N 128 [--tag S1]
+        solve_design(a.spec, a.pattern, a.N, a.tag)
+    elif a.cmd == "fsrun":                        # fsrun --pattern heart --N 48 --via drvf|pourf [--tag FSr]
+        solve_fs(a.pattern, a.N, a.tag or "FSr", a.via)
     elif a.cmd == "report":
         closed_form_check()
         jet_tables()

@@ -1,0 +1,30 @@
+{
+ "written": "2026-10-13 20:11:20",
+ "note": "A / B -> set; FS = all-physical closure, uncalibrated; CAL = all-physical closure calibrated on tulip + leaf (frozen); same FS actions",
+ "patterns": {
+  "heart": {
+   "A": "FS",
+   "B": "CAL"
+  },
+  "push_heart": {
+   "A": "CAL",
+   "B": "FS"
+  },
+  "layered_heart": {
+   "A": "CAL",
+   "B": "FS"
+  },
+  "tulip": {
+   "A": "FS",
+   "B": "CAL"
+  },
+  "leaf": {
+   "A": "FS",
+   "B": "CAL"
+  },
+  "swan": {
+   "A": "CAL",
+   "B": "FS"
+  }
+ }
+}

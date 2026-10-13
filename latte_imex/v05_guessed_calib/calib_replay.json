@@ -1,0 +1,158 @@
+{
+ "inits": [
+  {
+   "init": "FS",
+   "gens": 20,
+   "trajectory_matches_calib_json": true,
+   "mismatched_gens": [],
+   "final_sigma": 0.13684597781202898,
+   "stop": {
+    "maxiter": 20
+   },
+   "xfavorite_unit": {
+    "B_dep": 0.6858,
+    "p_dep": 0.0249,
+    "kappa_r": 0.7314,
+    "kappa_Q": 0.7,
+    "cp": 0.98,
+    "beta": 0.6029,
+    "kappa_t": 0.7217,
+    "kappa_c": 0.8374
+   },
+   "xfavorite_phys": {
+    "B_dep": 2340.636248961806,
+    "p_dep": 1.1742593797832188,
+    "kappa_r": 0.07425928170961575,
+    "kappa_Q": 2.7721419528767672,
+    "cp": 2.0244147620043473,
+    "beta": 1.4516377423403444,
+    "kappa_t": 0.7217264573308636,
+    "kappa_c": 0.8374483673707817
+   },
+   "stds_unit": {
+    "B_dep": 0.1275,
+    "p_dep": 0.136,
+    "kappa_r": 0.1336,
+    "kappa_Q": 0.1289,
+    "cp": 0.1197,
+    "beta": 0.0705,
+    "kappa_t": 0.1237,
+    "kappa_c": 0.1464
+   },
+   "last_gen_unit_range": {
+    "B_dep": [
+     0.4498,
+     0.8896
+    ],
+    "p_dep": [
+     0.0001,
+     0.1339
+    ],
+    "kappa_r": [
+     0.535,
+     0.998
+    ],
+    "kappa_Q": [
+     0.5429,
+     0.9357
+    ],
+    "cp": [
+     0.8219,
+     0.9923
+    ],
+    "beta": [
+     0.4133,
+     0.7167
+    ],
+    "kappa_t": [
+     0.5514,
+     0.9712
+    ],
+    "kappa_c": [
+     0.6164,
+     0.9503
+    ]
+   },
+   "mean_near_bound_2pct": {}
+  },
+  {
+   "init": "FSp2",
+   "gens": 20,
+   "trajectory_matches_calib_json": true,
+   "mismatched_gens": [],
+   "final_sigma": 0.11943681677955734,
+   "stop": {
+    "maxiter": 20
+   },
+   "xfavorite_unit": {
+    "B_dep": 0.6616,
+    "p_dep": 0.0772,
+    "kappa_r": 0.9866,
+    "kappa_Q": 0.7035,
+    "cp": 0.4184,
+    "beta": 0.5999,
+    "kappa_t": 0.7545,
+    "kappa_c": 0.8086
+   },
+   "xfavorite_phys": {
+    "B_dep": 2177.216530143747,
+    "p_dep": 1.5407079155173822,
+    "kappa_r": 0.19034020546276384,
+    "kappa_Q": 2.79112419260908,
+    "cp": 1.083419888145056,
+    "beta": 1.4337024863849348,
+    "kappa_t": 0.7545301768417274,
+    "kappa_c": 0.8086222750008233
+   },
+   "stds_unit": {
+    "B_dep": 0.0657,
+    "p_dep": 0.0993,
+    "kappa_r": 0.1165,
+    "kappa_Q": 0.127,
+    "cp": 0.1522,
+    "beta": 0.054,
+    "kappa_t": 0.1111,
+    "kappa_c": 0.1345
+   },
+   "last_gen_unit_range": {
+    "B_dep": [
+     0.5949,
+     0.8394
+    ],
+    "p_dep": [
+     0.014,
+     0.2191
+    ],
+    "kappa_r": [
+     0.8896,
+     0.9999
+    ],
+    "kappa_Q": [
+     0.4425,
+     0.8881
+    ],
+    "cp": [
+     0.3239,
+     0.5783
+    ],
+    "beta": [
+     0.5051,
+     0.7137
+    ],
+    "kappa_t": [
+     0.5883,
+     0.9637
+    ],
+    "kappa_c": [
+     0.6857,
+     0.9984
+    ]
+   },
+   "mean_near_bound_2pct": {
+    "kappa_r": "hi"
+   }
+  }
+ ],
+ "n_forward_replayed": 960,
+ "n_forward_calib_json": 960
+}

@@ -1,0 +1,649 @@
+{
+ "date": "2026-10-13",
+ "question": "physical closure parameters calibrated on tulip + leaf (then frozen) with the GUESSED all-physical actions FS; the four other patterns are predictions",
+ "actions": "FS of latte_imex/v05_allphys (V05_ALLPHYS_RESULT.md sections 1, 3, 4) exactly as in the stored FS runs: drvf.py FS <p> --exp P2 --pulse 0.41 --lat exitmin --lag 0.08 --ztr, --flow_phase 0 (tulip, leaf, swan), pi/2 (layered_heart), keep (heart, push_heart); bridges >= 0.3 s, ramps 0.1 s, spout lag 0.08 s, per-stroke heights of the FS inverse design (FS_U), Codex's paths / timings / wiggles.  FIXED during calibration and test; not re-designed for the new closure",
+ "calibrated": {
+  "keys": [
+   "B_dep",
+   "p_dep",
+   "kappa_r",
+   "kappa_Q",
+   "cp",
+   "beta",
+   "kappa_t",
+   "kappa_c"
+  ],
+  "space": {
+   "B_dep": [
+    300.0,
+    6000.0,
+    "log"
+   ],
+   "p_dep": [
+    1.0,
+    8.0,
+    "lin"
+   ],
+   "kappa_r": [
+    0.005,
+    0.2,
+    "log"
+   ],
+   "kappa_Q": [
+    0.7,
+    5.0,
+    "log"
+   ],
+   "cp": [
+    0.68,
+    2.07,
+    "log"
+   ],
+   "beta": [
+    0.12,
+    7.5,
+    "log"
+   ],
+   "kappa_t": [
+    0.0,
+    1.0,
+    "lin"
+   ],
+   "kappa_c": [
+    0.0,
+    1.0,
+    "lin"
+   ]
+  },
+  "fixed": {
+   "nu": 0.001,
+   "D": 1e-07
+  },
+  "note": "kappa_Q also sets the received flow Q = clip(F / kappa_Q, 1, 32 mL/s) as in drvf.py; clip activity is recorded for every call"
+ },
+ "loss": {
+  "version": "Lfin-1",
+  "frame": "final frame only",
+  "definition": "L_fin = (1 - Dice) + d_bnd / 0.05 D + S after the best rigid alignment; calibration loss = mean of L_fin over tulip and leaf (equal weights)",
+  "canonical": "compare.py: compare.target (leaf PHI 180 deg, swan 135 deg), compare.Sampler, cup R = 0.49 D",
+  "thresholds": {
+   "model": 0.4,
+   "video": 0.5
+  },
+  "alignment": "argmax IoU(c > 0.4) over theta in [-25.0, 25.0] step 2.5 deg x dx, dy in [-0.06, 0.06] step 0.01 D (first maximum in loop order theta, dx, dy); the same transform for Dice, d_bnd and S.  The IoU grid is computed by a numba kernel with the coordinates of compare.Sampler.field_T (test: identical grid, max |diff| = 0, on the six stored FS 256^2 fields); Dice, d_bnd and S at the chosen transform use compare.Sampler.field_T itself",
+  "d_bnd": "compare.boundary_distance(...)['sym'] [D]; 0.5 D when one side has no white boundary",
+  "S": "mean over the structnum.LINES x = -0.10, -0.05, 0, 0.05, 0.10 D of |n_model - n_video| / max(n_video, 1); n = structnum.stripes(...)['total'] = cf_runner.axis_gaps gaps (>= 1 mm brown between white) + dips (prominence >= 0.1, FWHM >= 0.5 mm inside the white extent) on that line",
+  "reported_also": "raw (unaligned) IoU, Dice, boundary distance, S; white fraction; gaps / dips separately",
+  "video": "computed once per pattern and cached (DIR/video)"
+ },
+ "grid_rule": {
+  "rule": "N = 96 for the search IF the FS closure at N = 96 keeps the per-line brown-line counts of N = 256 on tulip and leaf within +-1 on every line AND |L_fin(96) - L_fin(256)| <= 0.15 on both; otherwise N = 128 with only 2 initial points (FS, FSp2)",
+  "counts": "the per-line counts n_model that enter L_fin (after each field's own best alignment); the raw counts are reported too",
+  "decided_in": "Build phase (nrule), written into this file as N_decision before any calibration run"
+ },
+ "cma": {
+  "optimizer": "calib.calibrate (unchanged) inside v05_calibrate.patched (disk cache + wall-time limit)",
+  "popsize": 12,
+  "sigma0": 0.25,
+  "gens": 20,
+  "seed": 1,
+  "seeds_per_init": "seed + init index (1, 2, 3)",
+  "inits": [
+   "FS closure",
+   "FSp2 closure (B_dep 2149.443, p_dep 2, kappa_r 0.042312, rest as FS)",
+   "centre of the unit box"
+  ],
+  "references": "the initial points are evaluated once as references (not candidates, not in the CMA budget)",
+  "best": "lowest calibration loss over all CMA samples (calib.calibrate rec['best'])"
+ },
+ "failures": "exception, non-finite field / ledger, or wall > 1500 s -> +inf (1e6 for CMA), counted",
+ "test": {
+  "patterns": [
+   "heart",
+   "push_heart",
+   "layered_heart",
+   "swan"
+  ],
+  "calibration_patterns": [
+   "tulip",
+   "leaf"
+  ],
+  "N": 256,
+  "what": "the frozen best closure and FS on all six patterns with the FS actions (fields .npy + metrics JSON)"
+ },
+ "never": "the test patterns are not loaded by run / smoke and are not used to choose anything",
+ "note_zh": "预注册：动作固定为全物理猜测动作 FS（不随闭合重新设计）；只校准 v05_adapter.SPACE 的 8 个闭合参数（ν、D 固定）；损失只用末帧：在 compare.py 的规范坐标里先做 ±25°、±0.06 D 的最佳刚体对齐（按 IoU），再算 (1 − Dice) + 边界距离/0.05 D + 五条线上褐线数的相对误差；校准损失 = 郁金香、树叶等权平均。N 的选择规则见 grid_rule。",
+ "spec": {
+  "kind": "v05",
+  "base": "FS",
+  "loss": "Lfin-1",
+  "actions": "FS",
+  "actions_id": "bba226832a8719e1ebdefef654122793e6f4cb9c",
+  "fixed": {
+   "nu": 0.001,
+   "D": 1e-07
+  },
+  "driver": "v05_guessed_calib"
+ },
+ "action_definition": {
+  "FS_U": {
+   "heart": {
+    "0": 0.6187466042832238,
+    "1": 0.5618302660868209,
+    "2": 0.6716144314223843
+   },
+   "push_heart": {
+    "0": 0.6760038173559236,
+    "2": 0.6492869662180937,
+    "4": 0.6577490325604356,
+    "6": 0.6951097066984131
+   },
+   "layered_heart": {
+    "0": 0.7025497621782993,
+    "1": 0.7828976149442493,
+    "2": 0.6728876150955637
+   },
+   "tulip": {
+    "0": 0.7025497621782993,
+    "1": 0.7825559058181663,
+    "3": 0.7814983312060321,
+    "5": 0.4980515934687648,
+    "7": 0.691427145529588
+   },
+   "leaf": {
+    "0": 0.7025497621782993,
+    "1": 0.7828976149442493,
+    "2": 0.6278252465339513,
+    "3": 0.5003756917732478,
+    "5": 0.6277819106059029
+   },
+   "swan": {
+    "0": 0.7025497621782993,
+    "1": 0.7825559058181663,
+    "3": 0.4805353804311261,
+    "5": 0.671928872540564,
+    "7": 0.43100192902387174,
+    "8": 0.4258638280013929,
+    "10": 0.598280870494787
+   }
+  },
+  "FLOW_PHASE": {
+   "heart": null,
+   "push_heart": null,
+   "layered_heart": "1.5707963267948966",
+   "tulip": "0.0",
+   "leaf": "0.0",
+   "swan": "0.0"
+  },
+  "ACTION": {
+   "exp": "P2",
+   "pulse": 0.41,
+   "lat": "exitmin",
+   "lag": 0.08,
+   "ramp": 0.1,
+   "stop": false,
+   "ztr": true,
+   "bridge": 0.3
+  },
+  "drvf_sha1": "dbb61f7138e54da2ff7111f3a722fb754fab80ea",
+  "controls_sha1": {
+   "heart": "c164937a11e38e5a8adfb8b2ead894f4eff3d90b",
+   "push_heart": "0328fbb606179b51af2cd692e49412ace9659d74",
+   "layered_heart": "c2e6321d045c02f1586457000ccce2ee381966ee",
+   "tulip": "800aeff206be2590b6b56c143014dd9fb38ccb3b",
+   "leaf": "4d2e37e9fe5a6a19b62e88f4d7e7f7e65ae159e7",
+   "swan": "af4691035db95a04e9a97f5e456ec6fddbd4c86d"
+  }
+ },
+ "init_points": {
+  "FS": {
+   "B_dep": 1550.4150287146037,
+   "p_dep": 8.0,
+   "kappa_r": 0.03725531625168605,
+   "kappa_Q": 2.0,
+   "cp": 1.36,
+   "beta": 3.0,
+   "kappa_t": 0.7,
+   "kappa_c": 1.0
+  },
+  "FSp2": {
+   "B_dep": 2149.4432509690528,
+   "p_dep": 2.0,
+   "kappa_r": 0.04231228241693512,
+   "kappa_Q": 2.0,
+   "cp": 1.36,
+   "beta": 3.0,
+   "kappa_t": 0.7,
+   "kappa_c": 1.0
+  },
+  "centre": {
+   "B_dep": 1341.640786499874,
+   "p_dep": 4.5,
+   "kappa_r": 0.0316227766016838,
+   "kappa_Q": 1.8708286933869704,
+   "cp": 1.1864231959971112,
+   "beta": 0.9486832980505138,
+   "kappa_t": 0.5,
+   "kappa_c": 0.5
+  }
+ },
+ "code_sha1": {
+  "compare": "9bffb4edf1b4c43803445c133a0a68fa2eaa51bf",
+  "structnum": "b8c07bc03729f736139d197cb20b173e76169717",
+  "cf_runner": "69579cbe56e4052ecb94638f40f52755327bea26",
+  "drvf": "dbb61f7138e54da2ff7111f3a722fb754fab80ea",
+  "calib": "6e8952b63489c4c9802340804121a1d612164310",
+  "v05_calibrate": "cab699f9d19a0a948a0161153aff4e9fcb7e6d8b",
+  "solver": "17030c77de70f2c372b9097288baa2da4693e2c3",
+  "kernels": "62460653c8ff1ae678078cd47898cb3b98cd987d",
+  "run": "24073093a168bb9040a9a1feb9d6080f9accd3bc",
+  "v05_program": "78d3c8b749bdf698910b5b8e61188dbc22669d59",
+  "this": "9bd440e52e68402f2df4040ae30f786e54da5f2d"
+ },
+ "numba_threads": "1",
+ "N_decision": {
+  "N": 128,
+  "inits": [
+   "FS",
+   "FSp2"
+  ],
+  "rule_passed_at_96": false,
+  "numbers": {
+   "tulip": {
+    "96": {
+     "L_fin": 1.7274299094698171,
+     "dL": 0.10124817283730625,
+     "n_model": [
+      6,
+      4,
+      4,
+      2,
+      0
+     ],
+     "dn": [
+      0,
+      -4,
+      -1,
+      0,
+      -1
+     ],
+     "n_raw": [
+      2,
+      4,
+      4,
+      4,
+      2
+     ],
+     "dn_raw": [
+      -2,
+      0,
+      0,
+      0,
+      -2
+     ],
+     "dice": 0.5358588558771863,
+     "bnd_D": 0.0384977716006835,
+     "S": 0.49333333333333335,
+     "iou_raw": 0.24933180603283697,
+     "bnd_raw_D": 0.03259538144505574,
+     "transform": {
+      "theta_deg": 25.0,
+      "dx_D": -0.04,
+      "dy_D": 0.06,
+      "iou_search": 0.3659885237350026,
+      "exact": false,
+      "at_bound": {
+       "theta": true,
+       "dx": false,
+       "dy": true
+      }
+     },
+     "white_frac": 0.2103540077709023,
+     "wall_fwd_s": 23.192041873931885,
+     "wall_loss_s": 1.0981111526489258,
+     "inlet_clip": {
+      "low": 0.028722476852937558,
+      "high": 0.0
+     }
+    },
+    "128": {
+     "L_fin": 1.6595578311145975,
+     "dL": 0.03337609448208667,
+     "n_model": [
+      6,
+      6,
+      4,
+      2,
+      0
+     ],
+     "dn": [
+      0,
+      -2,
+      -1,
+      0,
+      -1
+     ],
+     "n_raw": [
+      4,
+      4,
+      4,
+      4,
+      4
+     ],
+     "dn_raw": [
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "dice": 0.5458227088645567,
+     "bnd_D": 0.03893569366562439,
+     "S": 0.42666666666666664,
+     "iou_raw": 0.2595708479062293,
+     "bnd_raw_D": 0.031938816575890025,
+     "transform": {
+      "theta_deg": 20.0,
+      "dx_D": -0.05,
+      "dy_D": 0.06,
+      "iou_search": 0.37534811758638476,
+      "exact": false,
+      "at_bound": {
+       "theta": false,
+       "dx": false,
+       "dy": true
+      }
+     },
+     "white_frac": 0.2190243200460498,
+     "wall_fwd_s": 48.18625617027283,
+     "wall_loss_s": 3.237229108810425,
+     "inlet_clip": {
+      "low": 0.027002647286372666,
+      "high": 0.0
+     }
+    },
+    "256": {
+     "L_fin": 1.6261817366325109,
+     "dL": 0.0,
+     "n_model": [
+      6,
+      8,
+      5,
+      2,
+      1
+     ],
+     "dn": [
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "n_raw": [
+      4,
+      4,
+      4,
+      4,
+      4
+     ],
+     "dn_raw": [
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "dice": 0.5614825581395348,
+     "bnd_D": 0.03838321473860228,
+     "S": 0.42000000000000004,
+     "iou_raw": 0.28387337753291625,
+     "bnd_raw_D": 0.03134350168852539,
+     "transform": {
+      "theta_deg": 20.0,
+      "dx_D": -0.05,
+      "dy_D": 0.06,
+      "iou_search": 0.39032029908052945,
+      "exact": false,
+      "at_bound": {
+       "theta": false,
+       "dx": false,
+       "dy": true
+      }
+     },
+     "white_frac": 0.23435026622535618,
+     "wall_fwd_s": 321.81533885002136,
+     "wall_loss_s": 2.0928328037261963,
+     "inlet_clip": {
+      "low": 0.027611464059541315,
+      "high": 0.0
+     }
+    }
+   },
+   "leaf": {
+    "96": {
+     "L_fin": 1.9773590069340163,
+     "dL": 0.5263438820291537,
+     "n_model": [
+      1,
+      0,
+      1,
+      2,
+      3
+     ],
+     "dn": [
+      -6,
+      -4,
+      -2,
+      -4,
+      -6
+     ],
+     "n_raw": [
+      1,
+      1,
+      1,
+      2,
+      1
+     ],
+     "dn_raw": [
+      -6,
+      -6,
+      0,
+      -5,
+      -5
+     ],
+     "dice": 0.6821839462658775,
+     "bnd_D": 0.037847568905415935,
+     "S": 0.9025915750915752,
+     "iou_raw": 0.47123850518489535,
+     "bnd_raw_D": 0.046118398749748775,
+     "transform": {
+      "theta_deg": -12.5,
+      "dx_D": -0.03,
+      "dy_D": -0.04,
+      "iou_search": 0.5176624949535729,
+      "exact": false,
+      "at_bound": {
+       "theta": false,
+       "dx": false,
+       "dy": false
+      }
+     },
+     "white_frac": 0.2700016195643372,
+     "wall_fwd_s": 22.800784587860107,
+     "wall_loss_s": 1.8071925640106201,
+     "inlet_clip": {
+      "low": 0.027954754231844865,
+      "high": 0.0
+     }
+    },
+    "128": {
+     "L_fin": 1.9437410813647544,
+     "dL": 0.4927259564598918,
+     "n_model": [
+      3,
+      0,
+      1,
+      2,
+      3
+     ],
+     "dn": [
+      -4,
+      -4,
+      -2,
+      -4,
+      -6
+     ],
+     "n_raw": [
+      1,
+      2,
+      1,
+      2,
+      1
+     ],
+     "dn_raw": [
+      -6,
+      -5,
+      0,
+      -5,
+      -5
+     ],
+     "dice": 0.6887521794913972,
+     "bnd_D": 0.037745084288228814,
+     "S": 0.8775915750915753,
+     "iou_raw": 0.47139953542392565,
+     "bnd_raw_D": 0.04573972846857662,
+     "transform": {
+      "theta_deg": -12.5,
+      "dx_D": -0.03,
+      "dy_D": -0.04,
+      "iou_search": 0.5252646896482512,
+      "exact": false,
+      "at_bound": {
+       "theta": false,
+       "dx": false,
+       "dy": false
+      }
+     },
+     "white_frac": 0.27654061057575513,
+     "wall_fwd_s": 51.01899266242981,
+     "wall_loss_s": 4.648525953292847,
+     "inlet_clip": {
+      "low": 0.02774399521735661,
+      "high": 0.0
+     }
+    },
+    "256": {
+     "L_fin": 1.4510151249048626,
+     "dL": 0.0,
+     "n_model": [
+      7,
+      4,
+      3,
+      6,
+      9
+     ],
+     "dn": [
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "n_raw": [
+      7,
+      7,
+      1,
+      7,
+      6
+     ],
+     "dn_raw": [
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "dice": 0.6897544066189215,
+     "bnd_D": 0.029149740312452942,
+     "S": 0.5577747252747253,
+     "iou_raw": 0.4726142877787947,
+     "bnd_raw_D": 0.0341860916352557,
+     "transform": {
+      "theta_deg": -12.5,
+      "dx_D": -0.03,
+      "dy_D": -0.04,
+      "iou_search": 0.5264313882094545,
+      "exact": false,
+      "at_bound": {
+       "theta": false,
+       "dx": false,
+       "dy": false
+      }
+     },
+     "white_frac": 0.2802251194428699,
+     "wall_fwd_s": 346.70944356918335,
+     "wall_loss_s": 2.8053791522979736,
+     "inlet_clip": {
+      "low": 0.027926276703568776,
+      "high": 0.0
+     }
+    }
+   }
+  },
+  "fs_reproduction": {
+   "tulip": {
+    "bitwise_equal": true,
+    "same_mask": true,
+    "max_abs_diff": 0.0,
+    "stored": "review/v05allphys/final/runs/FS_tulip/c.npz",
+    "steps": [
+     14126,
+     14126
+    ],
+    "T": [
+     11.05001870258496,
+     11.05001870258496
+    ],
+    "deposited": [
+     0.13207028365624182,
+     0.13207028365624182
+    ],
+    "L_fin_stored": 1.6261817366325109
+   },
+   "leaf": {
+    "bitwise_equal": true,
+    "same_mask": true,
+    "max_abs_diff": 0.0,
+    "stored": "review/v05allphys/final/runs/FS_leaf/c.npz",
+    "steps": [
+     14915,
+     14915
+    ],
+    "T": [
+     11.409140090362074,
+     11.409140090362074
+    ],
+    "deposited": [
+     0.15776076974857453,
+     0.15776076974857453
+    ],
+    "L_fin_stored": 1.4510151249048626
+   }
+  },
+  "loadavg_start": [
+   0.7265625,
+   1.27197265625,
+   1.9501953125
+  ],
+  "loadavg_end": [
+   2.359375,
+   2.21044921875,
+   2.205078125
+  ],
+  "wall_s": 355.8601942062378,
+  "procs": 4,
+  "decided": "2026-10-13 14:27:35",
+  "core_sha1": "5be0cf25dd99ee68974657904d5748e1e55b2360"
+ },
+ "written": "2026-10-13 14:21:31"
+}

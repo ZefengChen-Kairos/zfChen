@@ -1,0 +1,12 @@
+{
+ "note": "review edits after prereg.json (none changes the loss, the actions, the CMA setup or the cache key; the 20 smoke calls were recomputed in review/smoke2 and are bit-identical to smoke/)",
+ "edits": [
+  "closure_of: nu, D taken from FIXED (the values the cache key holds) instead of v05_adapter.FS (same values today: 1e-3, 1e-7)",
+  "check_unchanged(pre, root, names): refuses run / evaluate when the PREREG text (loss constants, alignment grid, time limit, CMA setup), the spec, the sha1 of the forward / loss code (driver excepted) or the video-target key differ from the pre-registration; called in run() and evaluate()",
+  "test(): section 7 checks the guard (passes unchanged, refuses 5 kinds of change)",
+  "module docstring: one sentence on the guard"
+ ],
+ "sha1_before_review": "53e27b71994158b2ef54cfb9f4d05c29b20710ff",
+ "sha1_now": "facbe4549a9087cef0a589619c4c0d3ffae899c1",
+ "written": "2026-10-13 14:55:09"
+}

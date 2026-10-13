@@ -1,0 +1,247 @@
+{
+ "pattern": "tulip",
+ "N": 128,
+ "cache_key": "8f82ecfd2565d5bac6416e20bce39cf68059e2cb",
+ "cache_tag": "cal",
+ "fresh_wall_s": 61.019137144088745,
+ "cache_wall_s": 96.8126277923584,
+ "field": {
+  "mask_equal": true,
+  "bitwise_equal_f32": true,
+  "max_abs_diff": 0.0,
+  "finite": true
+ },
+ "ledger": {
+  "layer_error": {
+   "ours": 2.220446049250313e-15,
+   "ref": 2.220446049250313e-15,
+   "absdiff": 0.0,
+   "ok": true
+  },
+  "milk_error": {
+   "ours": 2.275957200481571e-15,
+   "ref": 2.275957200481571e-15,
+   "absdiff": 0.0,
+   "ok": true
+  },
+  "deposited": {
+   "ours": 0.17825085201825447,
+   "ref": 0.17825085201825447,
+   "absdiff": 0.0,
+   "ok": true
+  },
+  "T": {
+   "ours": 11.05269771778162,
+   "ref": 11.05269771778162,
+   "absdiff": 0.0,
+   "ok": true
+  }
+ },
+ "stats": {
+  "steps": {
+   "ours": 11381,
+   "ref": 11381,
+   "ok": true
+  },
+  "frames": {
+   "ours": 1818,
+   "ref": 1818,
+   "ok": true
+  },
+  "max_substeps": {
+   "ours": 9,
+   "ref": 9,
+   "ok": true
+  },
+  "retries": {
+   "ours": 0,
+   "ref": 0,
+   "ok": true
+  },
+  "clip_mass": {
+   "ours": 0.0,
+   "ref": 0.0,
+   "ok": true
+  },
+  "max_u": {
+   "ours": 2.4589916664005047,
+   "ref": 2.4589916664005047,
+   "ok": true
+  }
+ },
+ "inlet_equal": true,
+ "solver_params_equal": true,
+ "solver_closure_return": [
+  "chi",
+  "v05"
+ ],
+ "kQ_equal": true,
+ "driver_lfin": {
+  "loss": {
+   "ours": 1.0892099964327078,
+   "ref": 1.0892099964327078,
+   "absdiff": 0.0,
+   "ok": true
+  },
+  "transform_equal": true,
+  "n_model_equal": true
+ },
+ "indep_lfin": {
+  "L_fin": {
+   "ours": 1.0892099964327078,
+   "ref": 1.0892099964327078,
+   "absdiff": 0.0,
+   "ok": true
+  },
+  "dice": {
+   "ours": 0.6011768349334159,
+   "ref": 0.6011768349334159,
+   "absdiff": 0.0,
+   "ok": true
+  },
+  "iou": {
+   "ours": 0.4297732908253631,
+   "ref": 0.4297732908253631,
+   "absdiff": 0.0,
+   "ok": true
+  },
+  "bnd_D": {
+   "ours": 0.022519341568306178,
+   "ref": 0.022519341568306185,
+   "absdiff": 6.938893903907228e-18,
+   "ok": true
+  },
+  "S": {
+   "ours": 0.24,
+   "ref": 0.24,
+   "absdiff": 0.0,
+   "ok": true
+  },
+  "n_model": {
+   "ours": [
+    6,
+    4,
+    6,
+    5,
+    4
+   ],
+   "ref": [
+    6,
+    4,
+    6,
+    5,
+    4
+   ],
+   "ok": true
+  },
+  "n_video": {
+   "ours": [
+    9,
+    6,
+    5,
+    5,
+    6
+   ],
+   "ref": [
+    9,
+    6,
+    5,
+    5,
+    6
+   ],
+   "ok": true
+  },
+  "transform": {
+   "ours": {
+    "theta_deg": 7.5,
+    "dx_D": -0.02,
+    "dy_D": 0.06,
+    "iou_search": 0.4297732908253631
+   },
+   "ref": {
+    "theta_deg": 7.5,
+    "dx_D": -0.02,
+    "dy_D": 0.06,
+    "iou_search": 0.4297732908253631,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": false,
+     "dy": true
+    }
+   },
+   "ok": true
+  },
+  "white_frac": {
+   "ours": 0.3201539789897827,
+   "ref": 0.3201539789897827,
+   "absdiff": 0.0,
+   "ok": true
+  },
+  "video_white_frac": {
+   "ours": 0.26068499064613615,
+   "ref": 0.26068499064613615,
+   "absdiff": 0.0,
+   "ok": true
+  }
+ },
+ "indep_raw": {
+  "L": {
+   "ours": 1.3015765984753662,
+   "ref": 1.3015765984753664,
+   "absdiff": 2.220446049250313e-16,
+   "ok": true
+  },
+  "iou": {
+   "ours": 0.34923424554356014,
+   "ref": 0.34923424554356014,
+   "absdiff": 0.0,
+   "ok": true
+  },
+  "dice": {
+   "ours": 0.5176777074804615,
+   "ref": 0.5176777074804615,
+   "absdiff": 0.0,
+   "ok": true
+  },
+  "bnd_D": {
+   "ours": 0.025740493075569165,
+   "ref": 0.025740493075569172,
+   "absdiff": 6.938893903907228e-18,
+   "ok": true
+  },
+  "S": {
+   "ours": 0.3044444444444444,
+   "ref": 0.3044444444444444,
+   "absdiff": 0.0,
+   "ok": true
+  },
+  "n_model": {
+   "ours": [
+    4,
+    6,
+    2,
+    6,
+    5
+   ],
+   "ref": [
+    4,
+    6,
+    2,
+    6,
+    5
+   ],
+   "ok": true
+  }
+ },
+ "calib_loss": {
+  "ours": 1.2922722324390836,
+  "ref": 1.2922722324390836,
+  "absdiff": 0.0,
+  "ok": true,
+  "other_pattern_recorded": {
+   "leaf": 1.4953344684454597
+  }
+ },
+ "flags": []
+}

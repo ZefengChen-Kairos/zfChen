@@ -1,0 +1,852 @@
+{
+ "FS+beta": {
+  "swan": {
+   "loss": 1.5962204438097833,
+   "dice": 0.4532258064516129,
+   "iou": 0.2930135557872784,
+   "bnd_D": 0.025309994954467424,
+   "S": 0.5432463511720478,
+   "n_model": [
+    3,
+    6,
+    7,
+    9,
+    5
+   ],
+   "white_frac": 0.23309109224348828,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": 7.5,
+    "dx_D": -0.06,
+    "dy_D": 0.05,
+    "iou_search": 0.2930135557872784,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": true,
+     "dy": false
+    }
+   },
+   "iou_raw": 0.19947785728099013,
+   "bnd_raw_D": 0.0330511625692751,
+   "V_received_mL": 78.0223711898651,
+   "deposited": 0.15040493798256127
+  },
+  "leaf": {
+   "loss": 1.1996871754193186,
+   "dice": 0.5711000934109363,
+   "iou": 0.39967816554359853,
+   "bnd_D": 0.019230755382904682,
+   "S": 0.3861721611721612,
+   "n_model": [
+    10,
+    6,
+    5,
+    10,
+    9
+   ],
+   "white_frac": 0.22465381812292493,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": -10.0,
+    "dx_D": -0.01,
+    "dy_D": 0.05,
+    "iou_search": 0.39967816554359853,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": false,
+     "dy": false
+    }
+   },
+   "iou_raw": 0.3383585396397264,
+   "bnd_raw_D": 0.017810817232591203,
+   "V_received_mL": 83.3747811794255,
+   "deposited": 0.15776076974857453
+  },
+  "tulip": {
+   "loss": 1.1517556806287457,
+   "dice": 0.48577494692144374,
+   "iou": 0.32080762759394277,
+   "bnd_D": 0.019543198044176143,
+   "S": 0.24666666666666667,
+   "n_model": [
+    6,
+    4,
+    6,
+    4,
+    5
+   ],
+   "white_frac": 0.16293711325370558,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": 7.5,
+    "dx_D": -0.02,
+    "dy_D": 0.04,
+    "iou_search": 0.32080762759394277,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": false,
+     "dy": false
+    }
+   },
+   "iou_raw": 0.21887612542688606,
+   "bnd_raw_D": 0.023256737130930665,
+   "V_received_mL": 85.28411294833904,
+   "deposited": 0.13207028365624182
+  },
+  "layered_heart": {
+   "loss": 4.128915664127813,
+   "dice": 0.5618037135278514,
+   "iou": 0.39063076355588344,
+   "bnd_D": 0.07767882602564039,
+   "S": 2.1371428571428575,
+   "n_model": [
+    5,
+    3,
+    6,
+    5,
+    3
+   ],
+   "white_frac": 0.15397898978270255,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": 17.5,
+    "dx_D": -0.03,
+    "dy_D": -0.03,
+    "iou_search": 0.39063076355588344,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": false,
+     "dy": false
+    }
+   },
+   "iou_raw": 0.34090301896874164,
+   "bnd_raw_D": 0.07903300583839332,
+   "V_received_mL": 65.66799057244025,
+   "deposited": 0.10249301514943712
+  },
+  "heart": {
+   "loss": 3.4249633783487208,
+   "dice": 0.8524663177819842,
+   "iou": 0.7428682320978071,
+   "bnd_D": 0.04387148480653526,
+   "S": 2.4,
+   "n_model": [
+    2,
+    4,
+    4,
+    1,
+    1
+   ],
+   "white_frac": 0.2788170959850338,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": 10.0,
+    "dx_D": -0.06,
+    "dy_D": 0.06,
+    "iou_search": 0.7428682320978071,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": true,
+     "dy": true
+    }
+   },
+   "iou_raw": 0.5511368548456816,
+   "bnd_raw_D": 0.07233040143416,
+   "V_received_mL": 64.57754983355863,
+   "deposited": 0.2391012997828659
+  },
+  "push_heart": {
+   "loss": 1.9143981254966786,
+   "dice": 0.6300792323907829,
+   "iou": 0.45993844847713045,
+   "bnd_D": 0.028223867894373072,
+   "S": 0.9800000000000001,
+   "n_model": [
+    6,
+    5,
+    8,
+    7,
+    3
+   ],
+   "white_frac": 0.24345229529428694,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": -5.0,
+    "dx_D": -0.03,
+    "dy_D": 0.05,
+    "iou_search": 0.45993844847713045,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": false,
+     "dy": false
+    }
+   },
+   "iou_raw": 0.39758547225322105,
+   "bnd_raw_D": 0.0343947584503114,
+   "V_received_mL": 57.36747816402875,
+   "deposited": 0.20246431751115343
+  },
+  "cal_loss": 1.175721428024032,
+  "test_mean": 2.7661244029457492
+ },
+ "FS+dep": {
+  "swan": {
+   "loss": 1.7209454186164748,
+   "dice": 0.5749910426370477,
+   "iou": 0.40349994971336617,
+   "bnd_D": 0.0274620154554227,
+   "S": 0.7466961521450686,
+   "n_model": [
+    2,
+    2,
+    2,
+    5,
+    4
+   ],
+   "white_frac": 0.2890343934379047,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": 25.0,
+    "dx_D": -0.04,
+    "dy_D": 0.06,
+    "iou_search": 0.40349994971336617,
+    "exact": false,
+    "at_bound": {
+     "theta": true,
+     "dx": false,
+     "dy": true
+    }
+   },
+   "iou_raw": 0.30938760198818344,
+   "bnd_raw_D": 0.0369574254955086,
+   "V_received_mL": 78.0223711898651,
+   "deposited": 0.18272456456800928
+  },
+  "leaf": {
+   "loss": 1.5816992975872068,
+   "dice": 0.7154435925520263,
+   "iou": 0.5569577080491133,
+   "bnd_D": 0.0324890126388298,
+   "S": 0.6473626373626373,
+   "n_model": [
+    2,
+    5,
+    5,
+    3,
+    6
+   ],
+   "white_frac": 0.30808162604259454,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": -25.0,
+    "dx_D": -0.03,
+    "dy_D": -0.02,
+    "iou_search": 0.5569577080491133,
+    "exact": false,
+    "at_bound": {
+     "theta": true,
+     "dx": false,
+     "dy": false
+    }
+   },
+   "iou_raw": 0.5090007087172218,
+   "bnd_raw_D": 0.03367638232704032,
+   "V_received_mL": 83.3747811794255,
+   "deposited": 0.1912502379525307
+  },
+  "tulip": {
+   "loss": 1.3477532369522351,
+   "dice": 0.6062508005635968,
+   "iou": 0.4349784027203382,
+   "bnd_D": 0.028700201875791597,
+   "S": 0.38,
+   "n_model": [
+    6,
+    4,
+    5,
+    3,
+    1
+   ],
+   "white_frac": 0.30105051086487267,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": 7.5,
+    "dx_D": -0.01,
+    "dy_D": -0.03,
+    "iou_search": 0.4349784027203382,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": false,
+     "dy": false
+    }
+   },
+   "iou_raw": 0.38510033741786537,
+   "bnd_raw_D": 0.029628825432272736,
+   "V_received_mL": 85.28411294833904,
+   "deposited": 0.1863247619192055
+  },
+  "layered_heart": {
+   "loss": 2.7629055779666256,
+   "dice": 0.7596323991095382,
+   "iou": 0.6124252185918085,
+   "bnd_D": 0.06255547028237962,
+   "S": 1.2714285714285714,
+   "n_model": [
+    2,
+    2,
+    1,
+    1,
+    0
+   ],
+   "white_frac": 0.24172542811915385,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": 7.5,
+    "dx_D": -0.05,
+    "dy_D": -0.06,
+    "iou_search": 0.6124252185918085,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": false,
+     "dy": true
+    }
+   },
+   "iou_raw": 0.5294168994413407,
+   "bnd_raw_D": 0.06765543911166755,
+   "V_received_mL": 65.66799057244025,
+   "deposited": 0.14320590115399176
+  },
+  "heart": {
+   "loss": 1.6504683492607914,
+   "dice": 0.7961723611600329,
+   "iou": 0.6613674046620501,
+   "bnd_D": 0.05233203552104121,
+   "S": 0.4,
+   "n_model": [
+    0,
+    2,
+    0,
+    0,
+    0
+   ],
+   "white_frac": 0.24543099726579365,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": 10.0,
+    "dx_D": -0.06,
+    "dy_D": -0.03,
+    "iou_search": 0.6613674046620501,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": true,
+     "dy": false
+    }
+   },
+   "iou_raw": 0.6200798630918426,
+   "bnd_raw_D": 0.06122991424978108,
+   "V_received_mL": 64.57754983355863,
+   "deposited": 0.1935545286799401
+  },
+  "push_heart": {
+   "loss": 1.853981027519523,
+   "dice": 0.6329055559824791,
+   "iou": 0.46295671725688586,
+   "bnd_D": 0.03648718631795725,
+   "S": 0.7571428571428571,
+   "n_model": [
+    4,
+    6,
+    6,
+    5,
+    5
+   ],
+   "white_frac": 0.2166858540797237,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": -17.5,
+    "dx_D": 0.0,
+    "dy_D": -0.05,
+    "iou_search": 0.46295671725688586,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": false,
+     "dy": false
+    }
+   },
+   "iou_raw": 0.42891698735568995,
+   "bnd_raw_D": 0.03574047502656025,
+   "V_received_mL": 57.36747816402875,
+   "deposited": 0.16860832247393515
+  },
+  "cal_loss": 1.464726267269721,
+  "test_mean": 1.9970750933408536
+ },
+ "CAL-beta": {
+  "swan": {
+   "loss": 1.6785318898564268,
+   "dice": 0.5665746442981525,
+   "iou": 0.39525925925925925,
+   "bnd_D": 0.027856388184951432,
+   "S": 0.6879787704555506,
+   "n_model": [
+    3,
+    4,
+    3,
+    4,
+    3
+   ],
+   "white_frac": 0.2952223341487984,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": 25.0,
+    "dx_D": -0.04,
+    "dy_D": 0.06,
+    "iou_search": 0.39525925925925925,
+    "exact": false,
+    "at_bound": {
+     "theta": true,
+     "dx": false,
+     "dy": true
+    }
+   },
+   "iou_raw": 0.2992653810835629,
+   "bnd_raw_D": 0.036443464218588226,
+   "V_received_mL": 69.5683242619182,
+   "deposited": 0.1757315186372759
+  },
+  "leaf": {
+   "loss": 1.5099196916002204,
+   "dice": 0.7166557724032745,
+   "iou": 0.558428328886733,
+   "bnd_D": 0.030389212760614306,
+   "S": 0.6187912087912089,
+   "n_model": [
+    2,
+    5,
+    5,
+    3,
+    8
+   ],
+   "white_frac": 0.3115636893675601,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": -25.0,
+    "dx_D": -0.03,
+    "dy_D": -0.02,
+    "iou_search": 0.558428328886733,
+    "exact": false,
+    "at_bound": {
+     "theta": true,
+     "dx": false,
+     "dy": false
+    }
+   },
+   "iou_raw": 0.5066597880123815,
+   "bnd_raw_D": 0.030563367461093928,
+   "V_received_mL": 74.34167910432627,
+   "deposited": 0.18345433406464534
+  },
+  "tulip": {
+   "loss": 1.4410879863431991,
+   "dice": 0.6126399696337066,
+   "iou": 0.4415868673050616,
+   "bnd_D": 0.02768639779884529,
+   "S": 0.5,
+   "n_model": [
+    6,
+    4,
+    8,
+    3,
+    1
+   ],
+   "white_frac": 0.30799395596488705,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": 5.0,
+    "dx_D": -0.02,
+    "dy_D": -0.02,
+    "iou_search": 0.4415868673050616,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": false,
+     "dy": false
+    }
+   },
+   "iou_raw": 0.3980539584254755,
+   "bnd_raw_D": 0.028301715040895604,
+   "V_received_mL": 76.01898282221299,
+   "deposited": 0.17822254330283985
+  },
+  "layered_heart": {
+   "loss": 2.63068612387359,
+   "dice": 0.7610690067810132,
+   "iou": 0.6142949130714745,
+   "bnd_D": 0.06458775653273016,
+   "S": 1.1,
+   "n_model": [
+    1,
+    2,
+    1,
+    0,
+    0
+   ],
+   "white_frac": 0.24280472010361204,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": 7.5,
+    "dx_D": -0.05,
+    "dy_D": -0.06,
+    "iou_search": 0.6142949130714745,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": false,
+     "dy": true
+    }
+   },
+   "iou_raw": 0.5319762362397344,
+   "bnd_raw_D": 0.0679051078873357,
+   "V_received_mL": 58.54914122427704,
+   "deposited": 0.1368782865883764
+  },
+  "heart": {
+   "loss": 1.7967049387786882,
+   "dice": 0.8043148688046647,
+   "iou": 0.6726811664878573,
+   "bnd_D": 0.050050990379167645,
+   "S": 0.6,
+   "n_model": [
+    0,
+    2,
+    1,
+    0,
+    0
+   ],
+   "white_frac": 0.24960425960569865,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": 10.0,
+    "dx_D": -0.06,
+    "dy_D": -0.01,
+    "iou_search": 0.6726811664878573,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": true,
+     "dy": false
+    }
+   },
+   "iou_raw": 0.638429949384013,
+   "bnd_raw_D": 0.05959201071809103,
+   "V_received_mL": 57.57247213463437,
+   "deposited": 0.18896070856442937
+  },
+  "push_heart": {
+   "loss": 1.787523217150269,
+   "dice": 0.6331156358048405,
+   "iou": 0.46318156267566046,
+   "bnd_D": 0.03567479979061263,
+   "S": 0.7071428571428571,
+   "n_model": [
+    4,
+    5,
+    7,
+    5,
+    5
+   ],
+   "white_frac": 0.2167578068786876,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": -15.0,
+    "dx_D": 0.0,
+    "dy_D": -0.03,
+    "iou_search": 0.46318156267566046,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": false,
+     "dy": false
+    }
+   },
+   "iou_raw": 0.44946571682991987,
+   "bnd_raw_D": 0.03428885842592728,
+   "V_received_mL": 51.1340891997725,
+   "deposited": 0.16452585375934412
+  },
+  "cal_loss": 1.4755038389717097,
+  "test_mean": 1.9733615424147435
+ },
+ "CAL-dep": {
+  "swan": {
+   "loss": 1.6610595504502372,
+   "dice": 0.36123170116102976,
+   "iou": 0.2204287826515525,
+   "bnd_D": 0.035367547985251546,
+   "S": 0.3149402919062362,
+   "n_model": [
+    4,
+    7,
+    12,
+    16,
+    8
+   ],
+   "white_frac": 0.14332997553604834,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": -25.0,
+    "dx_D": 0.05,
+    "dy_D": -0.03,
+    "iou_search": 0.2204287826515525,
+    "exact": false,
+    "at_bound": {
+     "theta": true,
+     "dx": false,
+     "dy": false
+    }
+   },
+   "iou_raw": 0.1421647819063005,
+   "bnd_raw_D": 0.0362232110626639,
+   "V_received_mL": 69.5683242619182,
+   "deposited": 0.13026938907814198
+  },
+  "leaf": {
+   "loss": 1.2225104548755021,
+   "dice": 0.40053095829408236,
+   "iou": 0.25041494886759114,
+   "bnd_D": 0.019501887508296074,
+   "S": 0.233003663003663,
+   "n_model": [
+    8,
+    6,
+    12,
+    11,
+    13
+   ],
+   "white_frac": 0.1339582152401004,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": -25.0,
+    "dx_D": -0.02,
+    "dy_D": 0.03,
+    "iou_search": 0.25041494886759114,
+    "exact": false,
+    "at_bound": {
+     "theta": true,
+     "dx": false,
+     "dy": false
+    }
+   },
+   "iou_raw": 0.2056368507831822,
+   "bnd_raw_D": 0.01894565305181371,
+   "V_received_mL": 74.34167910432627,
+   "deposited": 0.13356576508047246
+  },
+  "tulip": {
+   "loss": 1.4076114976584317,
+   "dice": 0.29649595687331537,
+   "iou": 0.17405063291139242,
+   "bnd_D": 0.023760928282142914,
+   "S": 0.22888888888888886,
+   "n_model": [
+    5,
+    6,
+    5,
+    4,
+    3
+   ],
+   "white_frac": 0.07299611454885595,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": 7.5,
+    "dx_D": -0.02,
+    "dy_D": 0.04,
+    "iou_search": 0.17405063291139242,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": false,
+     "dy": false
+    }
+   },
+   "iou_raw": 0.10833133828106296,
+   "bnd_raw_D": 0.027595520627414213,
+   "V_received_mL": 76.01898282221299,
+   "deposited": 0.10721815263550101
+  },
+  "layered_heart": {
+   "loss": 3.219626630877731,
+   "dice": 0.4399538106235566,
+   "iou": 0.2820133234641007,
+   "bnd_D": 0.09140759350363581,
+   "S": 0.8314285714285715,
+   "n_model": [
+    2,
+    0,
+    1,
+    1,
+    1
+   ],
+   "white_frac": 0.10994387681680817,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": 2.5,
+    "dx_D": -0.06,
+    "dy_D": -0.04,
+    "iou_search": 0.2820133234641007,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": true,
+     "dy": false
+    }
+   },
+   "iou_raw": 0.2369032719470767,
+   "bnd_raw_D": 0.08901497846678216,
+   "V_received_mL": 58.54914122427704,
+   "deposited": 0.08213212705676086
+  },
+  "heart": {
+   "loss": 4.224326971349731,
+   "dice": 0.8098186643078283,
+   "iou": 0.6804162021553326,
+   "bnd_D": 0.05170728178287795,
+   "S": 3.0,
+   "n_model": [
+    2,
+    5,
+    5,
+    2,
+    1
+   ],
+   "white_frac": 0.28335012231975826,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": 17.5,
+    "dx_D": -0.06,
+    "dy_D": 0.06,
+    "iou_search": 0.6804162021553326,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": true,
+     "dy": true
+    }
+   },
+   "iou_raw": 0.4707126586397657,
+   "bnd_raw_D": 0.081344640722103,
+   "V_received_mL": 57.57247213463437,
+   "deposited": 0.2361454840724385
+  },
+  "push_heart": {
+   "loss": 2.817357109966904,
+   "dice": 0.5901016156151766,
+   "iou": 0.4185419475267033,
+   "bnd_D": 0.02944436485053261,
+   "S": 1.8185714285714283,
+   "n_model": [
+    10,
+    8,
+    11,
+    8,
+    6
+   ],
+   "white_frac": 0.24064613613469563,
+   "failed": false,
+   "error": null,
+   "transform": {
+    "theta_deg": -22.5,
+    "dx_D": 0.0,
+    "dy_D": 0.06,
+    "iou_search": 0.4185419475267033,
+    "exact": false,
+    "at_bound": {
+     "theta": false,
+     "dx": false,
+     "dy": true
+    }
+   },
+   "iou_raw": 0.37681159420289856,
+   "bnd_raw_D": 0.0394435488036143,
+   "V_received_mL": 51.1340891997725,
+   "deposited": 0.19939052483314942
+  },
+  "cal_loss": 1.315060976266967,
+  "test_mean": 2.9805925656611505
+ },
+ "sets": {
+  "FS+beta": {
+   "B_dep": 1550.4150287146037,
+   "p_dep": 8.0,
+   "kappa_r": 0.03725531625168605,
+   "kappa_Q": 2.0,
+   "cp": 1.36,
+   "beta": 1.4099865535403595,
+   "kappa_t": 0.7,
+   "kappa_c": 1.0
+  },
+  "FS+dep": {
+   "B_dep": 1921.4703209826816,
+   "p_dep": 1.786057475115062,
+   "kappa_r": 0.03725531625168605,
+   "kappa_Q": 2.0,
+   "cp": 1.36,
+   "beta": 3.0,
+   "kappa_t": 0.7,
+   "kappa_c": 1.0
+  },
+  "CAL-beta": {
+   "B_dep": 1921.4703209826816,
+   "p_dep": 1.786057475115062,
+   "kappa_r": 0.171824364079106,
+   "kappa_Q": 2.2438438653616903,
+   "cp": 1.0611528759578956,
+   "beta": 3.0,
+   "kappa_t": 0.8299556750844005,
+   "kappa_c": 0.9710440057074519
+  },
+  "CAL-dep": {
+   "B_dep": 1550.4150287146037,
+   "p_dep": 8.0,
+   "kappa_r": 0.171824364079106,
+   "kappa_Q": 2.2438438653616903,
+   "cp": 1.0611528759578956,
+   "beta": 1.4099865535403595,
+   "kappa_t": 0.8299556750844005,
+   "kappa_c": 0.9710440057074519
+  }
+ }
+}

@@ -1,0 +1,371 @@
+{
+ "cal": {
+  "B_dep": 1921.4703209826816,
+  "p_dep": 1.786057475115062,
+  "kappa_r": 0.171824364079106,
+  "kappa_Q": 2.2438438653616903,
+  "cp": 1.0611528759578956,
+  "beta": 1.4099865535403595,
+  "kappa_t": 0.8299556750844005,
+  "kappa_c": 0.9710440057074519
+ },
+ "closure": {
+  "cp": 1.0611528759578956,
+  "beta": 1.4099865535403595,
+  "nu": 0.001,
+  "D": 1e-07,
+  "kappa_Q": 2.2438438653616903,
+  "kappa_c": 0.9710440057074519,
+  "kappa_t": 0.8299556750844005,
+  "kappa_r": 0.171824364079106,
+  "B_dep": 1921.4703209826816,
+  "p_dep": 1.786057475115062
+ },
+ "bounds": {
+  "B_dep": {
+   "value": 1921.4703209826816,
+   "lo": 300.0,
+   "hi": 6000.0,
+   "scale": "log",
+   "unit": 0.6199030219986105,
+   "inside": true
+  },
+  "p_dep": {
+   "value": 1.786057475115062,
+   "lo": 1.0,
+   "hi": 8.0,
+   "scale": "lin",
+   "unit": 0.11229392501643742,
+   "inside": true
+  },
+  "kappa_r": {
+   "value": 0.171824364079106,
+   "lo": 0.005,
+   "hi": 0.2,
+   "scale": "log",
+   "unit": 0.9588372153614542,
+   "inside": true
+  },
+  "kappa_Q": {
+   "value": 2.2438438653616903,
+   "lo": 0.7,
+   "hi": 5.0,
+   "scale": "log",
+   "unit": 0.5924712544790737,
+   "inside": true
+  },
+  "cp": {
+   "value": 1.0611528759578956,
+   "lo": 0.68,
+   "hi": 2.07,
+   "scale": "log",
+   "unit": 0.3997610349885649,
+   "inside": true
+  },
+  "beta": {
+   "value": 1.4099865535403595,
+   "lo": 0.12,
+   "hi": 7.5,
+   "scale": "log",
+   "unit": 0.5958269564816486,
+   "inside": true
+  },
+  "kappa_t": {
+   "value": 0.8299556750844005,
+   "lo": 0.0,
+   "hi": 1.0,
+   "scale": "lin",
+   "unit": 0.8299556750844005,
+   "inside": true
+  },
+  "kappa_c": {
+   "value": 0.9710440057074519,
+   "lo": 0.0,
+   "hi": 1.0,
+   "scale": "lin",
+   "unit": 0.9710440057074519,
+   "inside": true
+  }
+ },
+ "all_inside": true,
+ "fixed_ok": true,
+ "evaluate_closure_equal": true,
+ "patterns": {
+  "heart": {
+   "duration_s": 6.925,
+   "n_samples": 6925,
+   "stream_time_s": 6.424,
+   "Q_mLs": [
+    1.0,
+    11.408993466607889
+   ],
+   "Qraw_mLs": [
+    0.0010640431688876929,
+    11.408993466607889
+   ],
+   "Q_within_1_32": true,
+   "clip_low_time_frac": 0.019302615193026153,
+   "clip_high_time_frac": 0.0,
+   "clip_low_time_s": 0.124,
+   "V_wanted_mL": 57.53195663539438,
+   "V_received_mL": 57.57874485269036,
+   "U_perp_ms": [
+    0.5618302660868209,
+    0.6716144314223843
+   ],
+   "exit_speed_min_ms": 0.1,
+   "jet_r_mm": [
+    0.6884383481588578,
+    2.47655257335586
+   ],
+   "pulsation_max": 0.0,
+   "kQ": 2.2438438653616903,
+   "solver_sampled_N256": {
+    "Q_mLs": [
+     1.0,
+     11.408993466607889
+    ],
+    "Qraw_mLs": [
+     0.013650872832708844,
+     11.408993466607889
+    ],
+    "clip_low_time_frac": 0.019857964381317532,
+    "clip_high_time_frac": 0.0,
+    "V_wanted_mL": 57.52441077421629,
+    "V_received_mL": 57.57247213463437
+   },
+   "solver_params_eq_closure": true,
+   "evaluate_failed": false
+  },
+  "push_heart": {
+   "duration_s": 5.449999999999999,
+   "n_samples": 5450,
+   "stream_time_s": 4.746,
+   "Q_mLs": [
+    1.0,
+    19.395266878960758
+   ],
+   "Qraw_mLs": [
+    0.001808873387109078,
+    19.395266878960758
+   ],
+   "Q_within_1_32": true,
+   "clip_low_time_frac": 0.05415086388537716,
+   "clip_high_time_frac": 0.0,
+   "clip_low_time_s": 0.257,
+   "V_wanted_mL": 51.09640805451435,
+   "V_received_mL": 51.20933346227932,
+   "U_perp_ms": [
+    0.6492869662180937,
+    0.6951097066984131
+   ],
+   "exit_speed_min_ms": 0.1,
+   "jet_r_mm": [
+    0.6767034444619948,
+    3.0220272032894027
+   ],
+   "pulsation_max": 0.0,
+   "kQ": 2.2438438653616903,
+   "solver_sampled_N256": {
+    "Q_mLs": [
+     1.0,
+     19.395265701899348
+    ],
+    "Qraw_mLs": [
+     0.023206483815605035,
+     19.395265701899348
+    ],
+    "clip_low_time_frac": 0.05481649816021285,
+    "clip_high_time_frac": 0.0,
+    "V_wanted_mL": 51.025747061456066,
+    "V_received_mL": 51.1340891997725
+   },
+   "solver_params_eq_closure": true,
+   "evaluate_failed": false
+  },
+  "layered_heart": {
+   "duration_s": 8.1,
+   "n_samples": 8100,
+   "stream_time_s": 7.399,
+   "Q_mLs": [
+    1.0,
+    14.478012709125393
+   ],
+   "Qraw_mLs": [
+    0.0004255232013775096,
+    14.478012709125393
+   ],
+   "Q_within_1_32": true,
+   "clip_low_time_frac": 0.02446276523854575,
+   "clip_high_time_frac": 0.0,
+   "clip_low_time_s": 0.181,
+   "V_wanted_mL": 58.466037147637415,
+   "V_received_mL": 58.544395859191724,
+   "U_perp_ms": [
+    0.6728876150955637,
+    0.7828976149442493
+   ],
+   "exit_speed_min_ms": 0.1,
+   "jet_r_mm": [
+    0.6731107368799237,
+    2.532506857861674
+   ],
+   "pulsation_max": 0.41,
+   "kQ": 2.2438438653616903,
+   "solver_sampled_N256": {
+    "Q_mLs": [
+     1.0,
+     14.477978167440831
+    ],
+    "Qraw_mLs": [
+     0.004857386477814073,
+     14.477978167440831
+    ],
+    "clip_low_time_frac": 0.02367901614006952,
+    "clip_high_time_frac": 0.0,
+    "V_wanted_mL": 58.47350848238453,
+    "V_received_mL": 58.54914122427704
+   },
+   "solver_params_eq_closure": true,
+   "evaluate_failed": false
+  },
+  "tulip": {
+   "duration_s": 11.05,
+   "n_samples": 11050,
+   "stream_time_s": 9.837,
+   "Q_mLs": [
+    1.0,
+    14.478012709125393
+   ],
+   "Qraw_mLs": [
+    0.0006077281999066391,
+    14.478012709125393
+   ],
+   "Q_within_1_32": true,
+   "clip_low_time_frac": 0.032225271932499744,
+   "clip_high_time_frac": 0.0,
+   "clip_low_time_s": 0.317,
+   "V_wanted_mL": 75.8758381419933,
+   "V_received_mL": 76.02909434242702,
+   "U_perp_ms": [
+    0.4980515934687648,
+    0.7825559058181663
+   ],
+   "exit_speed_min_ms": 0.1,
+   "jet_r_mm": [
+    0.6382062253275108,
+    2.4988995095726336
+   ],
+   "pulsation_max": 0.41,
+   "kQ": 2.2438438653616903,
+   "solver_sampled_N256": {
+    "Q_mLs": [
+     1.0,
+     14.477987812465964
+    ],
+    "Qraw_mLs": [
+     0.007203641323021304,
+     14.477987812465964
+    ],
+    "clip_low_time_frac": 0.03169340750741976,
+    "clip_high_time_frac": 0.0,
+    "V_wanted_mL": 75.87279942729015,
+    "V_received_mL": 76.01898282221299
+   },
+   "solver_params_eq_closure": true,
+   "evaluate_failed": false
+  },
+  "leaf": {
+   "duration_s": 11.408823529411766,
+   "n_samples": 11409,
+   "stream_time_s": 10.49,
+   "Q_mLs": [
+    1.0,
+    14.478012709125393
+   ],
+   "Qraw_mLs": [
+    0.0006077281999066391,
+    14.478012709125393
+   ],
+   "Q_within_1_32": true,
+   "clip_low_time_frac": 0.034985700667302194,
+   "clip_high_time_frac": 0.0,
+   "clip_low_time_s": 0.367,
+   "V_wanted_mL": 74.1988238270862,
+   "V_received_mL": 74.34561422572523,
+   "U_perp_ms": [
+    0.5003756917732478,
+    0.7828976149442493
+   ],
+   "exit_speed_min_ms": 0.1,
+   "jet_r_mm": [
+    0.6731107368799237,
+    2.5466470618709773
+   ],
+   "pulsation_max": 0.41,
+   "kQ": 2.2438438653616903,
+   "solver_sampled_N256": {
+    "Q_mLs": [
+     1.0,
+     14.477987812465964
+    ],
+    "Qraw_mLs": [
+     0.007203641323021304,
+     14.477987812465964
+    ],
+    "clip_low_time_frac": 0.034445906510956865,
+    "clip_high_time_frac": 0.0,
+    "V_wanted_mL": 74.19928126306988,
+    "V_received_mL": 74.34167910432627
+   },
+   "solver_params_eq_closure": true,
+   "evaluate_failed": false
+  },
+  "swan": {
+   "duration_s": 12.820000000000002,
+   "n_samples": 12821,
+   "stream_time_s": 11.164,
+   "Q_mLs": [
+    1.0,
+    14.478012709125393
+   ],
+   "Qraw_mLs": [
+    0.0006077281999066391,
+    14.478012709125393
+   ],
+   "Q_within_1_32": true,
+   "clip_low_time_frac": 0.05150483697599427,
+   "clip_high_time_frac": 0.0,
+   "clip_low_time_s": 0.5750000000000001,
+   "V_wanted_mL": 69.26906494241369,
+   "V_received_mL": 69.57566444952907,
+   "U_perp_ms": [
+    0.4258638280013929,
+    0.7825559058181663
+   ],
+   "exit_speed_min_ms": 0.1,
+   "jet_r_mm": [
+    0.6731107368799237,
+    2.4988995095726336
+   ],
+   "pulsation_max": 0.41,
+   "kQ": 2.2438438653616903,
+   "solver_sampled_N256": {
+    "Q_mLs": [
+     1.0,
+     14.477987812465964
+    ],
+    "Qraw_mLs": [
+     0.007203641323021304,
+     14.477987812465964
+    ],
+    "clip_low_time_frac": 0.050597192658706595,
+    "clip_high_time_frac": 0.0,
+    "V_wanted_mL": 69.27135811420156,
+    "V_received_mL": 69.5683242619182
+   },
+   "solver_params_eq_closure": true,
+   "evaluate_failed": false
+  }
+ }
+}

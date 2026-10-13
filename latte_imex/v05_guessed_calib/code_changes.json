@@ -1,0 +1,6 @@
+{
+ "note": "driver edits after prereg.json was written (14:21:30); none touches the loss, the actions, the CMA setup or the cache key: added seed_cache() and the --seed_from option of run / evaluate (copy finished calls with an identical cache key from another output dir, e.g. nrule's FS calls)",
+ "sha1_in_prereg": "9bd440e52e68402f2df4040ae30f786e54da5f2d",
+ "sha1_now": "53e27b71994158b2ef54cfb9f4d05c29b20710ff",
+ "written": "2026-10-13 14:28:16"
+}
