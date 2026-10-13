@@ -1,0 +1,38 @@
+{
+ "heart": {
+  "path": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05video/videos/heart.mp4",
+  "n_frames": 177,
+  "T": 11.733333333333333,
+  "wall_s": 14.087882995605469
+ },
+ "push_heart": {
+  "path": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05video/videos/push_heart.mp4",
+  "n_frames": 250,
+  "T": 16.6,
+  "wall_s": 19.896309852600098
+ },
+ "layered_heart": {
+  "path": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05video/videos/layered_heart.mp4",
+  "n_frames": 149,
+  "T": 9.7334,
+  "wall_s": 12.110695838928223
+ },
+ "tulip": {
+  "path": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05video/videos/tulip.mp4",
+  "n_frames": 240,
+  "T": 17.64,
+  "wall_s": 18.1053524017334
+ },
+ "leaf": {
+  "path": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05video/videos/leaf.mp4",
+  "n_frames": 177,
+  "T": 11.739999999999998,
+  "wall_s": 13.218226432800293
+ },
+ "swan": {
+  "path": "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/review/v05video/videos/swan.mp4",
+  "n_frames": 286,
+  "T": 18.933333333333334,
+  "wall_s": 20.04687523841858
+ }
+}

@@ -7,7 +7,7 @@ driven by the barista's REAL actions (the physical-time stage scripts read off t
     clip = CB.load_clip("tulip")
     out = m.run(clip["script"], {}, 128, clip["res"]["t"])    # dict(c=[n, N, N] M frame, ledger=..., inlet_log=...)
     wT, led = CB.simulate_clip(m, {}, clip, 128)              # the same through calib
-    python -m latte_imex.v05_adapter test                     # unit tests (inlet formulas, zero flow, ledgers)
+    python -m latte_imex.v05_adapter test                     # unit tests (raw JSON path, inlet formulas, zero flow, ledgers)
 
 Nothing in the solver is changed; this module only builds the solver's `Inlet` record at each control frame and runs
 the solver loop so that the requested output times are hit exactly.
@@ -70,7 +70,10 @@ ALLPHYS_RESULT.md):
   beta     0.12-7.5 /s, log      Stokes-layer drag (rho/rho_f) sqrt(nu_l / t) / h_f
   kappa_t  0-1, lin              share of the stream's horizontal momentum given to the surface
   kappa_c  0-1, lin              traction efficiency of the non-deposited part
-Inlet options that are not closure parameters may also be passed in `params`: u_exit [m/s], tau_spout [s], Q_scale.
+Inlet options that are not closure parameters may also be passed in `params`: u_exit [m/s], tau_spout [s], Q_scale,
+foot_scale.  Q_scale (wanted flow x Q_scale) and foot_scale (footprint r1, r2 and jet diameter d x foot_scale at the same
+Q, i.e. S_eff unchanged; with B_dep x 1/foot_scale chi and the V_R cap sqrt(B_dep d) are unchanged) are DIAGNOSTIC
+knobs only, never calibrated parameters.
 
 LEDGER (returned with every run): the solver's own layer and milk ledgers (layer_error = layer - (initial area +
 deposited), milk_error = milk - deposited; both close to round-off), wanted / received milk volumes [mL], deposited
@@ -112,7 +115,7 @@ SPACE = dict(B_dep=(300.0, 6000.0, "log"), p_dep=(1.0, 8.0, "lin"), kappa_r=(0.0
              kappa_Q=(0.7, 5.0, "log"), cp=(0.68, 2.07, "log"), beta=(0.12, 7.5, "log"),
              kappa_t=(0.0, 1.0, "lin"), kappa_c=(0.0, 1.0, "lin"))
 CLOSURE_KEYS = ("cp", "beta", "nu", "D", "kappa_Q", "kappa_c", "kappa_t", "kappa_r", "B_dep", "p_dep")
-INLET_KEYS = ("u_exit", "tau_spout", "Q_scale")
+INLET_KEYS = ("u_exit", "tau_spout", "Q_scale", "foot_scale")
 
 LOGCOLS = ("t", "active", "Q_w_mLs", "Q_mLs", "z_cm", "U_ms", "uhx_ms", "uhy_ms", "vhx_ms", "vhy_ms", "r_mm", "d_mm",
            "r1_mm", "r2_mm", "chi", "fdt")
@@ -123,8 +126,9 @@ class PhysInlet:
     """Physical inlet of a physical-time stage script (model time tau = 0 at the script's first stage)."""
 
     def __init__(self, script, kappa_Q, u_exit=U_EXIT, tau_spout=TAU_SPOUT, Q_scale=1.0, cup_radius=0.49,
-                 t_end=None, lag_dt=LAG_DT):
+                 t_end=None, lag_dt=LAG_DT, foot_scale=1.0):
         self.path = WantedPath(script, Q_scale=Q_scale)
+        self.foot_scale = float(foot_scale)                  # diagnostic: footprint and jet diameter x foot_scale
         self.moves = self.path.moves
         self.T = self.path.T
         self.yaw = self.path.yaw
@@ -200,6 +204,12 @@ class PhysInlet:
                 vy += dwob
         return x, y, z, Q, vx, vy
 
+    def kind(self, t):
+        """Stage kind of the move at model time t ('wiggle', 'retreat', 'push', 'low_pour', ...; 'reposition' for a
+        dry gap; None after the script)."""
+        k = self.move_index(t)
+        return None if k is None else self.moves[k].name.split()[0]
+
     def q_lag(self, t):
         if t <= 0:
             return 0.0
@@ -231,8 +241,8 @@ class PhysInlet:
             ux, uy, uh = ux * hi / uh, uy * hi / uh, hi
         spd = math.hypot(U, uh)
         aspect = spd / U
-        r = math.sqrt(Q / (math.pi * U))                                             # m
-        d = 2.0 * math.sqrt(Q / (math.pi * spd))                                     # m
+        r = math.sqrt(Q / (math.pi * U)) * self.foot_scale                           # m
+        d = 2.0 * math.sqrt(Q / (math.pi * spd)) * self.foot_scale                   # m
         r1, r2 = r * math.sqrt(aspect), r / math.sqrt(aspect)
         phi = math.atan2(uy, ux)
         S = self.kappa_Q * Q / D_CUP ** 3
@@ -245,6 +255,55 @@ class PhysInlet:
         out["inlet"] = Inlet(active=True, x_hit=(x, y), S_eff=S, u_in=(ux / D_CUP, uy / D_CUP), U_perp=U / D_CUP,
                              d_jet=d / D_CUP, r1=r1 / D_CUP, r2=r2 / D_CUP, phi=phi, scan_speed=scan)
         return out
+
+
+# =========================================================================== diagnostic helper
+def chi_of(U_ms, d_m, B_dep, p_dep):
+    """V0.5 deposition switch chi = 1 / (1 + (U_perp^2 / (B_dep d))^p_dep), U_perp [m/s], d [m], B_dep [D/s^2]."""
+    zc = (np.asarray(U_ms) / D_CUP) ** 2 / (B_dep * np.asarray(d_m) / D_CUP)
+    return 1.0 / (1.0 + zc ** p_dep)
+
+
+def chi_by_kind(script, base, params=None, u_exit=U_EXIT, dt=0.002):
+    """Flow-weighted chi of the wanted action per stage kind (inlet sampled every dt; same formulas as the solver).
+    Returns {kind: (volume mL, chi)} plus 'all'."""
+    m = V05Model(base, u_exit=u_exit)
+    inl, _ = m.inlet(script, params)
+    c = m.closure(params)
+    acc = {}
+    for t in np.arange(0.5 * dt, inl.T, dt):
+        st = inl.state(t)
+        if not st["active"]:
+            continue
+        w = st["Q"] * dt
+        ch = float(chi_of(st["U"], st["d"], c["B_dep"], c["p_dep"]))
+        for k in (inl.kind(t), "all"):
+            a = acc.setdefault(k, [0.0, 0.0])
+            a[0] += w; a[1] += w * ch
+    return {k: (v[0] / ML, v[1] / v[0]) for k, v in acc.items()}
+
+
+def B_scale_for_chi(script, base, target=0.45, kinds=("wiggle",), params=None, u_exit=U_EXIT, dt=0.002):
+    """DIAGNOSTIC: factor s such that B_dep -> s B_dep gives the flow-weighted chi `target` over the stages of `kinds`
+    (Q and d unchanged).  None if the script has no such stage."""
+    from scipy.optimize import brentq
+    m = V05Model(base, u_exit=u_exit)
+    inl, _ = m.inlet(script, params)
+    c = m.closure(params)
+    U, d, w = [], [], []
+    for t in np.arange(0.5 * dt, inl.T, dt):
+        if inl.kind(t) not in kinds:
+            continue
+        st = inl.state(t)
+        if st["active"]:
+            U.append(st["U"]); d.append(st["d"]); w.append(st["Q"])
+    if not w:
+        return None
+    U, d, w = np.array(U), np.array(d), np.array(w)
+
+    def f(ls):
+        return float(np.sum(w * chi_of(U, d, c["B_dep"] * math.exp(ls), c["p_dep"])) / w.sum()) - target
+    return math.exp(brentq(f, math.log(1e-3), math.log(1e3), xtol=1e-10))
 
 
 # =========================================================================== model
@@ -294,7 +353,7 @@ class V05Model:
                                                                               float(script["stages"][0]["t0"])))
         inl = PhysInlet(sc, kappa_Q=self.closure(p)["kappa_Q"], u_exit=float(p.get("u_exit", self.u_exit)),
                         tau_spout=float(p.get("tau_spout", self.tau_spout)), Q_scale=float(p.get("Q_scale", 1.0)),
-                        cup_radius=cup_radius, t_end=t_end)
+                        cup_radius=cup_radius, t_end=t_end, foot_scale=float(p.get("foot_scale", 1.0)))
         return inl, t_start
 
     def _nearest(self, mask):
@@ -471,6 +530,88 @@ def test_inlet(names=VE.PATTERNS, dt=1e-3, verbose=True):
     return rep
 
 
+class _RawJSONPath:
+    """Wanted foot path, height and flow read DIRECTLY from the raw clip-time JSON (latte_imex/stage_scripts/<p>.json),
+    written here without v3min_adapter / video_extract.stages_to_moves: clip time -> physical time with
+    calib.freeze_cuts / clip_to_phys, stage defaults from the KIND_DEFAULTS values copied below, cosine easing,
+    cubic Bezier, wiggle amp(t) sin(2 pi f u) with the 0.25 s amplitude ease, dry gaps eased at max(z1, 3 cm).
+    The wiggle phase starts at 0 at each stage start: it is a convention of the script format, not a measurement."""
+    KD = dict(low_pour=(0.015, 0.015, 1.0, 1.0), wiggle=(0.02, 0.02, 1.0, 1.0), push=(0.015, 0.015, 1.4, 1.4),
+              retreat=(0.02, 0.02, 0.8, 0.8), lift=(0.02, 0.06, 0.6, 0.3), high_cut=(0.07, 0.09, 0.3, 0.05),
+              reposition=(0.03, 0.03, 0.0, 0.0), stop=(0.09, 0.09, 0.0, 0.0))
+
+    def __init__(self, name):
+        import json
+        from . import calib as CB
+        d = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "stage_scripts", f"{name}.json")))
+        cuts = CB.freeze_cuts(d)
+        self.Qref = float(d.get("Q_ref", 15e-6))
+        self.yaw = float(d.get("barista_yaw_rad", -math.pi / 2))
+        st = []
+        for s in d["stages"]:
+            a, b = CB.clip_to_phys(s["t0"], cuts), CB.clip_to_phys(s["t1"], cuts)
+            if b - a < 1e-3:
+                continue
+            z0d, z1d, f0d, f1d = self.KD[s["kind"]]
+            z0, f0 = s.get("z0", z0d), s.get("flow0", f0d)
+            ramp = s["kind"] in ("lift", "high_cut")
+            st.append(dict(a=round(a, 4), b=round(b, 4), kind=s["kind"], p0=np.array(s["p0"], float),
+                           p1=np.array(s.get("p1", s["p0"]), float), z0=z0, z1=s.get("z1", z1d if ramp else z0),
+                           f0=f0, f1=s.get("flow1", f1d if ramp else f0), wg=s.get("wiggle") or {}, bez=s.get("bezier")))
+        for x, y in zip(st[:-1], st[1:]):
+            y["a"] = max(y["a"], x["b"])
+        self.T0, self.st = st[0]["a"], st
+
+    def at(self, tau):
+        t = tau + self.T0
+        for i, s in enumerate(self.st):
+            if s["a"] <= t < s["b"]:
+                dur = s["b"] - s["a"]; u = t - s["a"]; f = u / dur
+                e = 0.5 - 0.5 * math.cos(math.pi * f)
+                if s["bez"]:
+                    A, B = np.array(s["bez"][0], float), np.array(s["bez"][1], float)
+                    p = (1 - e) ** 3 * s["p0"] + 3 * (1 - e) ** 2 * e * A + 3 * (1 - e) * e * e * B + e ** 3 * s["p1"]
+                else:
+                    p = s["p0"] + e * (s["p1"] - s["p0"])
+                wg = s["wg"]
+                if wg and float(wg.get("freq", 0)) > 0:
+                    a0 = float(wg.get("amp", 0)); a1 = float(wg.get("amp1", a0))
+                    w = (a0 + (a1 - a0) * f) * min(1.0, u / 0.25, (dur - u) / 0.25) * math.sin(2 * math.pi * float(wg["freq"]) * u)
+                    ax = wg.get("axis", "x")
+                    dvec = (np.array([1.0, 0.0]) if ax == "x" else np.array([0.0, 1.0])) if isinstance(ax, str) else \
+                        np.array([math.cos(math.radians(ax)), math.sin(math.radians(ax))])
+                    p = p + w * dvec
+                return p, s["z0"] + (s["z1"] - s["z0"]) * e, (s["f0"] + (s["f1"] - s["f0"]) * f) * self.Qref
+            if i + 1 < len(self.st) and s["b"] <= t < self.st[i + 1]["a"]:
+                nx = self.st[i + 1]
+                if nx["a"] - s["b"] > 0.02:
+                    u = (t - s["b"]) / (nx["a"] - s["b"]); e = 0.5 - 0.5 * math.cos(math.pi * u)
+                    return s["p1"] + e * (nx["p0"] - s["p1"]), max(s["z1"], 0.03), 0.0
+        return self.st[-1]["p1"], self.st[-1]["z1"], 0.0
+
+
+def test_raw_json(names=VE.PATTERNS, dt=0.005, verbose=True):
+    """Foot path [D], height [m], wanted flow and spout yaw of the inlet (built from calib.physical_script ->
+    v3min_adapter.Inlet) against _RawJSONPath, which reads the raw clip-time JSON directly (independent path)."""
+    rep = {}
+    for name in names:
+        raw = _RawJSONPath(name)
+        inl = PhysInlet(_script_from_name(name), kappa_Q=FS["kappa_Q"])
+        worst = dict(path_D=0.0, z_m=0.0, Q_mLs=0.0)
+        for t in np.arange(0.0, inl.T, dt):
+            p, z, Q = raw.at(t)
+            f = inl.foot(t)
+            worst["path_D"] = max(worst["path_D"], float(math.hypot(f[0] - p[0], f[1] - p[1])))
+            worst["z_m"] = max(worst["z_m"], abs(f[2] - z))
+            worst["Q_mLs"] = max(worst["Q_mLs"], abs(f[3] - Q) / ML)
+        yaw_err = abs((inl.yaw - raw.yaw + math.pi) % (2 * math.pi) - math.pi)
+        rep[name] = dict(yaw_err_rad=yaw_err, **worst)
+        if verbose:
+            print("raw-json", name, {k: f"{v:.1e}" for k, v in rep[name].items()}, flush=True)
+        assert worst["path_D"] < 1e-9 and worst["z_m"] < 1e-12 and worst["Q_mLs"] < 1e-9 and yaw_err < 1e-12, rep[name]
+    return rep
+
+
 def test_zero_flow(N=48, verbose=True):
     """A script with zero flow everywhere (the heart's path, flows 0) leaves the surface unchanged."""
     sc = _script_from_name("heart")
@@ -530,9 +671,30 @@ def test_preroll(verbose=True):
     return dict(t_start=ta, max_diff=worst)
 
 
+def test_foot_scale(name="leaf", verbose=True):
+    """Diagnostic knob foot_scale: r1, r2, d scale exactly, Q / U_perp / S_eff / u_h do not; with B_dep / foot_scale
+    chi is unchanged."""
+    sc = _script_from_name(name)
+    a = PhysInlet(sc, kappa_Q=FS["kappa_Q"])
+    b = PhysInlet(sc, kappa_Q=FS["kappa_Q"], foot_scale=0.5)
+    worst = 0.0
+    for t in np.arange(0.0, a.T, 0.01):
+        sa, sb = a.state(t), b.state(t)
+        if not (sa["active"] and sb["active"]):
+            continue
+        worst = max(worst, abs(sb["r1"] - 0.5 * sa["r1"]), abs(sb["r2"] - 0.5 * sa["r2"]), abs(sb["d"] - 0.5 * sa["d"]),
+                    abs(sb["Q"] - sa["Q"]), abs(sb["U"] - sa["U"]), abs(sb["S_eff"] - sa["S_eff"]) * 1e-6,
+                    abs(float(chi_of(sb["U"], sb["d"], 2 * FS["B_dep"], 8)) - float(chi_of(sa["U"], sa["d"], FS["B_dep"], 8))))
+    if verbose:
+        print("foot_scale", dict(max_diff=worst), flush=True)
+    assert worst < 1e-12
+    return dict(max_diff=worst)
+
+
 def selftest():
     os.environ.setdefault("NUMBA_NUM_THREADS", "1")
-    return dict(inlet=test_inlet(), zero_flow=test_zero_flow(), ledger=test_ledger(), preroll=test_preroll())
+    return dict(raw_json=test_raw_json(), inlet=test_inlet(), zero_flow=test_zero_flow(), ledger=test_ledger(),
+                preroll=test_preroll(), foot_scale=test_foot_scale())
 
 
 if __name__ == "__main__":

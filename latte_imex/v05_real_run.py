@@ -6,14 +6,23 @@ videos with `calib` (same observation operator, validity masks and metrics for v
     python -m latte_imex.v05_real_run run    --sets FS,FSp2 --N 128 --out DIR [--names a,b] [--procs 3]
     python -m latte_imex.v05_real_run final  --sets FS --N 256 --out DIR    # final frame only (images)
     python -m latte_imex.v05_real_run run    --sets FS --u_exit 0.10,0.27 --names push_heart,tulip --out DIR
-    python -m latte_imex.v05_real_run figs   --best FS --other FSp2 --out DIR
-    python -m latte_imex.v05_real_run videos --sets FS --N 128 --k 3 --out DIR
+    python -m latte_imex.v05_real_run run    --sets FS,FSp2 --diag chi045,foot05,chi045foot05 --out DIR   # diagnostics
+    python -m latte_imex.v05_real_run figs   --best FSp2 --other FS --out DIR [--N_hi 256]
+    python -m latte_imex.v05_real_run diagfig --sets FS,FSp2 --out DIR
+    python -m latte_imex.v05_real_run videos --sets FSp2 --N 128 --k 3 --out DIR
     python -m latte_imex.v05_real_run summary --out DIR                     # summary.json of every evaluated run
 
 Layout of DIR:  runs/<tag>_<name>_N<N>/{c.npz (t, c float16, M frame), ledger.json, inlet_log.npy, eval.json,
 wT.npz (model whiteness on the clip's frames.npz grid and time axis, T frame)}, final_vs_real.png,
-process_<name>.png, videos/<name>.mp4.  tag = closure set (FS | FSp2) + '_u<u_exit>' when u_exit != 0.15 m/s + '_q<Q_scale>' for the diagnostic
-flow-scale runs (--q_scale, wanted flow x Q_scale; not a calibrated parameter).
+final_<name>.png, process_<name>[_<set>].png, diag_<set>.png, videos/<name>.mp4.  tag = closure set (FS | FSp2)
++ '_u<u_exit>' when u_exit != 0.15 m/s + '_q<Q_scale>' for the diagnostic flow-scale runs (--q_scale, wanted flow x
+Q_scale) + '_<diag>' for the other DIAGNOSTIC runs (never calibrated parameters, see DIAGS):
+  chi045        B_dep x s (per pattern) so that the flow-weighted chi of the wiggle + retreat stages is 0.45 (the
+                V0.5 range 0.34-0.52); Q and footprint unchanged (patterns without such stages are skipped)
+  foot05        footprint r1, r2 and jet diameter d x 0.5 at the same Q, B_dep x 2 (chi and the V_R cap unchanged)
+  chi045foot05  both
+The 'best' closure set for the 256^2 images and the videos is chosen by the pre-registered calib loss L (six-pattern
+mean): FSp2 (3.544) over FS (3.589).
 
 A full run stores c at the union of the clip's 5 fps analysis frames and its 15 fps video frames, so the videos reuse
 the same simulation (`Cached` returns those snapshots to make_videos.pattern_video).
@@ -31,19 +40,46 @@ import numpy as np
 
 from . import calib as CB
 from . import video_extract as VE
-from .v05_adapter import CLOSURE_SETS, U_EXIT, V05Model
+from .v05_adapter import CLOSURE_SETS, LOGCOLS, U_EXIT, V05Model
 
 ORDER = ("heart", "push_heart", "layered_heart", "tulip", "leaf", "swan")
 CN = dict(heart="大白心", push_heart="推推乐", layered_heart="千层心", tulip="郁金香", leaf="树叶", swan="天鹅")
 
 
-def tag_of(set_name, u_exit, q_scale=1.0):
+DIAGS = ("chi045", "foot05", "chi045foot05")
+CHI_TARGET, CHI_KINDS = 0.45, ("wiggle", "retreat")
+
+
+def tag_of(set_name, u_exit, q_scale=1.0, diag=""):
     t = set_name if abs(u_exit - U_EXIT) < 1e-12 else f"{set_name}_u{u_exit:.2f}"
-    return t if abs(q_scale - 1.0) < 1e-12 else f"{t}_q{q_scale:.2f}"
+    t = t if abs(q_scale - 1.0) < 1e-12 else f"{t}_q{q_scale:.2f}"
+    return f"{t}_{diag}" if diag else t
 
 
-def run_dir(out, set_name, u_exit, name, N, q_scale=1.0):
-    return os.path.join(out, "runs", f"{tag_of(set_name, u_exit, q_scale)}_{name}_N{N}")
+def run_dir(out, set_name, u_exit, name, N, q_scale=1.0, diag=""):
+    return os.path.join(out, "runs", f"{tag_of(set_name, u_exit, q_scale, diag)}_{name}_N{N}")
+
+
+def diag_params(set_name, name, diag, u_exit=U_EXIT):
+    """Closure / inlet overrides of a DIAGNOSTIC run (None = not defined for this pattern)."""
+    from .v05_adapter import B_scale_for_chi
+    base = CLOSURE_SETS[set_name]
+    if not diag:
+        return {}
+    p = {}
+    sB = 1.0
+    if "chi045" in diag:
+        sc = CB.physical_script(name, preroll=0)
+        s = B_scale_for_chi(sc, base, CHI_TARGET, CHI_KINDS, u_exit=u_exit)
+        if s is None:
+            return None
+        sB *= s
+        p["B_scale_chi"] = s
+    if "foot05" in diag:
+        p["foot_scale"] = 0.5
+        sB *= 2.0
+    p["B_dep"] = base["B_dep"] * sB
+    return p
 
 
 def video_times(name):
@@ -57,10 +93,16 @@ def _json(obj, path):
 
 
 def job(args):
-    set_name, name, N, u_exit, mode, out, q_scale = args
+    set_name, name, N, u_exit, mode, out, q_scale = args[:7]
+    diag = args[7] if len(args) > 7 else ""
     t0 = time.time()
-    d = run_dir(out, set_name, u_exit, name, N, q_scale)
+    d = run_dir(out, set_name, u_exit, name, N, q_scale, diag)
     params = {} if abs(q_scale - 1.0) < 1e-12 else dict(Q_scale=q_scale)     # diagnostic only (flow scale)
+    dp = diag_params(set_name, name, diag, u_exit)
+    if dp is None:
+        print(f"{tag_of(set_name, u_exit, q_scale, diag)} {name}: diagnostic not defined (no wiggle/retreat stage)", flush=True)
+        return None
+    params.update({k: v for k, v in dp.items() if k != "B_scale_chi"})
     os.makedirs(d, exist_ok=True)
     clip = CB.load_clip(name)
     tc = clip["res"]["t"]
@@ -74,7 +116,8 @@ def job(args):
     np.savez_compressed(os.path.join(d, "c.npz"), t=t_all, c=r["c"].astype(np.float16))
     np.save(os.path.join(d, "inlet_log.npy"), r["inlet_log"])
     _json(dict(ledger=led, inlet_cols=list(r["inlet_cols"]), set=set_name, closure=CLOSURE_SETS[set_name],
-               u_exit=u_exit, Q_scale=q_scale, N=N, mode=mode, name=name), os.path.join(d, "ledger.json"))
+               u_exit=u_exit, Q_scale=q_scale, diag=diag, diag_params=dp, N=N, mode=mode, name=name),
+          os.path.join(d, "ledger.json"))
     idx = np.searchsorted(t_all, tc) if mode == "full" else np.array([0])
     wT = CB.observe_model(r["c"][idx], clip["M"])
     np.savez_compressed(os.path.join(d, "wT.npz"), t=tc if mode == "full" else tc[-1:], wT=wT.astype(np.float16))
@@ -88,9 +131,9 @@ def job(args):
     else:
         fin = CB.shape_metrics(res["white"][-1].astype(np.float32), res["valid"][-1], wT[-1], disk)
         keep = dict(name=name, final=fin, ledger=led)
-    keep.update(set=set_name, u_exit=u_exit, Q_scale=q_scale, N=N, wall_s=time.time() - t0)
+    keep.update(set=set_name, u_exit=u_exit, Q_scale=q_scale, diag=diag, diag_params=dp, N=N, wall_s=time.time() - t0)
     _json(keep, os.path.join(d, "eval.json"))
-    msg = (f"{tag_of(set_name, u_exit, q_scale)} {name} N{N} {mode}: ok {led['ok']} lerr {led['layer_error']:.1e} "
+    msg = (f"{tag_of(set_name, u_exit, q_scale, diag)} {name} N{N} {mode}: ok {led['ok']} lerr {led['layer_error']:.1e} "
            f"merr {led['milk_error']:.1e} Vrec {led['V_received_mL']:.1f} mL chi {led['chi_flow_weighted']} "
            f"final IoU {keep['final']['iou']} bnd {keep['final']['bnd_D']}")
     if mode == "full":
@@ -144,41 +187,92 @@ def grey(w, valid=None, disk=None):
     return img
 
 
-def fig_final(out, best, other, names=ORDER, N=128, N_hi=256, path=None):
+def _final_panel(out, s, n, NN, disk, clip):
+    """(image, label) of a model's final frame (calib final metrics); falls back to N = 128 if NN is missing."""
+    for N_ in (NN, 128):
+        d = run_dir(out, s, U_EXIT, n, N_)
+        try:
+            wT = np.load(os.path.join(d, "wT.npz"))["wT"][-1].astype(float)
+            fin = json.load(open(os.path.join(d, "eval.json")))["final"]
+        except (OSError, KeyError, TypeError):
+            continue
+        lab = f"IoU {fin['iou']:.2f}   bnd {fin['bnd_D'] * 80:.1f} mm  ({N_}²)"
+        d128 = run_dir(out, s, U_EXIT, n, 128)
+        if N_ != 128 and os.path.exists(os.path.join(d128, "eval.json")):
+            f2 = json.load(open(os.path.join(d128, "eval.json")))["final"]
+            lab += f"\n128²: IoU {f2['iou']:.2f}   bnd {f2['bnd_D'] * 80:.1f} mm"
+        return grey(wT, None, disk), lab
+    return np.ones((clip["M"], clip["M"], 3)), "missing"
+
+
+def _style(ax):
+    ax.set_xticks([]); ax.set_yticks([])
+    for sp in ax.spines.values():
+        sp.set_visible(False)
+
+
+def fig_final(out, best, other, names=ORDER, N_hi=256, path=None, per_pattern=True, dpi=90):
+    """Final frame per pattern: real photo | real whiteness | model <best> | model <other> (N_hi, else 128), physical
+    top view (origin upper, as make_videos), calib final-frame IoU and boundary distance.  Writes the overview
+    final_vs_real.png and, if per_pattern, final_<name>.png."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    cols = ["real photo (rectified, final frame)", "real whiteness w (red = invalid)", f"model {best} N={N}",
-            f"model {other} N={N}", f"model {best} N={N_hi}"]
-    fig, axes = plt.subplots(len(names), len(cols), figsize=(2.75 * len(cols), 2.95 * len(names)), dpi=110, squeeze=False)
-    for i, n in enumerate(names):
+    cols = ["real photo (rectified final frame)", "real whiteness w (red = invalid)", f"model {best}", f"model {other}"]
+    rows = []
+    for n in names:
         clip = CB.load_clip(n)
         res = clip["res"]
         disk = res["disk"].astype(bool)
-        panels = [(final_photo(clip), ""), (grey(res["white"][-1].astype(float), res["valid"][-1], disk),
-                                             f"{n}, t = {res['t'][-1]:.1f} s (physical)")]
-        for s, NN in ((best, N), (other, N), (best, N_hi)):
-            d = run_dir(out, s, U_EXIT, n, NN)
-            try:
-                wT = np.load(os.path.join(d, "wT.npz"))["wT"][-1].astype(float)
-                fin = json.load(open(os.path.join(d, "eval.json")))["final"]
-                lab = f"IoU {fin['iou']:.2f}  bnd {fin['bnd_D']:.3f} D ({fin['bnd_D'] * 80:.1f} mm)"
-                panels.append((grey(wT, None, disk), lab))
-            except (OSError, KeyError, TypeError):
-                panels.append((np.ones((clip["M"], clip["M"], 3)), "missing"))
-        for j, (img, lab) in enumerate(panels):
-            ax = axes[i, j]
-            ax.imshow(img, origin="upper", interpolation="nearest")
-            ax.set_xticks([]); ax.set_yticks([])
-            for sp in ax.spines.values():
-                sp.set_visible(False)
-            ax.set_xlabel(lab, fontsize=7.5)
-            if i == 0:
-                ax.set_title(cols[j], fontsize=8)
-    fig.suptitle("V0.5 with the barista's real actions (stage scripts) + physical inlet, final frame vs the real cup "
-                 "(physical top view; metrics: calib final frame, threshold 0.5, video validity mask)", fontsize=9)
-    fig.tight_layout(rect=(0, 0, 1, 0.985))
-    fig.savefig(path or os.path.join(out, "final_vs_real.png"))
+        panels = [(final_photo(clip), f"{n}"),
+                  (grey(res["white"][-1].astype(float), res["valid"][-1], disk), f"t = {res['t'][-1]:.1f} s (physical)")]
+        for s_ in (best, other):
+            panels.append(_final_panel(out, s_, n, N_hi, disk, clip))
+        rows.append((n, panels))
+
+    def draw(rr, fname, w=2.6, h=2.95, dpi_=dpi):
+        fig, axes = plt.subplots(len(rr), len(cols), figsize=(w * len(cols), h * len(rr)), dpi=dpi_, squeeze=False)
+        for i, (n, panels) in enumerate(rr):
+            for j, (img, lab) in enumerate(panels):
+                ax = axes[i, j]
+                ax.imshow(img, origin="upper", interpolation="nearest")
+                _style(ax)
+                ax.set_xlabel(lab, fontsize=7.5)
+                if i == 0:
+                    ax.set_title(cols[j], fontsize=8)
+        fig.suptitle("V0.5, barista's real actions + physical inlet, closures unchanged (zero tuning): final frame vs the "
+                     "real cup\n(physical top view as make_videos; metrics: calib final frame, threshold 0.5, video "
+                     "validity mask)", fontsize=8)
+        fig.tight_layout(rect=(0, 0, 1, 0.97 if len(rr) > 1 else 0.86))
+        fig.savefig(fname, bbox_inches="tight", pad_inches=0.08)
+        plt.close(fig)
+    draw(rows, path or os.path.join(out, "final_vs_real.png"))
+    if per_pattern:
+        for n, panels in rows:
+            draw([(n, panels)], os.path.join(out, f"final_{n}.png"), w=3.0, h=3.6, dpi_=110)
+
+
+def contact_sheet_upper(clip, wT, path, n=10, title=""):
+    """calib.contact_sheet with origin='upper' (physical top view as make_videos / final_vs_real.png)."""
+    import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
+    res = clip["res"]
+    t = res["t"]
+    disk = res["disk"].astype(bool)
+    idx = np.unique(np.linspace(0, len(t) - 1, n).round().astype(int))
+    fig, axes = plt.subplots(2, len(idx), figsize=(1.9 * len(idx), 4.2), dpi=90, squeeze=False)
+    for col, j in enumerate(idx):
+        for row, w in enumerate((res["white"][j].astype(float), wT[j].astype(float))):
+            img = np.stack([w, w, w], -1) * 0.85 + 0.08
+            img[~res["valid"][j]] = [0.7, 0.3, 0.3]
+            img[~disk] = 1.0
+            ax = axes[row, col]
+            ax.imshow(img, origin="upper")
+            ax.axis("off")
+            if row == 0:
+                ax.set_title(f"{t[j]:.1f}s" + ("" if clip["shape_ok"][j] else " (q0)"), fontsize=7)
+    fig.suptitle(f"{clip['name']}: video (top) / model (bottom), physical time, physical top view; {title}", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(path)
     plt.close(fig)
 
 
@@ -190,12 +284,83 @@ def fig_process(out, set_name, names=ORDER, N=128, suffix=""):
         ev = json.load(open(os.path.join(d, "eval.json")))
         title = (f"V0.5 {set_name}, real actions, N={N}: process IoU {ev['iou']['value']:.2f}, "
                  f"bnd {ev['boundary_D']['value']:.3f} D, final IoU {ev['final']['iou']:.2f}")
-        CB.contact_sheet(clip, wT, os.path.join(out, f"process_{n}{suffix}.png"), n=10, title=title)
+        contact_sheet_upper(clip, wT, os.path.join(out, f"process_{n}{suffix}.png"), n=10, title=title)
 
 
-def videos(out, set_name, k=3.0, N=128, names=ORDER):
+DIAG_COLS = (("", 1.0, "x1 (as run)"), ("chi045", 1.0, "(i) B_dep scaled:\nwiggle chi = 0.45"),
+             ("foot05", 1.0, "(ii) footprint x0.5,\nchi unchanged"), ("chi045foot05", 1.0, "(i)+(ii)"),
+             ("", 0.5, "flow x0.5"), ("", 1.5, "flow x1.5"))
+DIAG_NAMES = ("layered_heart", "tulip", "leaf", "swan")
+
+
+def stripes_of(ev):
+    pr = [p for p in ev.get("profiles", []) if p["at"] != "final"]
+    pf = [p for p in ev.get("profiles", []) if p["at"] == "final"]
+    return pr, pf
+
+
+def fig_diag(out, set_name, names=DIAG_NAMES, N=128):
+    """Diagnostic runs (not fits): final frame (physical top view) of x1 / chi045 / foot05 / both / flow x0.5 / x1.5,
+    labels: flow-weighted chi of the wiggle+retreat stages, stage-end stripe counts on B->D (video -> model), final IoU."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from .v05_adapter import chi_of
+    cols = [("video", None, "real whiteness w (final)")] + [
+        (dg, q, lab) for dg, q, lab in DIAG_COLS
+        if any(os.path.exists(os.path.join(run_dir(out, set_name, U_EXIT, n, N, q, dg), "eval.json")) for n in names)]
+    fig, axes = plt.subplots(len(names), len(cols), figsize=(2.45 * len(cols), 3.25 * len(names)), dpi=90, squeeze=False)
+    for i, n in enumerate(names):
+        clip = CB.load_clip(n)
+        res = clip["res"]
+        disk = res["disk"].astype(bool)
+        for j, (dg, q, lab) in enumerate(cols):
+            ax = axes[i, j]
+            _style(ax)
+            if i == 0:
+                ax.set_title(lab, fontsize=7.5)
+            if dg == "video":
+                ax.imshow(grey(res["white"][-1].astype(float), res["valid"][-1], disk), origin="upper")
+                pr, pf = stripes_of(json.load(open(os.path.join(run_dir(out, set_name, U_EXIT, n, N), "eval.json"))))
+                ax.set_xlabel(f"{n}\nstage-end stripes: " + ",".join(str(p["n_white_video"]) for p in pr)
+                              + f"\nfinal: {pf[0]['n_white_video'] if pf else '-'}", fontsize=7)
+                continue
+            d = run_dir(out, set_name, U_EXIT, n, N, q, dg)
+            try:
+                ev = json.load(open(os.path.join(d, "eval.json")))
+                wT = np.load(os.path.join(d, "wT.npz"))["wT"][-1].astype(float)
+            except OSError:
+                ax.set_xlabel("not run", fontsize=7)
+                continue
+            lg = np.load(os.path.join(d, "inlet_log.npy"))
+            ax.imshow(grey(wT, None, disk), origin="upper")
+            pr, pf = stripes_of(ev)
+            chi_w = wig_chi(n, lg)
+            ax.set_xlabel(f"chi(wig+ret) {chi_w:.2f}  d {np.nanmedian(lg[lg[:, 1] > 0, 11]):.1f} mm\n"
+                          + "stripes: " + ",".join(str(p["n_white_model"]) for p in pr)
+                          + f" | final {pf[0]['n_white_model'] if pf else '-'}\nfinal IoU {ev['final']['iou']:.2f}", fontsize=7)
+    fig.suptitle(f"DIAGNOSTIC runs (not fits), V0.5 {set_name}, real actions, N={N}: is chi or the footprint what limits "
+                 "the fine stripes? (physical top view; stripes = white runs on the B->D profile at the ends of the "
+                 "wiggle / retreat / push stages, video -> model)", fontsize=8)
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    fig.savefig(os.path.join(out, f"diag_{set_name}.png" if N == 128 else f"diag_{set_name}_N{N}.png"))
+    plt.close(fig)
+
+
+def wig_chi(name, lg, kinds=CHI_KINDS):
+    """Flow-weighted chi of the wiggle + retreat stages from an inlet log (model time, solver chi)."""
+    from .v05_adapter import PhysInlet
+    sc = CB.physical_script(name, preroll=0)
+    inl = PhysInlet(sc, kappa_Q=2.0)
+    C = {c: lg[:, i] for i, c in enumerate(LOGCOLS)}
+    k = np.array([inl.kind(t) in kinds for t in C["t"]]) & (C["active"] > 0)
+    w = C["Q_mLs"][k] * C["fdt"][k]
+    return float(np.sum(w * C["chi"][k]) / w.sum()) if w.sum() > 0 else float("nan")
+
+
+def videos(out, set_name, k=3.0, N=128, names=ORDER, vdir="videos"):
     from . import make_videos as MV
-    vd = os.path.join(out, "videos")
+    vd = os.path.join(out, vdir)
     os.makedirs(vd, exist_ok=True)
     rep = {}
     for n in names:
@@ -259,16 +424,20 @@ def check(out):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["check", "run", "final", "figs", "videos", "summary"])
+    ap.add_argument("cmd", choices=["check", "run", "final", "figs", "diagfig", "videos", "summary"])
     ap.add_argument("--out", required=True)
     ap.add_argument("--sets", default="FS,FSp2")
     ap.add_argument("--names", default=",".join(ORDER))
     ap.add_argument("--N", type=int, default=128)
     ap.add_argument("--u_exit", default=str(U_EXIT))
     ap.add_argument("--q_scale", type=float, default=1.0, help="diagnostic flow scale (not a calibrated parameter)")
+    ap.add_argument("--diag", default="", help="comma list of DIAGS (diagnostic runs, not calibrated)")
     ap.add_argument("--procs", type=int, default=3)
-    ap.add_argument("--best", default="FS")
-    ap.add_argument("--other", default="FSp2")
+    ap.add_argument("--best", default="FSp2", help="pre-registered calib loss L picks FSp2")
+    ap.add_argument("--other", default="FS")
+    ap.add_argument("--N_hi", type=int, default=256)
+    ap.add_argument("--vdir", default="videos")
+    ap.add_argument("--skip_done", action="store_true", help="skip runs whose eval.json exists")
     ap.add_argument("--k", type=float, default=3.0)
     a = ap.parse_args(argv)
     os.makedirs(a.out, exist_ok=True)
@@ -279,16 +448,24 @@ def main(argv=None):
         check(a.out)
     elif a.cmd in ("run", "final"):
         mode = "full" if a.cmd == "run" else "final"
-        jobs = [(s, n, a.N, u, mode, a.out, a.q_scale) for s in sets for u in us for n in names]
-        jobs.sort(key=lambda j: -CB.load_clip(j[1])["res"]["t"][-1])        # longest clips first
+        diags = [x for x in a.diag.split(",") if x] or [""]
+        assert all(x in DIAGS or x == "" for x in diags), diags
+        jobs = [(s, n, a.N, u, mode, a.out, a.q_scale, dg) for s in sets for u in us for dg in diags for n in names]
+        if a.skip_done:
+            jobs = [j for j in jobs if not os.path.exists(os.path.join(run_dir(a.out, j[0], j[3], j[1], j[2], j[6], j[7]),
+                                                                       "eval.json"))]
+        jobs.sort(key=lambda j: -CB.load_clip(j[1])["res"]["t"][-1] * (j[2] / 128) ** 3)   # longest first
         run_jobs(jobs, a.procs)
         summarize(a.out)
     elif a.cmd == "figs":
-        fig_final(a.out, a.best, a.other, names)
-        fig_process(a.out, a.best, names)
+        fig_final(a.out, a.best, a.other, names, N_hi=a.N_hi)
+        fig_process(a.out, a.best, names, suffix=f"_{a.best}")
         fig_process(a.out, a.other, names, suffix=f"_{a.other}")
+    elif a.cmd == "diagfig":
+        for s_ in sets:
+            fig_diag(a.out, s_, N=a.N)
     elif a.cmd == "videos":
-        videos(a.out, sets[0], a.k, a.N, names)
+        videos(a.out, sets[0], a.k, a.N, names, a.vdir)
     elif a.cmd == "summary":
         rows = summarize(a.out)
         for k, r in rows.items():
