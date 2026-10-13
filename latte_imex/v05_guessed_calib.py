@@ -44,7 +44,9 @@ The video side (w, mask, white mask, line counts) is computed once per pattern a
 CMA-ES (calib.calibrate, unchanged), with v05_calibrate.patched's disk cache + wall-time limit around the forward
 worker (inner = this module's _inner).  Cache key = v05_calibrate.cache_key(params, pattern, N, SPEC), SPEC holding the
 loss version, the action-definition hash (FS_U, phases, flags, sha1 of drvf.py and the six controls) and the fixed
-closure part; the final field of every call is kept as DIR/cache/<key>.npz.  Failures (exception, non-finite field or
+closure part; the final field of every call is kept as DIR/cache/<key>.npz.  What the key does not hold (PREREG text and
+constants, forward / loss code sha1, video targets) is checked against the pre-registration by check_unchanged before
+run and evaluate.  Failures (exception, non-finite field or
 ledger, wall > TIMEOUT_S) score +inf (1e6 for CMA) and are counted.
 """
 import argparse
@@ -133,8 +135,9 @@ def make_spec():
 
 
 def closure_of(params):
-    """the 8 calibrated values (subset allowed) on top of FS; nu, D fixed."""
+    """the 8 calibrated values (subset allowed) on top of FS; nu, D = FIXED (the values the cache key holds)."""
     c = {k: float(FS[k]) for k in CLOSURE_KEYS}
+    c.update({k: float(v) for k, v in FIXED.items()})
     for k, v in (params or {}).items():
         if k not in CLOSURE8:
             raise KeyError(f"not a calibrated closure parameter: {k}")
@@ -569,6 +572,24 @@ def _core_sha1(pre):
     return hashlib.sha1(json.dumps(core, sort_keys=True, default=float).encode()).hexdigest()
 
 
+def check_unchanged(pre, root, names):
+    """refuse to run when something a cached result depends on, but the cache key does not hold, has changed since the
+    pre-registration: the PREREG text (loss constants, alignment grid, time limit, CMA setup), the sha1 of the forward
+    and loss code (this driver excepted: its later edits are listed in DIR/code_changes*.json) and the video targets
+    (key of DIR/video/<p>.json)."""
+    bad = [k for k in PREREG if json.loads(json.dumps(PREREG[k], default=float)) != pre.get(k)]
+    if pre.get("spec") != json.loads(json.dumps(make_spec())):
+        bad.append("spec")
+    cs = code_sha1()
+    bad += [f"code_sha1.{k}" for k, v in pre["code_sha1"].items() if k != "this" and cs.get(k) != v]
+    for p in names:
+        meta = _jload(os.path.join(root, "video", f"{p}.json"))
+        if meta is not None and meta.get("key") != json.loads(json.dumps(_video_key(p))):
+            bad.append(f"video.{p}")
+    if bad:
+        raise SystemExit(f"changed since the pre-registration (cached results would be stale): {bad}")
+
+
 def prereg(out):
     out = os.path.abspath(out)
     os.makedirs(out, exist_ok=True)
@@ -673,6 +694,7 @@ def run(out, procs=4, smoke=False, prereg_path=None, seed_from=None):
     spec = make_spec()
     if pre["spec"] != json.loads(json.dumps(spec)):
         raise SystemExit("the current code's spec (loss version / action definition) differs from the pre-registration")
+    check_unchanged(pre, out, NAMES)
     dec = pre["N_decision"]
     N = int(dec["N"])
     pts = init_points()
@@ -791,6 +813,10 @@ def evaluate(out, procs=4, N=256, seed_from=None):
     rec = _jload(os.path.join(out, "calib", "calib.json"))
     if rec is None or "best" not in rec:
         raise SystemExit("no finished calibration in DIR/calib/calib.json")
+    pre = _jload(os.path.join(out, "prereg.json")) or (_jload(os.path.join(out, "prereg_used.json")) or {}).get("prereg")
+    if pre is None:
+        raise SystemExit("no pre-registration in DIR (prereg.json or prereg_used.json)")
+    check_unchanged(pre, out, PATTERNS)
     closures = dict(best={k: float(rec["best"]["params"][k]) for k in CLOSURE8}, FS=init_points()["FS"])
     jobs = [(closures[t], p, N) for t in closures for p in PATTERNS]
     t0 = time.time()
@@ -943,6 +969,20 @@ def test(out=None, quick=False):
     assert len(set(keys.values())) == len(keys), keys
     assert VC.cache_key(dict(base), "tulip", 96, make_spec()) == k0             # and is stable
     rep["cache_key"] = dict(n_inputs=len(keys) - 1, all_distinct=True)
+    # 7. what the key does not hold is guarded: PREREG text, spec, code sha1 (driver excepted), video targets
+    pre = json.loads(json.dumps(dict(PREREG, spec=make_spec(), code_sha1=code_sha1()), default=float))
+    check_unchanged(pre, out, PATTERNS)
+    refused = 0
+    for bad in (dict(pre, loss=dict(pre["loss"], thresholds=dict(model=0.45, video=THR_VID))),
+                dict(pre, failures="x"), dict(pre, cma=dict(pre["cma"], popsize=8)),
+                dict(pre, code_sha1=dict(pre["code_sha1"], solver="0" * 40)), dict(pre, spec=dict(pre["spec"], loss="x"))):
+        try:
+            check_unchanged(bad, out, PATTERNS)
+        except SystemExit:
+            refused += 1
+    assert refused == 5, refused
+    assert closure_of({})["nu"] == FIXED["nu"] and closure_of({})["D"] == FIXED["D"]
+    rep["guard"] = dict(passes_unchanged=True, refused_changed=refused)
     _jdump(rep, os.path.join(out, "test_report.json"))
     print(json.dumps(rep, indent=1, default=float))
     print("ALL TESTS PASSED")

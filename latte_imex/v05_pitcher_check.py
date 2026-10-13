@@ -349,17 +349,20 @@ def real_wanted(pattern, dt=DT):
 class _HandProxy:
     """Proxy pitcher seen by the barista (the barista's own tilt / height state is untouched):
       * adds the owner's open-loop tilt oscillation `osc_val` to every pose that reaches required_lift / step;
-      * lift_hold: the applied collision lift rises at once to Pitcher.required_lift but comes down at most
-        `lift_down` m/s.  required_lift bisects a clearance test that is not monotone in the lift (a wall point beside
-        the tilted cup can move from 'outside' to 'over the rim' when raised) on a coarse wall sampling, so its answer
-        flips by 0.5-2.8 mm from one 1 ms step to the next; applied raw, that is a 1.5 m/s / 30 m/s^2 hand jerk
-        (the kinematics clip) that sloshes the milk and makes 50-75 mL/s bursts.  The hold keeps the upper envelope.
+      * lift_smooth: the hand follows Pitcher.required_lift through a 9-step running median (drops single-step
+        glitches) and a critically damped second-order filter (time constant lift_tau).  required_lift bisects a
+        clearance test that is not monotone in the lift (a wall point beside the tilted cup can go from 'outside' to
+        'over the rim' when raised) on a coarse wall sampling (40 x 36 points), so its answer jumps by 0.5-2.8 mm
+        from one 1 ms step to the next; applied raw, that is a 1.5 m/s / 30 m/s^2 hand jerk (the kinematics clip)
+        that sloshes the milk, changes g_eff and the flight time, and makes 20-75 mL/s arrival bursts.  The price is
+        a short clearance violation (raw requirement above the applied lift), which is recorded ('lift_raw').
     Everything else is forwarded to the real pitcher."""
 
-    def __init__(self, P, owner, lift_hold=False, lift_down=0.10):
+    def __init__(self, P, owner, lift_smooth=False, lift_tau=0.04, nmed=9):
         self._P, self._owner = P, owner
-        self.lift_hold, self.lift_down = lift_hold, lift_down
-        self.lift_prev = 0.0
+        self.lift_smooth, self.lift_tau, self.nmed = lift_smooth, lift_tau, nmed
+        self.buf = []
+        self.L, self.vL = None, 0.0
         self.lift_raw = 0.0
 
     def __getattr__(self, k):
@@ -371,10 +374,19 @@ class _HandProxy:
     def required_lift(self, pose, cup, iters=14):
         L = self._P.required_lift(self._p(pose), cup, iters)
         self.lift_raw = L
-        if self.lift_hold:
-            L = max(L, self.lift_prev - self.lift_down * self._owner.dt_step)
-        self.lift_prev = L
-        return L
+        if not self.lift_smooth:
+            return L
+        self.buf.append(L)
+        if len(self.buf) > self.nmed:
+            self.buf.pop(0)
+        tgt = float(np.median(self.buf))
+        if self.L is None:
+            self.L = tgt
+            return tgt
+        dt, tau = self._owner.dt_step, self.lift_tau
+        self.vL += dt * ((tgt - self.L) / (tau * tau) - 2.0 * self.vL / tau)
+        self.L = max(0.0, self.L + dt * self.vL)
+        return self.L
 
     def step(self, pose, dt, z_surface=0.0):
         return self._P.step(self._p(pose), dt, z_surface)
@@ -386,9 +398,9 @@ class TableBarista(Barista):
       ff_tol    None: the stock feed-forward cache (re-solve tilt_for_flow when Q_want or the fill changed by > 3 %);
                 a number: the same with this tolerance (0.005 in 'main': with 3 % the cached tilt is held while the fill
                 drops ~10 mL, and at dlnQ/dtilt ~ 0.37 /deg the flow sags by up to ~40 % before the next re-solve)
-      lift_hold see _HandProxy."""
+      lift_smooth see _HandProxy."""
 
-    def __init__(self, pitcher, W, meta, coupling, qkey="Q", ff_tol=None, lift_hold=False, **kw):
+    def __init__(self, pitcher, W, meta, coupling, qkey="Q", ff_tol=None, lift_smooth=False, **kw):
         self.W, self.meta, self.qkey = W, meta, qkey
         self.ff_tol = ff_tol
         self.osc_val = 0.0
@@ -403,7 +415,7 @@ class TableBarista(Barista):
         self._k = np.asarray(W["k"], float)
         self.n_ff = 0
         mv = [Move(self.T_tab, (self._x[0], self._y[0]), (self._x[-1], self._y[-1]), z0=float(self._z[0]))]
-        super().__init__(_HandProxy(pitcher, self, lift_hold=lift_hold), mv, coupling, yaw=float(self._yaw[0]), **kw)
+        super().__init__(_HandProxy(pitcher, self, lift_smooth=lift_smooth), mv, coupling, yaw=float(self._yaw[0]), **kw)
 
     def _at(self, a, t):
         u = t / self.dt_tab
@@ -458,7 +470,10 @@ class PulseBarista(TableBarista):
     """Best-case pulsation: the stock controller tracks the lagged envelope (qkey='Q_env'); a 5 Hz tilt oscillation
     about the spout tip, Re(C e^{i w tt}) with tt the stroke clock, is added open loop.  C starts from the linear
     transfer function (weir sensitivity s = dlnQ_ss/dtilt, spout lag 1/(1 + i w tau), flight delay e^{-i w t_hit}) and
-    is corrected once per cycle by a lock-in on the arriving flow: C <- C (c_want / c_meas)^0.5, |C| <= amp_max."""
+    is corrected once per cycle by a lock-in on the arriving flow: C <- C (c_want / c_meas)^0.5, |C| <= amp_max.
+    The oscillation rectifies through the weir law (Q ~ h^2.5), so a slow tilt offset d0 corrects the cycle-mean flow:
+    d0 <- d0 - 0.5 ln(mean_meas / mean_want) / s.  The applied (C, d0) follow their targets with a 0.1 s low-pass,
+    so a cycle update never steps the tilt."""
 
     def __init__(self, pitcher, W, meta, coupling, amp_max=math.radians(12.0), gain=0.5, **kw):
         super().__init__(pitcher, W, meta, coupling, qkey="Q_env", **kw)
@@ -466,6 +481,10 @@ class PulseBarista(TableBarista):
         self.pulsed = [s for s in meta["strokes"] if s.get("pulse")]
         self.amp_max, self.gain = amp_max, gain
         self.C = None
+        self.C_app = None
+        self.d0 = 0.0
+        self.d0_app = 0.0
+        self.sens = None
         self.cur = None
         self.buf_t, self.buf_q, self.buf_w = [], [], []
         self.cycle_end = None
@@ -492,6 +511,7 @@ class PulseBarista(TableBarista):
         c, _ = P.free_surface(p, V)
         q0 = P.weir(p, c)["Q_ss"]
         sens = (q[1] - q[0]) / math.radians(0.6) / max(q0, 1e-9)
+        self.sens = sens if sens > 0 else 20.0
         w = 2 * math.pi * s["pulse"]["f"]
         cw = s["pulse"]["m"] * complex(math.cos(s["pulse"]["phi"]), math.sin(s["pulse"]["phi"]))
         th = 0.04
@@ -510,13 +530,17 @@ class PulseBarista(TableBarista):
             if s is not self.cur:
                 if self.C is None:
                     self.C = self._init_C(s, t)
+                    self.C_app = self.C
                 self.cur = s
                 self.buf_t, self.buf_q, self.buf_w = [], [], []
                 self.cycle_end = None
+            a = 1.0 - math.exp(-dt / 0.1)
+            self.C_app += (self.C - self.C_app) * a
+            self.d0_app += (self.d0 - self.d0_app) * a
             tt = t - s["t0"]
             w = 2 * math.pi * s["pulse"]["f"]
             env = min(1.0, tt / 0.05, (s["t1"] - t) / 0.05)
-            self.osc_val = env * (self.C * complex(math.cos(w * tt), math.sin(w * tt))).real
+            self.osc_val = env * ((self.C_app * complex(math.cos(w * tt), math.sin(w * tt))).real + self.d0_app)
         else:
             self.osc_val = 0.0
         rec, name = TableBarista.step(self, dt)
@@ -554,8 +578,11 @@ class PulseBarista(TableBarista):
                         self.C = self.C * r
                         if abs(self.C) > self.amp_max:
                             self.C *= self.amp_max / abs(self.C)
+                        self.d0 -= 0.5 * math.log(max(qd.mean(), 1e-12) / qw.mean()) / self.sens
+                        self.d0 = max(-math.radians(8.0), min(math.radians(8.0), self.d0))
                         self.history.append((float(ta), abs(cm), float(np.angle(cm)), abs(cw), float(np.angle(cw)),
-                                             abs(self.C), float(np.angle(self.C))))
+                                             abs(self.C), float(np.angle(self.C)), float(qd.mean() / qw.mean()),
+                                             float(self.d0)))
                     self.buf_t, self.buf_q, self.buf_w = [], [], []
                     self.cycle_end = tt + per
             if rec["t"] >= s["t1"] + 0.3:
@@ -636,7 +663,7 @@ def simulate(sset, pattern, variant="main", fill=350, dt=DT, tail=0.6, nr=6, ver
     th_on = onset_tilt(P, pose0, fill * ML)
     tilt0 = max(0.0, th_on - math.radians(2.0))
     cp = Coupling()
-    kw = dict(tilt0=tilt0) if variant == "stock" else dict(tilt0=tilt0, ff_tol=FF_TOL, lift_hold=True)
+    kw = dict(tilt0=tilt0) if variant == "stock" else dict(tilt0=tilt0, ff_tol=FF_TOL, lift_smooth=True)
     if variant in ("main", "stock"):
         B = TableBarista(P, W, meta, cp, qkey="Q", **kw)
     elif variant == "cmd":
@@ -659,7 +686,7 @@ def simulate(sset, pattern, variant="main", fill=350, dt=DT, tail=0.6, nr=6, ver
                   flush=True)
     info = dict(run=run_name(sset, pattern, variant, fill), set=sset, pattern=pattern, variant=variant, fill_mL=fill,
                 dt=dt, nr=nr, steps=n, wall_s=time.time() - t0w, n_ff_solves=B.n_ff,
-                ff_tol=(0.03 if variant == "stock" else FF_TOL), lift_hold=(variant != "stock"), wall_want_s=t_want, wall_sim_s=time.time() - t1w,
+                ff_tol=(0.03 if variant == "stock" else FF_TOL), lift_smooth=(variant != "stock"), wall_want_s=t_want, wall_sim_s=time.time() - t1w,
                 onset_tilt_deg=math.degrees(th_on), tilt0_deg=math.degrees(tilt0),
                 law={k: getattr(P.law, k) for k in ("C_d", "h_k", "h_on", "h_off", "tau", "tau_stop", "zeta", "slosh",
                                                     "carry_velocity")},
@@ -782,9 +809,9 @@ def analyze(name, out=OUT, figure=True):
 
     # global flow delay (delivered vs wanted at the surface)
     m_in = t <= Tt + 0.3
-    L_Q = best_delay(t[m_in], Qd[m_in], t[m_in], Qw[m_in])
+    L_Q = best_delay(t[m_in], Qd[m_in], t[m_in], Qw[m_in], max_lag=0.5)
     Qw_L = np.interp(t - L_Q, t, Qw, left=0.0, right=0.0)
-    L_int = best_delay(t[m_in], Qd[m_in], t[m_in], Qint[m_in])
+    L_int = best_delay(t[m_in], Qd[m_in], t[m_in], Qint[m_in], max_lag=0.5)
 
     strokes = []
     for s in meta["strokes"]:
@@ -861,10 +888,19 @@ def analyze(name, out=OUT, figure=True):
         o["z_tip_cm"] = _fw(z_tip * 100, wW)
         o["z_err_mm"] = _fw(np.abs(z_tip - zw) * 1e3, wW)
         o["lift_max_mm"] = float(np.nanmax(lift[m]) * 1e3)
+        o["lift_fw_mm"] = _fw(lift * 1e3, wW)
+        mp_ = m & (Qw >= 1 * ML)
+        o["lift_p90_mm"] = float(np.percentile(lift[mp_], 90) * 1e3) if mp_.any() else 0.0
+        o["lift_raw_fw_mm"] = _fw(A["lift_raw"] * 1e3, wW)
         o["lift_time_s"] = float(np.sum(lift[m] > 1e-3) * dt)
         o["z_reachable_min_cm"] = float(np.nanmax((zw + lift)[m & (lift > 1e-3)]) * 100) if (m & (lift > 1e-3)).any() \
             else None
         o["tilt_range_deg"] = _rng(tilt[m])
+        o["tilt_fw_deg"] = _fw(tilt, wW)
+        s_tip = -(A["tip_x"] * np.cos(A["yaw"]) + A["tip_y"] * np.sin(A["yaw"]))
+        o["tip_s_mm"] = _fw(s_tip * 1e3, wW)
+        s_foot = -(xw * np.cos(A["yaw"]) + yw * np.sin(A["yaw"]))
+        o["foot_s_mm"] = _fw(s_foot * 1e3, wW)
         o["tilt_rate_max"] = float(np.nanmax(np.abs(tilt_rate[m])))
         o["coherent_frac"] = float(np.mean(A["h_coh"][m & hit])) if (m & hit).any() else None
         # wiggle amplitude (lateral lock-in on x at the wiggle frequency)
@@ -899,12 +935,18 @@ def analyze(name, out=OUT, figure=True):
                 o["pulse_min_rel"] = float(qq.min() / qq.mean()) if qq.mean() > 0 else None
                 o["pulse_noflow_frac"] = float(np.mean(qq < 0.05 * qq.mean())) if qq.mean() > 0 else None
                 o["pulse_tilt_amp_deg"] = float(0.5 * (np.percentile(tilt[mp], 98) - np.percentile(tilt[mp], 2)))
+                osc = np.degrees(A["osc"][mp])
+                o["pulse_osc_amp_deg"] = float(0.5 * (np.percentile(osc, 98) - np.percentile(osc, 2)))
+                o["pulse_tilt_rate_max"] = float(np.nanmax(np.abs(tilt_rate[mp])))
         # classes
         c = {}
         rq = o["Q_err_rel"]
+        late = o.get("start_delay_s") is not None and o["start_delay_s"] >= 0.8 * o["dur"]
         c["Q"] = "DELIVERED" if rq <= TOL_REL else (
-            "IMPOSSIBLE no stream" if o["V_d_mL"] < 0.05 * max(o["V_w_mL"], 1e-9) else
-            f"DEVIATES |dQ| {rq * 100:.0f}% (delay-corr. {o['Q_err_rel_delayed'] * 100:.0f}%), V {o['Q_ratio']:.2f}x")
+            f"DEVIATES late start {o['start_delay_s'] * 1e3:.0f} ms > stroke {o['dur'] * 1e3:.0f} ms, V {o['Q_ratio']:.2f}x"
+            if late else ("IMPOSSIBLE no stream" if o["V_d_mL"] < 0.05 * max(o["V_w_mL"], 1e-9) else
+                          f"DEVIATES |dQ| {rq * 100:.0f}% (delay-corr. {o['Q_err_rel_delayed'] * 100:.0f}%), "
+                          f"V {o['Q_ratio']:.2f}x"))
         if s.get("pulse") and "pulse_m_d" in o:
             okm = abs(o["pulse_m_rel"]) <= TOL_REL
             okp = abs(o["pulse_dphase_deg"]) <= TOL_DEG
@@ -921,8 +963,8 @@ def analyze(name, out=OUT, figure=True):
                 f"DEVIATES rms {o['foot_rms_mm']:.1f} mm ({o['foot_rms_delayed_mm']:.1f} after {o['foot_delay_s'] * 1e3:.0f} ms)"
         else:
             c["foot"] = "n/a"
-        if o["lift_max_mm"] > TOL_MM:
-            c["z"] = f"IMPOSSIBLE lift {o['lift_max_mm']:.1f} mm ({o['lift_time_s']:.2f} s)"
+        if o["lift_fw_mm"] > TOL_MM:
+            c["z"] = f"IMPOSSIBLE lift {o['lift_fw_mm']:.1f} mm (max {o['lift_max_mm']:.1f})"
         else:
             c["z"] = "DELIVERED" if o["z_err_mm"] <= TOL_MM else f"DEVIATES {o['z_err_mm']:.1f} mm"
         o["class"] = c
@@ -1028,6 +1070,7 @@ class TableInlet:
         self.T = float(self.t[-1] + self.dt)
         self.c = {k: z[f"{kind}_{k}"] for k in ("active", "x", "y", "S_eff", "U_perp", "ux", "uy", "d_jet", "r1", "r2",
                                                  "phi", "scan", "Q_mLs", "z")}
+        self.u_exit, self.tau = float("nan"), float("nan")     # V05Model.run reports these; not defined for a table
 
     def _i(self, t):
         return min(max(int(math.floor(t / self.dt + 1e-9)), 0), len(self.t) - 1)
@@ -1150,7 +1193,7 @@ def plot_run(name, W, meta, A, info, res, out=OUT):
                            ha="center", va="bottom", fontsize=8, color=INK2)
         a.legend(loc="upper right", fontsize=8, frameon=False, ncol=2)
     tot = res["total"]
-    fig.suptitle(f"{name}: {CN.get(meta['pattern'], meta['pattern'])}  fill {info['fill_mL']:.0f} mL, "
+    fig.suptitle(f"{name}: {meta['pattern']}, fill {info['fill_mL']:.0f} mL, "
                  f"milk used {tot['milk_used_mL']:.0f} mL, flow delay {tot['Q_delay_s'] * 1e3:.0f} ms, "
                  f"max lift {tot['lift_max_mm']:.1f} mm", color=INK, fontsize=11)
     fn = f"{sset}_{meta['pattern']}.png" if (info["variant"] == "main" and info["fill_mL"] == 350) else f"{name}.png"
@@ -1161,7 +1204,7 @@ def plot_run(name, W, meta, A, info, res, out=OUT):
 # --------------------------------------------------------------------------- report
 QUANT = ("Q", "pulse", "U_perp", "u0", "exit_h", "tan", "uh", "r", "foot", "z")
 QLABEL = dict(Q="流量 Q", pulse="5 Hz 脉动", U_perp="U⊥", u0="出口速度 u0", exit_h="出口水平速度", tan="tanα",
-              uh="杯面 |u_h|", r="足迹 r", foot="落点位置", z="壶嘴高度")
+              uh="杯面 \\|u_h\\|", r="足迹 r", foot="落点位置", z="壶嘴高度")
 
 
 def _worst(strokes, q):
@@ -1182,7 +1225,7 @@ def _severity(o, q):
     return dict(Q=o.get("Q_err_rel", 0), pulse=abs(o.get("pulse_m_rel", 0)) + abs(o.get("pulse_dphase_deg", 0)) / 100,
                 U_perp=abs(o.get("U_rel", 0)), u0=abs(o.get("u0_rel", 0)), exit_h=abs(o.get("exit_h_rel", 0)),
                 tan=abs(o.get("tan_rel", 0)), uh=abs(o.get("uh_rel", 0)), r=abs(o.get("r_rel", 0)),
-                foot=o.get("foot_rms_mm", 0), z=o.get("lift_max_mm", 0) + o.get("z_err_mm", 0))[q]
+                foot=o.get("foot_rms_mm", 0), z=o.get("lift_fw_mm", 0) + o.get("z_err_mm", 0))[q]
 
 
 def _short(c):
@@ -1199,14 +1242,59 @@ def _f(x, fmt="{:.2f}"):
     return "–" if x is None or (isinstance(x, float) and not np.isfinite(x)) else fmt.format(x)
 
 
+def plot_clearance(R, out=OUT):
+    """Lowest reachable spout height vs tip position along the spout axis (clearance.json), with the strokes of the
+    FS and real 'main' runs at the tip position the pitcher actually took (marker = wanted height, line to the height
+    the pitcher reached)."""
+    path = os.path.join(out, "clearance.json")
+    if not os.path.exists(path):
+        return
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    with open(path) as f:
+        cm = json.load(f)
+    fig, axs = plt.subplots(1, 2, figsize=(13, 5.2), sharey=True, constrained_layout=True)
+    fig.patch.set_facecolor("#fcfcfb")
+    cols = {"40": "#c3c2b7", "45": "#8f8e88", "50": "#52514e", "55": "#0b0b0b"}
+    for ax, sset, title in ((axs[0], "fs", "FS strokes"), (axs[1], "real", "real-action stages")):
+        ax.set_facecolor("#fcfcfb")
+        for tl, c in cols.items():
+            ax.plot(cm["s_mm"], cm["z_min_cm"][tl], color=c, lw=1.4, label=f"lowest tip height, tilt {tl} deg")
+        first = True
+        for r, x in R.items():
+            if x["info"]["set"] != sset or x["info"]["variant"] != "main" or x["info"]["fill_mL"] != 350:
+                continue
+            for o in x["strokes"]:
+                if o.get("tip_s_mm") is None or not np.isfinite(o["tip_s_mm"]):
+                    continue
+                imp = o["class"]["z"].startswith("IMPOSSIBLE")
+                ax.plot([o["tip_s_mm"]] * 2, [o["z_w_cm"], o["z_tip_cm"]], color=C_D if imp else C_W, lw=1.0, alpha=0.8)
+                ax.plot(o["tip_s_mm"], o["z_w_cm"], "o", ms=5, color=C_D if imp else C_W,
+                        label=("wanted height (lift needed)" if imp and first else None))
+                if imp:
+                    first = False
+        ax.set_title(title, color=INK, fontsize=11)
+        ax.set_xlabel("tip position along the spout axis from the cup centre [mm] (+: towards the pitcher body)")
+        ax.grid(True, color=GRID, lw=0.6)
+        for sp in ("top", "right"):
+            ax.spines[sp].set_visible(False)
+    axs[0].set_ylabel("spout tip height above the coffee [cm]")
+    axs[0].legend(fontsize=8, frameon=False, loc="upper right")
+    fig.suptitle("NX pitcher clearance (Pitcher.required_lift, default Cup): wanted heights vs what the pitcher can reach",
+                 color=INK, fontsize=11)
+    fig.savefig(os.path.join(out, "clearance.png"), dpi=110, facecolor=fig.get_facecolor())
+    plt.close(fig)
+
+
 def report(out=OUT):
     runs = sorted(f[:-13] for f in os.listdir(os.path.join(out, "runs")) if f.endswith("_metrics.json"))
     R = {}
     for r in runs:
         with open(os.path.join(out, "runs", r + "_metrics.json")) as f:
             R[r] = json.load(f)
-    order = [run_name(s, p, v, fl) for s in ("fs", "real") for v, fl in (("main", 350), ("cmd", 350), ("pulse", 350),
-                                                                         ("main", 250), ("main", 500))
+    order = [run_name(s, p, v, fl) for s in ("fs", "real") for v, fl in (("main", 350), ("stock", 350), ("cmd", 350),
+                                                                         ("pulse", 350), ("main", 250), ("main", 500))
              for p in PATTERNS]
     order = [r for r in order if r in R]
     js = dict(runs={}, criteria=dict(rel=TOL_REL, mm=TOL_MM, deg=TOL_DEG))
@@ -1217,12 +1305,21 @@ def report(out=OUT):
     L.append("> 判定：DELIVERED（✓）= 相对差 ≤ 15 %、位置/高度 ≤ 1 mm、相位 ≤ 10°；DEVIATES（≠）给出差多少；"
              "IMPOSSIBLE（✗）= 壶做不到（碰撞抬升 > 1 mm，即要的高度低于壶身/唇沿与杯子的间隙；或者根本没有奶柱）。"
              "逐笔取最差的一笔（括号里是笔号）。流量判据是逐笔的 ∫|Q_壶 − Q_要|dt / ∫Q_要 dt（不扣时延）。\n")
-    for sset, title in (("fs", "FS（猜的全物理动作）"), ("real", "真实动作（stage scripts + PhysInlet）")):
-        rows = [r for r in order if R[r]["info"]["set"] == sset and R[r]["info"]["variant"] == "main"
-                and R[r]["info"]["fill_mL"] == 350]
+    blocks = [("fs", "main", 350, "FS（猜的全物理动作）：装奶 350 mL，main 咖啡师（原控制器 + 两处数值修正）"),
+              ("real", "main", 350, "真实动作（stage scripts + PhysInlet）：装奶 350 mL，main 咖啡师"),
+              ("fs", "stock", 350, "FS：装奶 350 mL，stock 咖啡师（pitcher.Barista 原样）"),
+              ("real", "stock", 350, "真实动作：装奶 350 mL，stock 咖啡师"),
+              ("fs", "pulse", 350, "FS：pulse 变体（理想 5 Hz 绕壶嘴尖倾转 + 锁相自适应）"),
+              ("fs", "cmd", 350, "FS：cmd 变体（咖啡师照 FS 的滞后前指令倒，壶嘴滞后由壶自己给）"),
+              ("fs", "main", 250, "FS：装奶 250 mL"), ("fs", "main", 500, "FS：装奶 500 mL"),
+              ("real", "main", 250, "真实动作：装奶 250 mL"), ("real", "main", 500, "真实动作：装奶 500 mL")]
+    for sset, var, fill, title in blocks:
+        rows = [r for r in order if R[r]["info"]["set"] == sset and R[r]["info"]["variant"] == var
+                and R[r]["info"]["fill_mL"] == fill]
         if not rows:
             continue
-        L.append(f"\n## {title}：装奶 350 mL，标准咖啡师控制器\n")
+        L.append(f"\n## {title}\n")
+        L.append("格内：最差一笔的判定（笔号）[没送到的笔数 / 总笔数]。\n")
         L.append("| 图案 | " + " | ".join(QLABEL[q] for q in QUANT) + " |")
         L.append("|---|" + "---|" * len(QUANT))
         for r in rows:
@@ -1230,7 +1327,12 @@ def report(out=OUT):
             cells = []
             for q in QUANT:
                 c, n = _worst(st, q)
-                cells.append("–" if c == "n/a" else (_short(c) + (f"（#{n}）" if n is not None and not c.startswith("DELIVERED") else "")))
+                cl = [o["class"].get(q, "n/a") for o in st]
+                cl = [x for x in cl if x != "n/a"]
+                bad = sum(1 for x in cl if not x.startswith("DELIVERED"))
+                cell = "–" if c == "n/a" else (_short(c) + (f"（#{n}）" if n is not None and not c.startswith("DELIVERED")
+                                                             else "") + f" [{bad}/{len(cl)}]")
+                cells.append(cell.replace("|", "\\|"))
             L.append(f"| {CN[R[r]['info']['pattern']]} | " + " | ".join(cells) + " |")
     # overview
     L.append("\n## 运行总览\n")
@@ -1267,7 +1369,7 @@ def report(out=OUT):
                 f"{_f(o['exit_h_w'], '{:.3f}')}/{_f(o['exit_h_d'], '{:.3f}')} | {_f(o['tan_w'])}/{_f(o['tan_d'])} | "
                 f"{_f(o['uh_w'], '{:.3f}')}/{_f(o['uh_d'], '{:.3f}')} | {_f(o['r_w_mm'])}/{_f(o['r_d_mm'])} ({_f(o['r_phys_mm'])}) | "
                 f"{_f(o.get('foot_rms_mm'), '{:.1f}')} ({_f(o.get('foot_rms_delayed_mm'), '{:.1f}')}, {_f((o.get('foot_delay_s') or 0) * 1e3, '{:.0f}')}) | "
-                f"{o['z_w_cm']:.2f}/{o['z_tip_cm']:.2f}, {o['lift_max_mm']:.1f} | "
+                f"{o['z_w_cm']:.2f}/{o['z_tip_cm']:.2f}, {o['lift_fw_mm']:.1f} (max {o['lift_max_mm']:.1f}) | "
                 f"{o['tilt_range_deg'][0]:.0f}–{o['tilt_range_deg'][1]:.0f} |")
         if x["gaps"]:
             gl = "; ".join(f"{g['name']} 要漏 {g['V_w_mL']:.2f} mL / 壶漏 {g['V_d_mL']:.2f} mL，<1 mL/s 时长 要 {g['zero_w_s']:.2f} / 壶 {g['zero_d_s']:.2f} s"
@@ -1276,11 +1378,44 @@ def report(out=OUT):
         js["runs"][r] = dict(info=x["info"], total=x["total"],
                              classes={str(o["n"]): o["class"] for o in x["strokes"]},
                              worst={q: _worst(x["strokes"], q) for q in QUANT})
+    plot_clearance(R, out)
     with open(os.path.join(out, "summary_tables.md"), "w") as f:
         f.write("\n".join(L) + "\n")
     with open(os.path.join(out, "summary.json"), "w") as f:
         json.dump(js, f, indent=1, default=float)
     return R
+
+
+# --------------------------------------------------------------------------- clearance map
+def clearance_map(out=OUT):
+    """Lowest spout-tip height the NX pitcher can take above the coffee (Pitcher.required_lift against the default
+    Cup) vs the tip position along the spout axis (s > 0: towards the pitcher body / the near rim) and the tilt; and the
+    steady tilt for a flow at several fills (tilt_for_flow, tip 1.5 cm above the surface at the centre)."""
+    g = nx_geometry(6)
+    P = FastPitcher(geom=g, V0=350 * ML)
+    cup = Cup()
+    S = list(range(-30, 35, 5))
+    TL = list(range(30, 70, 5))
+    zmin = {}
+    for tl in TL:
+        row = []
+        for s_mm in S:
+            pose = Pose((0.0, s_mm * 1e-3, 0.002), -math.pi / 2, math.radians(tl), 0.0)
+            row.append(round((0.002 + P.required_lift(pose, cup)) * 100, 2))
+        zmin[tl] = row
+    tilt = {}
+    for fill in (250, 300, 350, 400, 450, 500):
+        P2 = FastPitcher(geom=g, V0=fill * ML)
+        pose = Pose((0.0, 0.008, 0.015), -math.pi / 2, 0.0, 0.0)
+        tilt[fill] = dict(onset=round(math.degrees(onset_tilt(P2, pose, fill * ML)), 1))
+        for q in (2, 5, 8, 12, 16, 22):
+            tilt[fill][q] = round(math.degrees(P2.tilt_for_flow(pose, q * ML, V=fill * ML, iters=26)), 1)
+    res = dict(s_mm=S, tilts_deg=TL, z_min_cm=zmin, tilt_for_flow_deg=tilt,
+               note="tip position s along the spout axis from the cup centre, s > 0 towards the pitcher body; the stream"
+                    " foot is 5-10 mm ahead of the tip (s smaller)")
+    with open(os.path.join(out, "clearance.json"), "w") as f:
+        json.dump(res, f, indent=1)
+    return res
 
 
 # --------------------------------------------------------------------------- self test
@@ -1319,6 +1454,9 @@ def job_list():
         for p in FILLS_EXTRA[sset]:
             for fl in (250, 500):
                 J.append((sset, p, "main", fl))
+    for sset in ("fs", "real"):
+        for p in PATTERNS:
+            J.append((sset, p, "stock", 350))
     for p in PATTERNS:
         J.append(("fs", p, "cmd", 350))
     return J
@@ -1341,6 +1479,7 @@ def main(argv=None):
     b.add_argument("--skip_done", action="store_true")
     sub.add_parser("report")
     sub.add_parser("selftest")
+    sub.add_parser("clearance")
     a = ap.parse_args(argv)
     if a.cmd == "sim":
         W, meta, A, info = simulate(a.set, a.pattern, a.variant, a.fill)
@@ -1384,6 +1523,8 @@ def main(argv=None):
         report()
     elif a.cmd == "selftest":
         selftest()
+    elif a.cmd == "clearance":
+        print(json.dumps(clearance_map(), indent=1))
     else:
         ap.print_help()
 
