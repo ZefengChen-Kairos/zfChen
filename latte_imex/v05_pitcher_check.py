@@ -89,6 +89,7 @@ V0_EXIT = 0.35           # FS exit speed [m/s]
 KAPPA_Q = 2.0            # FS kappa_Q [1/D]
 TOL_REL, TOL_MM, TOL_DEG = 0.15, 1.0, 10.0
 FILLS_EXTRA = dict(fs=("tulip", "push_heart"), real=("push_heart", "tulip"))
+FF_TOL = 0.005           # feed-forward cache tolerance of the 'main' barista (stock: 0.03)
 PULSED = ("layered_heart", "tulip", "leaf", "swan")
 
 
@@ -564,7 +565,7 @@ class PulseBarista(TableBarista):
 
 # --------------------------------------------------------------------------- simulation
 REC_KEYS = ("t", "V", "Q", "Q_feed", "Q_hit", "Q_ss", "h_max", "h_bar", "c", "width", "flowing", "overflow", "tilt",
-            "tip_x", "tip_y", "tip_z", "lift", "yaw", "z_cmd", "off_x", "off_y", "Q_want", "osc",
+            "tip_x", "tip_y", "tip_z", "lift", "lift_raw", "yaw", "z_cmd", "off_x", "off_y", "Q_want", "osc",
             "j_on", "j_u0", "j_d0", "j_v0x", "j_v0y", "j_v0z", "j_ox", "j_oy", "j_oz", "j_thit", "j_xh", "j_yh", "j_U",
             "j_uhx", "j_uhy", "j_dhit", "j_r1", "j_r2", "j_coh", "j_We", "j_exh", "j_beta",
             "h_on", "h_xh", "h_yh", "h_U", "h_uhx", "h_uhy", "h_dhit", "h_r1", "h_r2", "h_phi", "h_coh", "h_speed",
@@ -583,6 +584,7 @@ def _flatten(rec, B, A, i):
     A["z_cmd"][i] = B.z_cmd if B.z_cmd is not None else np.nan
     A["off_x"][i], A["off_y"][i] = B.offset
     A["osc"][i] = rec.get("osc", 0.0)
+    A["lift_raw"][i] = rec.get("lift_raw", rec["lift"])
     A["vel_x"][i], A["vel_y"][i], A["vel_z"][i] = rec["vel"]
     A["acc_x"][i], A["acc_y"][i], A["acc_z"][i] = rec["acc"]
     A["slope_x"][i], A["slope_y"][i] = rec["slope"]
@@ -634,8 +636,8 @@ def simulate(sset, pattern, variant="main", fill=350, dt=DT, tail=0.6, nr=6, ver
     th_on = onset_tilt(P, pose0, fill * ML)
     tilt0 = max(0.0, th_on - math.radians(2.0))
     cp = Coupling()
-    kw = dict(tilt0=tilt0)
-    if variant == "main":
+    kw = dict(tilt0=tilt0) if variant == "stock" else dict(tilt0=tilt0, ff_tol=FF_TOL, lift_hold=True)
+    if variant in ("main", "stock"):
         B = TableBarista(P, W, meta, cp, qkey="Q", **kw)
     elif variant == "cmd":
         assert sset == "fs"
@@ -656,7 +658,8 @@ def simulate(sset, pattern, variant="main", fill=350, dt=DT, tail=0.6, nr=6, ver
                   f"Q_hit={rec['Q_hit'] / ML:.1f} tilt={math.degrees(rec['tilt']):.1f} [{time.time() - t1w:.0f}s]",
                   flush=True)
     info = dict(run=run_name(sset, pattern, variant, fill), set=sset, pattern=pattern, variant=variant, fill_mL=fill,
-                dt=dt, nr=nr, steps=n, wall_s=time.time() - t0w, wall_want_s=t_want, wall_sim_s=time.time() - t1w,
+                dt=dt, nr=nr, steps=n, wall_s=time.time() - t0w, n_ff_solves=B.n_ff,
+                ff_tol=(0.03 if variant == "stock" else FF_TOL), lift_hold=(variant != "stock"), wall_want_s=t_want, wall_sim_s=time.time() - t1w,
                 onset_tilt_deg=math.degrees(th_on), tilt0_deg=math.degrees(tilt0),
                 law={k: getattr(P.law, k) for k in ("C_d", "h_k", "h_on", "h_off", "tau", "tau_stop", "zeta", "slosh",
                                                     "carry_velocity")},
@@ -1327,7 +1330,7 @@ def main(argv=None):
     s = sub.add_parser("sim")
     s.add_argument("set", choices=["fs", "real"])
     s.add_argument("pattern")
-    s.add_argument("--variant", default="main", choices=["main", "cmd", "pulse"])
+    s.add_argument("--variant", default="main", choices=["main", "stock", "cmd", "pulse"])
     s.add_argument("--fill", type=float, default=350)
     s.add_argument("--no_fig", action="store_true")
     a2 = sub.add_parser("analyze")
