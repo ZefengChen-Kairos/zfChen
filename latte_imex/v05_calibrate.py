@@ -36,6 +36,8 @@ JSON round-trip of its result, so a fresh call and a cached call return identica
 the same points when it is told the same losses, so a restarted `run` replays the finished generations from the cache in
 seconds and continues where it stopped.  A tag whose calib.json is complete with the same setup is skipped.
 Bookkeeping: DIR/run_meta.json (sessions, per-tag segments with wall times and cache counts), DIR/calib_<tag>.log.
+`patched(..., inner='module:function')` puts another worker with calib._weval's signature inside the same cache /
+timeout wrapper (used by v05_actfit for its loss); without it the wrapper calls calib._weval as before.
 The cache is shared by AB and A: A's first generation asks the same tulip points as AB's (same seeds, same x0), so
 those tulip evaluations are cache hits (deterministic solver, NUMBA_NUM_THREADS = 1); calib's n_forward counts them
 (the budget), cache records count what was computed and by which tag.
