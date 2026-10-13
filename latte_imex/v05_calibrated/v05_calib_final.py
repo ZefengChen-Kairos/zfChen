@@ -15,6 +15,7 @@ Inputs (defaults = the scratch directories of this task; all read-only):
   BASE     v05video/: the zero-tuning FSp2 fields (runs/FSp2_<name>_N128/wT.npz, runs/FSp2_<name>_N256/wT.npz)
 
     python3 latte_imex/v05_calibrated/v05_calib_final.py probe   [--procs 4]
+    python3 latte_imex/v05_calibrated/v05_calib_final.py mech    [--procs 4]
     python3 latte_imex/v05_calibrated/v05_calib_final.py analyze
     python3 latte_imex/v05_calibrated/v05_calib_final.py figs
     python3 latte_imex/v05_calibrated/v05_calib_final.py export  [--dest latte_imex/v05_calibrated]
@@ -29,6 +30,9 @@ probe   forward calls (calib.simulate_clip + calib.evaluate(delay_in_loss=False)
             (tulip + leaf) and of A (tulip), from a replay of the recorded CMA runs out of the cache, re-run at N = 128
             on their own calibration patterns -> how much of the N = 96 ranking survives one grid step.
         -> FINAL/probe.json
+mech    POST-HOC mechanism diagnostic on the calibration patterns only (tulip, leaf), N = 128: the frozen AB / A sets with
+        beta, or the exit momentum (u_exit, kappa_t), put back to the zero-tuning FSp2 values (and FSp2 with AB's beta)
+        -> white centroid offset along B -> D, area ratio, loss parts -> FINAL/mech.json, FINAL/mech/*.npz
 analyze tables for the seven parameter sets FSp2 (zero tuning), AB, A, AB_i1, AB_i3, A_i2, A_i3: calibration fit and
         test prediction (N = 128), test means with and without heart, AB - A paired by init, loss decomposition;
         white centroid offset along B -> D (final frame N = 256 / 128, process mean N = 128) and white-area ratio;
@@ -229,6 +233,61 @@ def probe(a):
                                solver=_sha(os.path.join(REPO, "latte_imex", "solver.py"))))
     _jdump(out, os.path.join(P["final"], "probe.json"))
     print(f"[probe] {len(tasks)} forward calls in {time.time() - t0:.0f} s", flush=True)
+
+
+# =========================================================================== mechanism probe (calibration patterns only)
+MECH = (("AB|beta=3.0", "AB", dict(beta=3.0)),
+        ("AB|u_exit=0.15,kappa_t=0.7", "AB", dict(u_exit=0.15, kappa_t=0.7)),
+        ("AB|beta=3.0,u_exit=0.15,kappa_t=0.7", "AB", dict(beta=3.0, u_exit=0.15, kappa_t=0.7)),
+        ("A|beta=3.0", "A", dict(beta=3.0)),
+        ("FSp2|beta=1.556", "FSp2", dict(beta=1.5559599288009482)))
+
+
+def _mjob(task):
+    lab, params, name, N, path = task
+    clip = CB.load_clip(name)
+    t0 = time.time()
+    wT, led = CB.simulate_clip(_M["model"], params, clip, N)
+    ev = CB.evaluate(clip, wT, led, delay_in_loss=False)
+    np.savez_compressed(path, wT=wT.astype(np.float32), t=np.asarray(clip["res"]["t"]))
+    r = parts(ev)
+    r["wall_s"] = time.time() - t0
+    r["offsets"] = offsets(clip, wT[-1].astype(float), wT.astype(float))
+    return lab, name, json.loads(json.dumps(r, default=float))
+
+
+def mech(a):
+    """Which closure change moves the white downstream?  One- and two-parameter swaps between the frozen AB / A sets
+    and the zero-tuning FSp2 (beta; the exit momentum u_exit, kappa_t), on the CALIBRATION patterns only (tulip, leaf),
+    N = 128; white centroid offset along B -> D and the loss parts.  Post-hoc diagnostic, not a selection."""
+    P = _paths(a)
+    ab = json.load(open(os.path.join(P["cal"], "calib_AB", "calib.json")))
+    ar = json.load(open(os.path.join(P["cal"], "calib_A", "calib.json")))
+    pre = json.load(open(os.path.join(P["cal"], "prereg.json")))
+    base = dict(AB=ab["best"]["params"], A=ar["best"]["params"], FSp2=pre["x0s"][0])
+    d = os.path.join(P["final"], "mech")
+    os.makedirs(d, exist_ok=True)
+    tasks, points = [], {}
+    for lab, b, ch in MECH:
+        q = dict(base[b])
+        q.update(ch)
+        points[lab] = q
+        tasks += [(lab, q, n, 128, os.path.join(d, f"{lab.replace('|', '__').replace(',', '_')}_{n}_N128.npz"))
+                  for n in CB.CAL_AB]
+    tasks.sort(key=lambda t: 0 if t[2] == "tulip" else 1)
+    from multiprocessing import Pool
+    t0 = time.time()
+    with Pool(a.procs, initializer=_winit) as pool:
+        res = pool.map(_mjob, tasks, chunksize=1)
+    ev = {}
+    for lab, n, r in res:
+        ev.setdefault(lab, {})[n] = r
+    _jdump(dict(points=points, evals=ev, wall_s=time.time() - t0, n_calls=len(tasks)), os.path.join(P["final"], "mech.json"))
+    for lab in points:
+        print(lab, " | ".join(f"{n}: L {ev[lab][n]['loss']:.3f} offset {ev[lab][n]['offsets']['final']['along_mm']:+.1f} mm "
+                              f"(proc {ev[lab][n]['offsets']['process']['along_mm']:+.1f}) area x{ev[lab][n]['offsets']['final']['area_ratio']:.2f}"
+                              for n in CB.CAL_AB), flush=True)
+    print(f"[mech] {len(tasks)} calls, {time.time() - t0:.0f} s")
 
 
 # =========================================================================== analysis helpers
@@ -529,6 +588,23 @@ def analyze(a):
                             best128=min(lst, key=lambda x: x["loss128"]))
         T["topk"] = top
         T["probe_meta"] = dict(n_calls=pr["n_calls"], wall_s=pr["wall_s"], procs=pr["procs"], provenance=pr["provenance"])
+    mp = os.path.join(P["final"], "mech.json")
+    if os.path.exists(mp):
+        mj = json.load(open(mp))
+        T["mech"] = {lab: {n: dict(loss=e["loss"], one_minus_dice=e["one_minus_dice"], bnd_term=e["bnd_term"],
+                                   line_term=e["line_term"], iou=e["iou"], chi=e["chi"], V_mL=e["V_received_mL"],
+                                   along_mm=e["offsets"]["final"]["along_mm"], abs_mm=e["offsets"]["final"]["abs_mm"],
+                                   proc_along_mm=e["offsets"]["process"]["along_mm"],
+                                   area=e["offsets"]["final"]["area_ratio"]) for n, e in d.items()}
+                     for lab, d in mj["evals"].items()}
+        for g in ("FSp2", "AB", "A"):
+            T["mech"][g] = {n: dict(loss=E[g][n]["loss"], one_minus_dice=E[g][n]["one_minus_dice"], bnd_term=E[g][n]["bnd_term"],
+                                    line_term=E[g][n]["line_term"], iou=E[g][n]["iou"], chi=E[g][n]["chi"],
+                                    V_mL=E[g][n]["V_received_mL"], along_mm=off[n][g + "_N128"]["final"]["along_mm"],
+                                    abs_mm=off[n][g + "_N128"]["final"]["abs_mm"],
+                                    proc_along_mm=off[n][g + "_N128"]["process"]["along_mm"],
+                                    area=off[n][g + "_N128"]["final"]["area_ratio"]) for n in CB.CAL_AB}
+        T["mech_points"] = mj["points"]
     T["provenance"] = dict(driver=_sha(os.path.abspath(__file__)),
                            calib=_sha(CB.__file__), v05_adapter=_sha(os.path.join(REPO, "latte_imex", "v05_adapter.py")),
                            solver=_sha(os.path.join(REPO, "latte_imex", "solver.py")),
@@ -629,6 +705,18 @@ def tables_md(T):
             for r in d["rows"]:
                 s.append(f"| {r['rank']} | {r['init']} | {r['gen']} | {r['loss96']:.4f} | {r['loss128']:.4f} | "
                          f"{r['shape128']:.3f} | {r['line128']:.3f} |")
+    if "mech" in T:
+        s.append("\n### T10 机制检验（事后，只用校准图，N = 128）：把 β 或出口动量换回零调参的值\n")
+        s.append("| 参数组 | 郁金香 L | 郁金香末帧偏移 mm（过程） | 郁金香面积比 | 树叶 L | 树叶末帧偏移 mm（过程） | 树叶面积比 |")
+        s.append("|---|---|---|---|---|---|---|")
+        order = ["FSp2", "FSp2|beta=1.556", "AB", "AB|beta=3.0", "AB|u_exit=0.15,kappa_t=0.7",
+                 "AB|beta=3.0,u_exit=0.15,kappa_t=0.7", "A", "A|beta=3.0"]
+        for lab in order:
+            if lab not in T["mech"]:
+                continue
+            m = T["mech"][lab]
+            s.append(f"| {lab} | " + " | ".join(f"{m[n]['loss']:.3f} | {m[n]['along_mm']:+.1f}（{m[n]['proc_along_mm']:+.1f}） | "
+                                                f"{m[n]['area']:.2f}" for n in CB.CAL_AB) + " |")
     s.append("\n### T9 各阶段的流量加权 χ（想要的动作，校准图）\n")
     for p, d in T["chi_by_kind"].items():
         s.append(f"\n{CN[p]}：")
@@ -775,13 +863,13 @@ def export(a):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("probe", "analyze", "figs", "export"))
+    ap.add_argument("cmd", choices=("probe", "mech", "analyze", "figs", "export"))
     ap.add_argument("--cal", default=D_CAL)
     ap.add_argument("--base", default=D_BASE)
     ap.add_argument("--dest", default=HERE)
     ap.add_argument("--procs", type=int, default=4)
     a = ap.parse_args(argv)
-    dict(probe=probe, analyze=analyze, figs=figs, export=export)[a.cmd](a)
+    dict(probe=probe, mech=mech, analyze=analyze, figs=figs, export=export)[a.cmd](a)
 
 
 if __name__ == "__main__":
