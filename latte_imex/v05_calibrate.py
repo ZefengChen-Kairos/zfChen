@@ -83,7 +83,7 @@ SMOKE = dict(gens=1, popsize=4)
 
 _ORIG_WEVAL = CB._weval
 _ORIG_WINIT = CB._winit
-ENV_CACHE, ENV_TIMEOUT, ENV_TAG = "V05CAL_CACHE", "V05CAL_TIMEOUT", "V05CAL_TAG"
+ENV_CACHE, ENV_TIMEOUT, ENV_TAG, ENV_INNER = "V05CAL_CACHE", "V05CAL_TIMEOUT", "V05CAL_TAG", "V05CAL_INNER"
 
 
 # =========================================================================== cached / time-limited worker
@@ -99,6 +99,18 @@ _WS = {}
 def _winit(spec):
     _ORIG_WINIT(spec)
     _WS["spec"] = spec
+
+
+def _inner():
+    """The worker the cache wraps: calib._weval (default), or the 'module:function' named in $V05CAL_INNER (same
+    signature and return value; v05_actfit uses it for its own loss).  Read from the environment, so pool workers see
+    it under fork and spawn alike."""
+    s = os.environ.get(ENV_INNER)
+    if not s:
+        return _ORIG_WEVAL
+    import importlib
+    mod, fn = s.split(":")
+    return getattr(importlib.import_module(mod), fn)
 
 
 def _alarm(signum, frame):
@@ -121,7 +133,7 @@ def _weval(args):
     old = signal.signal(signal.SIGALRM, _alarm)
     signal.alarm(lim)
     try:
-        n, ev = _ORIG_WEVAL(args)
+        n, ev = _inner()(args)
     finally:
         signal.alarm(0)
         signal.signal(signal.SIGALRM, old)
@@ -136,12 +148,18 @@ def _weval(args):
 
 
 @contextlib.contextmanager
-def patched(cache_dir, tag):
+def patched(cache_dir, tag, inner=None):
+    """calib's pool worker / initializer -> the cached, time-limited ones while the block runs.  inner = optional
+    'module:function' replacing calib._weval inside the wrapper (default: calib._weval)."""
     os.makedirs(cache_dir, exist_ok=True)
-    env_old = {k: os.environ.get(k) for k in (ENV_CACHE, ENV_TIMEOUT, ENV_TAG)}
+    env_old = {k: os.environ.get(k) for k in (ENV_CACHE, ENV_TIMEOUT, ENV_TAG, ENV_INNER)}
     os.environ[ENV_CACHE] = cache_dir
     os.environ[ENV_TIMEOUT] = str(TIMEOUT_S)
     os.environ[ENV_TAG] = tag
+    if inner:
+        os.environ[ENV_INNER] = inner
+    else:
+        os.environ.pop(ENV_INNER, None)
     CB._weval, CB._winit = _weval, _winit
     try:
         yield

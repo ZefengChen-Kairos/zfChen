@@ -492,7 +492,9 @@ def contact_sheet(clip, wT, path, n=10, title=""):
 # =========================================================================== calibration driver (CMA-ES)
 def make_model(spec):
     """spec = dict(kind='v3min', code_dir=..., fixed={...}, space_extra={...}) or
-    dict(kind='v05', base='FSp2'|'FS', space_extra={...}, u_exit=..., grid_numerics=...) -> model object."""
+    dict(kind='v05', base='FSp2'|'FS', space_extra={...}, u_exit=..., grid_numerics=...) or
+    dict(kind='v05act', pattern=name, base='FSp2') (fixed closure, action space of one pattern: v05_actfit)
+    -> model object."""
     if spec["kind"] == "v3min":
         from .v3min_adapter import V3MinModel
         return V3MinModel(spec["code_dir"], fixed=spec.get("fixed"), space_extra=spec.get("space_extra"))
@@ -502,6 +504,9 @@ def make_model(spec):
         if spec.get("space_extra"):
             m.space = dict(m.space, **{k: tuple(v) for k, v in spec["space_extra"].items()})
         return m
+    if spec["kind"] == "v05act":
+        from .v05_actfit import V05ActModel
+        return V05ActModel(spec["pattern"], base=spec.get("base", "FSp2"))
     raise ValueError(spec["kind"])
 
 
