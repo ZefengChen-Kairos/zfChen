@@ -736,8 +736,9 @@ class Barista:
         rec["label"] = name
         rec["lift"] = self.lift
         rec["inlet"] = self.cp.inlet(rec, scan_speed=scan)
-        if rec["inlet"].active and math.hypot(*rec["inlet"].x_hit) > 0.47:   # stream outside the cup (e.g. moving away)
-            rec["inlet"] = Inlet(active=False)
+        rec["off_cup"] = bool(rec["inlet"].active and math.hypot(*rec["inlet"].x_hit) > 0.47)   # stream at/outside the rim
+        if rec["off_cup"] and getattr(self, "drop_off_cup", False):    # old rule; default: the solver accounts the
+            rec["inlet"] = Inlet(active=False)                         # off-cup part (Params.offcup)
         return rec, name
 
 
@@ -889,3 +890,305 @@ def records_table(records):
         out[k] = np.array([r.get(k, 0.0) for r in records])
     out["label"] = [r.get("label", "") for r in records]
     return out
+
+
+# =========================================================================== forward, pose-driven pitcher (V1 mode B)
+# Input: a continuous pose series T_WP(t) (tip position, yaw, tilt, roll) and the initial milk volume.  Output: the
+# arrival record at the coffee surface (z = 0): received flow, hit position, hit material velocity, A_perp, footprint.
+#   step 1  effective spout front edge = the contiguous beak arc of the rim (r_rim above the plain rim radius); segment
+#           widths are PROJECTED perpendicular to the main outflow direction (not the rim arc length)
+#   step 2  rigid-body lip velocity v_lip,i = v_tip + omega x (m_i - tip), from the pose series (central differences)
+#   step 3  quasi-static horizontal free surface z_f from V_P (no slosh); head h_i = [z_f - z_lip,i]_+ (no Kindsvater
+#           subtraction, no start / stop hysteresis; dry lip: Q = 0 when max_i h_i <= 0)
+#   step 4  Q_i = 2/3 C_d sqrt(2 g) dw_i h_i^1.5 over the front edge
+#   step 5  (optional, off) one shared outflow-speed state U: L_e dU/dt = g H - U|U| / (2 C_v^2), Q_o = A_* [U]_+
+#   step 6  dV_P/dt = -Q_o; ledger V_P + V_jet + V_cup + V_spill = V_P(0)
+#   step 7  v_o,i = v_lip,i + U_i d_o,i, U = C_v sqrt(2 g H) (H = max head), d_o,i = local outward lip normal tilted
+#           down by the lip slope; flux-weighted origin, velocity and direction; A_o = sum Q_i / U_i
+#   step 8  ballistic parcels (emission time, volume, origin, velocity) to z = 0; arrivals binned on the output grid
+@dataclass
+class ForwardLaw:
+    C_d: float = 0.60           # weir discharge coefficient
+    C_v: float = 1.0            # velocity coefficient: U = C_v sqrt(2 g H)
+    U_head: str = "max"         # 'max': H = max_i h_i (V1); 'local': U_i = C_v sqrt(2 g h_i); 'bar': discharge-weighted head
+    width: str = "projected"    # 'projected': dw_i perpendicular to the main outflow direction (V1); 'arc': horizontal arc length
+    h_k: float = 0.0            # dead head subtracted from h_i (0 = V1; the old Pitcher uses 0.8 mm) -- ablation only
+    front_dr: float = 0.5e-3    # front edge: rim points with r_rim > median rim radius + front_dr, contiguous around the beak
+    side_spill: bool = True     # rim outside the front edge under the surface overflows: counted as V_spill, not delivered
+    inertia: bool = False       # step 5 (off by default)
+    L_e: float = 0.02           # effective inertial length [m] (step 5 only)
+    smooth_s: float = 0.0       # gaussian sigma [s] on the pose before differentiation (0: none)
+    g: float = G
+
+
+class ForwardPitcher:
+    """Pose-driven pitcher (V1 mode B).  Geometry: any object with the GridPitcherGeometry interface (points, dv, rim,
+    tip, lip_slope); `front` (bool mask over rim points) overrides the beak detection.  The old Pitcher is untouched."""
+
+    NB = 256                                           # bins of the fast free-surface quantile
+
+    def __init__(self, geom=None, law=None, front=None):
+        self.geom = geom if geom is not None else GridPitcherGeometry.load()
+        self.law = law or ForwardLaw()
+        self.n = np.array([0.0, 0.0, 1.0])
+        rim = np.asarray(self.geom.rim, float)
+        nr = len(rim)
+        r = np.hypot(rim[:, 0], rim[:, 1])
+        if front is None:
+            hi = r > np.median(r) + self.law.front_dr
+            i0 = int(np.argmax(r))
+            front = np.zeros(nr, bool)
+            for step, i in ((1, i0), (-1, i0 - 1)):   # contiguous run (periodic) through the beak maximum
+                while hi[i % nr] and not front[i % nr]:
+                    front[i % nr] = True
+                    i += step
+        self.front_pts = np.asarray(front, bool)
+        # segments (i, i+1) with both ends on the front edge, ordered along the rim
+        idx = np.nonzero(self.front_pts & np.roll(self.front_pts, -1))[0]
+        if len(idx) < nr:                              # start the ordering after a gap
+            gap = np.nonzero(~self.front_pts)[0]
+            start = (gap[-1] + 1) % nr if len(gap) else 0
+            idx = idx[np.argsort((idx - start) % nr)]
+        self.seg_a, self.seg_b = idx, (idx + 1) % nr
+        self.side_a = np.nonzero(~(self.front_pts & np.roll(self.front_pts, -1)))[0]
+        self.side_b = (self.side_a + 1) % nr
+        A, B = rim[self.seg_a], rim[self.seg_b]
+        self.mid_P = 0.5 * (A + B)
+        self.seg_P = B - A
+        Z = np.array([0.0, 0.0, 1.0])
+        nrm = np.cross(self.seg_P, Z)                  # tangent x up = outward normal for a counter-clockwise rim
+        nrm /= np.linalg.norm(nrm, axis=1)[:, None]
+        if np.mean(np.sum(nrm[:, :2] * (self.mid_P[:, :2] - rim[:, :2].mean(0)), 1)) < 0:
+            nrm = -nrm
+        a = float(getattr(self.geom, "lip_slope", 0.0))
+        self.dir_P = math.cos(a) * nrm - math.sin(a) * Z[None, :]
+        w = np.maximum(r - np.median(r), 0.0) * self.front_pts
+        self.beak_phi = float(math.atan2((w * np.sin(np.arctan2(rim[:, 1], rim[:, 0]))).sum(),
+                                         (w * np.cos(np.arctan2(rim[:, 1], rim[:, 0]))).sum()))
+        self.side_mid_P = 0.5 * (rim[self.side_a] + rim[self.side_b])
+        self.side_seg_P = rim[self.side_b] - rim[self.side_a]
+
+    # ---- geometry at a pose
+    def world(self, pose, P):
+        R = rotation(pose.yaw, pose.tilt, pose.roll)
+        return (np.asarray(P, float) - self.geom.tip) @ R.T + np.asarray(pose.tip, float)
+
+    def free_surface(self, pose, V):
+        from .v05_pitcher_check import FastPitcher   # same weighted-quantile surface as the old model (n = e_z)
+        return FastPitcher.free_surface(self, pose, V)
+
+    def onset_tilt(self, pose, V, lo=0.0, hi=math.radians(150.0), iters=50):
+        """Tilt at which the max front head is exactly 0 (the lip just wets) for fill V at this tip / yaw / roll."""
+        p = Pose(pose.tip, pose.yaw, lo, pose.roll)
+
+        def H(t):
+            p.tilt = t
+            z, _ = self.free_surface(p, V)
+            return float((z - self.world(p, self.mid_P)[:, 2]).max())
+        for _ in range(iters):
+            m = 0.5 * (lo + hi)
+            if H(m) <= 0:
+                lo = m
+            else:
+                hi = m
+        return 0.5 * (lo + hi)
+
+    def weir(self, pose, z_f, v_tip=(0.0, 0.0, 0.0), omega=(0.0, 0.0, 0.0)):
+        """Steps 2-4 and 7 at one pose and free-surface height: per-segment heads, projected widths, flows and exit
+        velocities, and their flux-weighted means."""
+        law = self.law
+        R = rotation(pose.yaw, pose.tilt, pose.roll)
+        tip = np.asarray(pose.tip, float)
+        mid = (self.mid_P - self.geom.tip) @ R.T + tip
+        seg = self.seg_P @ R.T
+        d_o = self.dir_P @ R.T
+        h = np.maximum(z_f - mid[:, 2] - law.h_k, 0.0)
+        H = float(h.max())
+        seg_h = seg.copy(); seg_h[:, 2] = 0.0
+        # main outflow direction: flux-weighted horizontal lip normal (arc weights), beak axis when dry
+        nh = d_o.copy(); nh[:, 2] = 0.0
+        nh /= np.maximum(np.linalg.norm(nh, axis=1), 1e-12)[:, None]
+        wa = h ** 1.5 * np.linalg.norm(seg_h, axis=1)
+        e = (wa[:, None] * nh).sum(0) if H > 0 else R @ np.array([math.cos(self.beak_phi), math.sin(self.beak_phi), 0.0])
+        e[2] = 0.0
+        e /= max(np.linalg.norm(e), 1e-12)
+        if law.width == "projected":
+            dw = np.linalg.norm(seg_h - (seg_h @ e)[:, None] * e[None, :], axis=1)
+        elif law.width == "arc":
+            dw = np.linalg.norm(seg_h, axis=1)
+        else:
+            raise ValueError(law.width)
+        K = (2.0 / 3.0) * law.C_d * math.sqrt(2 * law.g)
+        Qi = K * dw * h ** 1.5
+        Q = float(Qi.sum())
+        # side overflow (rim outside the front edge under the surface): spill
+        Qs = 0.0
+        if law.side_spill:
+            smid = (self.side_mid_P - self.geom.tip) @ R.T + tip
+            hs = np.maximum(z_f - smid[:, 2] - law.h_k, 0.0)
+            if hs.max() > 0:
+                ss = self.side_seg_P @ R.T
+                Qs = float(K * (np.hypot(ss[:, 0], ss[:, 1]) * hs ** 1.5).sum())
+        out = dict(Q=Q, H=H, e_main=e, Q_spill=Qs, width=float(dw[h > 0].sum()), z_f=z_f)
+        if Q <= 0 or H <= 0:                          # dry lip
+            out.update(Q=0.0, U=0.0, origin=mid[np.argmin(mid[:, 2])], v_o=np.zeros(3), d_o=np.zeros(3), A_o=0.0,
+                       h_bar=0.0, Qi=Qi * 0.0)
+            return out
+        if law.U_head == "max":
+            Ui = np.full(len(h), law.C_v * math.sqrt(2 * law.g * H))
+        elif law.U_head == "local":
+            Ui = law.C_v * np.sqrt(2 * law.g * h)
+        elif law.U_head == "bar":
+            hb = float((Qi * h).sum() / Q)
+            Ui = np.full(len(h), law.C_v * math.sqrt(2 * law.g * hb))
+        else:
+            raise ValueError(law.U_head)
+        v_lip = np.asarray(v_tip, float)[None, :] + np.cross(np.asarray(omega, float)[None, :], mid - tip[None, :])
+        v_oi = v_lip + Ui[:, None] * d_o
+        w = Qi / Q
+        dsum = (w[:, None] * d_o).sum(0)
+        on = Qi > 0
+        out.update(U=float((w * Ui).sum()), origin=(w[:, None] * mid).sum(0), v_o=(w[:, None] * v_oi).sum(0),
+                   d_o=dsum / max(np.linalg.norm(dsum), 1e-12), A_o=float((Qi[on] / Ui[on]).sum()),
+                   h_bar=float((Qi * h).sum() / Q), Qi=Qi, U_i=Ui)
+        return out
+
+    # ---- pose series
+    @staticmethod
+    def pose_rates(t, tip, yaw, tilt, roll, smooth_s=0.0):
+        """Tip velocity and body angular velocity (world frame) from a uniformly sampled pose series (central
+        differences; optional gaussian smoothing of the pose first).  omega from dR/dt R^T."""
+        t = np.asarray(t, float)
+        dt = float(t[1] - t[0])
+        tip = np.asarray(tip, float).copy()
+        ang = [np.broadcast_to(np.asarray(a, float), t.shape).copy() for a in (yaw, tilt, roll)]
+        if smooth_s > 0:
+            from scipy.ndimage import gaussian_filter1d
+            s = smooth_s / dt
+            tip = gaussian_filter1d(tip, s, axis=0, mode="nearest")
+            ang = [gaussian_filter1d(a, s, mode="nearest") for a in ang]
+        v = np.gradient(tip, dt, axis=0)
+        Rs = np.stack([rotation(a, b, c) for a, b, c in zip(*ang)])
+        dR = np.gradient(Rs, dt, axis=0)
+        Wm = dR @ np.transpose(Rs, (0, 2, 1))
+        W = 0.5 * (Wm - np.transpose(Wm, (0, 2, 1)))
+        om = np.stack([W[:, 2, 1], W[:, 0, 2], W[:, 1, 0]], -1)
+        return v, om
+
+    def run(self, t, tip, yaw, tilt, roll, V0, dt=None):
+        """Emission history for a pose series sampled at times t (pose i holds over [t_i - dt/2, t_i + dt/2]).
+        Returns a dict of per-step arrays (SI): t, V_P (after the step), Q_o, Q_spill, U, H, h_bar, A_o, width,
+        origin (n,3), v_o (n,3), d_o (n,3), v_tip, omega, e_main, and the ballistic t_f, x_hit, U_perp, u_h, t_arr."""
+        law = self.law
+        t = np.asarray(t, float)
+        n = len(t)
+        dt = float(t[1] - t[0]) if dt is None else dt
+        tip = np.asarray(tip, float)
+        yaw, tilt, roll = (np.broadcast_to(np.asarray(a, float), (n,)) for a in (yaw, tilt, roll))
+        v_tip, om = self.pose_rates(t, tip, yaw, tilt, roll, law.smooth_s)
+        keys1 = ("V_P", "Q_o", "Q_eq", "Q_spill", "U", "H", "h_bar", "A_o", "width", "z_f", "U_state")
+        E = {k: np.zeros(n) for k in keys1}
+        for k in ("origin", "v_o", "d_o", "e_main"):
+            E[k] = np.zeros((n, 3))
+        V = float(V0)
+        Ust = 0.0
+        g = law.g
+        for i in range(n):
+            pose = Pose(tuple(tip[i]), float(yaw[i]), float(tilt[i]), float(roll[i]))
+            z_f, over = self.free_surface(pose, V)
+            Wr = self.weir(pose, z_f, v_tip[i], om[i])
+            Qeq = Wr["Q"]
+            Qo = Qeq
+            if law.inertia:
+                H = Wr["H"]
+                # semi-implicit: L_e (U' ) = g H - U|U| / (2 C_v^2)
+                a_ = dt / (2 * law.C_v ** 2 * law.L_e)
+                b_ = Ust + dt * g * max(H, 0.0) / law.L_e
+                Ust = (-1 + math.sqrt(1 + 4 * a_ * b_)) / (2 * a_) if b_ > 0 else b_ / (1 + a_ * abs(Ust))
+                Ueq = law.C_v * math.sqrt(2 * g * H) if H > 0 else 0.0
+                Qo = Qeq / Ueq * max(Ust, 0.0) if (Qeq > 0 and Ueq > 0) else 0.0
+            sp = Wr["Q_spill"] + over / dt
+            out = (Qo + sp) * dt
+            if out > V:                                # never more than what is left
+                f = V / out
+                Qo, sp = Qo * f, sp * f
+            V -= (Qo + sp) * dt
+            E["V_P"][i], E["Q_o"][i], E["Q_eq"][i], E["Q_spill"][i] = V, Qo, Qeq, sp
+            E["U_state"][i] = Ust
+            for k in ("U", "H", "h_bar", "A_o", "width", "z_f"):
+                E[k][i] = Wr[k]
+            if Qeq > 0 and Qo != Qeq:
+                E["A_o"][i] *= Qo / Qeq
+            for k in ("origin", "v_o", "d_o", "e_main"):
+                E[k][i] = Wr[k]
+        E.update(t=t, dt=dt, v_tip=v_tip, omega=om, V0=float(V0))
+        # ballistic flight to the coffee surface z = 0 (step 8)
+        vz, z0 = E["v_o"][:, 2], E["origin"][:, 2]
+        tf = np.where(z0 > 0, (vz + np.sqrt(vz ** 2 + 2 * g * np.maximum(z0, 0.0))) / g, 0.0)
+        E["t_f"] = np.where(E["Q_o"] > 0, tf, np.nan)
+        E["x_hit"] = E["origin"][:, :2] + E["v_o"][:, :2] * tf[:, None]
+        E["U_perp"] = np.sqrt(vz ** 2 + 2 * g * np.maximum(z0, 0.0))
+        E["u_h"] = E["v_o"][:, :2].copy()
+        E["t_arr"] = t + tf
+        return E
+
+    @staticmethod
+    def arrivals(E, t0, n_out, dt_out=None):
+        """Bin the emitted parcels onto arrival bins [t0 + j dt, t0 + (j+1) dt).  Parcel i leaves over [t_i - dt/2,
+        t_i + dt/2]; its arrival window runs between the midpoints of neighbouring parcels' arrival times (one-sided
+        +-dt/2 at the ends of a stream), so a changing flight time stretches / compresses the arrivals.  Returns the
+        arrival record (SI): Q (received), x_hit (2), u_h (2), U_perp, A_perp, r1, r2, phi, speed, and the ledger at
+        the bin ends (V_P, V_jet, V_cup, V_spill)."""
+        dt = E["dt"]
+        dto = dt if dt_out is None else dt_out
+        Q = E["Q_o"]
+        on = Q > 0
+        ta = E["t_arr"]
+        n = len(Q)
+        lo = ta - 0.5 * dt
+        hi = ta + 0.5 * dt
+        prev_on = np.r_[False, on[:-1]]
+        next_on = np.r_[on[1:], False]
+        lo = np.where(prev_on, 0.5 * (np.r_[ta[0], ta[:-1]] + ta), lo)
+        hi = np.where(next_on, 0.5 * (ta + np.r_[ta[1:], ta[-1]]), hi)
+        a, b = np.minimum(lo, hi), np.maximum(lo, hi)
+        b = np.maximum(b, a + 1e-9)
+        vol = Q * dt
+        R = {k: np.zeros(n_out) for k in ("Q", "U_perp", "speed")}
+        R["x_hit"] = np.zeros((n_out, 2)); R["u_h"] = np.zeros((n_out, 2))
+        acc_v = np.zeros(n_out)
+        for i in np.nonzero(on)[0]:
+            j0 = int(math.floor((a[i] - t0) / dto))
+            j1 = int(math.floor((b[i] - t0) / dto))
+            for j in range(max(j0, 0), min(j1, n_out - 1) + 1):
+                s0, s1 = t0 + j * dto, t0 + (j + 1) * dto
+                ov = min(b[i], s1) - max(a[i], s0)
+                if ov <= 0:
+                    continue
+                v = vol[i] * ov / (b[i] - a[i])
+                acc_v[j] += v
+                R["x_hit"][j] += v * E["x_hit"][i]
+                R["u_h"][j] += v * E["u_h"][i]
+                R["U_perp"][j] += v * E["U_perp"][i]
+        m = acc_v > 0
+        R["Q"] = acc_v / dto
+        for k in ("x_hit", "u_h"):
+            R[k][m] /= acc_v[m, None]
+        R["U_perp"][m] /= acc_v[m]
+        R["on"] = m
+        sp = np.hypot(np.hypot(R["u_h"][:, 0], R["u_h"][:, 1]), R["U_perp"])
+        R["speed"] = sp
+        R["v_hit"] = np.c_[R["u_h"], -R["U_perp"]]
+        R["A_perp"] = np.where(m, R["Q"] / np.maximum(sp, 1e-12), 0.0)
+        r = np.where(m, np.sqrt(R["Q"] / (math.pi * np.maximum(R["U_perp"], 1e-12))), 0.0)
+        asp = np.where(m, sp / np.maximum(R["U_perp"], 1e-12), 1.0)
+        R["r1"], R["r2"] = r * np.sqrt(asp), r / np.sqrt(asp)
+        R["phi"] = np.arctan2(R["u_h"][:, 1], R["u_h"][:, 0])
+        # ledger at the bin ends
+        te = t0 + (np.arange(n_out) + 1) * dto
+        rel_t = E["t"] + 0.5 * dt                                # emission of step i complete at t_i + dt/2
+        V_rel = np.interp(te, rel_t, np.cumsum(Q * dt), left=0.0)
+        V_sp = np.interp(te, rel_t, np.cumsum(E["Q_spill"] * dt), left=0.0)
+        V_cup = np.cumsum(acc_v)
+        R.update(t=te, V_cup=V_cup, V_jet=V_rel - V_cup, V_spill=V_sp, V_P=np.interp(te, rel_t, E["V_P"], left=E["V0"]))
+        return R

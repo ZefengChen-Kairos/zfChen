@@ -326,7 +326,9 @@ S1 的结果图另用拉伸 $(c-0.35)/0.65$ 与三色表 (0.25, 0.14, 0.06) → 
 | FS 对照 (2.14) | $\mathbf u_{\rm in}=\mathbf v_{\rm hand}+\hat{\mathbf e}_b\,{\rm clip}(\|\mathbf b\|-\mathbf v_{\rm hand}\cdot\hat{\mathbf e}_b,\ 0.10,\ 0.27\,{\rm m/s})/D$（`exitmin`） | `drvf.py:PhysF.__call__` |
 | 三者共同上限 (2.15) | 若 $\|\mathbf u_{\rm in}\|>\min(0.40\,{\rm m/s},U_\perp)/D$，整个向量按比例缩到该值 | 同上 |
 
-**已知问题：奶柱飞行时间。** 奶从壶嘴到杯面约飞行 45 ms（S1 横摆笔 41–47 ms）。设计入口 (2.12) 用的是同一时刻的落点速度，没有计入这段延迟；物理上杯面的水平速度应为 $\mathbf u(t)=\mathbf v_{\rm tip}(t-t_{\rm hit})+\mathbf u_{\rm exit}$。2.5 Hz 摆动下，这会使杯面水平速度相位晚 33–42°。壶送到的入口 (2.13) 含此延迟，因此两条路径在摆动笔上不一致。修正尚未实现。
+**已知问题：奶柱飞行时间。** 奶从壶嘴到杯面约飞行 45 ms（S1 横摆笔 41–47 ms）。设计入口 (2.12) 用的是同一时刻的落点速度，没有计入这段延迟；物理上杯面的水平速度应为 $\mathbf u(t)=\mathbf v_{\rm tip}(t-t_{\rm hit})+\mathbf u_{\rm exit}$。2.5 Hz 摆动下，这会使杯面水平速度相位晚 33–42°。壶送到的入口 (2.13) 含此延迟，因此两条路径在摆动笔上不一致。
+
+**出手时刻规则（开关 `vtime`，默认 `'emission'`；`'landing'` 复现本节以上的旧规则）。** [`v05_pourable.py:VTIME_DEFAULT`、`emission_kinematics`、`PourF(vtime=..., ulaw='emission')`] 手把壶嘴尖沿 V0.5 原版路径减去静态射流偏移移动：$\mathbf p_{\rm tip,h}(s)=\mathbf x_{\rm V0.5}(s)-\mathbf r_h(s)-\mathbf e_h(s)t_{f0}(s)$（$\mathbf r=\mathbf p_o-\mathbf p_{\rm tip}$，$\mathbf e$ 为出口速度向量，$t_{f0}$ 为静态飞行时间），高度 $z_w+L$。在 $s$ 出手的奶包 $\mathbf v_o(s)=\dot{\mathbf p}_{\rm tip}(s)+\boldsymbol\omega(s)\times\mathbf r(s)+\mathbf e(s)$，弹道飞行：到达 $t=s+t_f(s)$，$\mathbf x_{\rm hit}=\mathbf p_{\rm tip,h}+\mathbf r_h+\mathbf v_{o,h}t_f$，$U_\perp=\sqrt{v_{o,z}^2+2gz_0}$（含手的竖直速度），$\mathbf u_{\rm in}=\mathbf v_{o,h}/D$。匀速运动时与旧规则逐点相同；2.5 Hz 摆动时 $\mathbf u_{\rm in}$ 相位晚 $\omega t_f$（S1 千层心 #2：41.5°），落点摆幅约大 $\sqrt{1+(\omega t_f)^2}$ 倍。FS 规则（`lat='exitmin'`）：$t_f=(U-0.35)/g$，手速取 $t-t_f$ 时刻，$\mathbf x_{\rm hit}=\mathbf x_{\rm V0.5}(t-t_f)+\mathbf v_{\rm hand}t_f$。
 
 ## 2.7 足迹（连续性椭圆，两条路径相同）
 

@@ -1039,6 +1039,12 @@ CUP_MAPS = (5.0, 10.0, 20.0, 30.0)
 FS_FIXED = dict(cp=1.36, beta=3.0, nu=1e-3, D=1e-7, kappa_Q=2.0, kappa_c=1.0)
 DS_YAW_RATE = 300.0                          # [deg/s] ideal hand; windows use 0.9 of it
 FLOWING = ("low", "cut")
+# time law of the carried velocity in PourF: 'emission' (default) = the arriving milk carries the velocity it left the
+# spout with, v_o(t_e) = v_tip(t_e) + omega x (p_o - tip)(t_e) + u0 d_o(t_e), t_e = t - t_flight, flown ballistically
+# (x_hit, U_perp from the same parcel); 'landing' (old, reproduces every result before this switch) = exit vector and
+# hand velocity at the landing time t, x_hit = V0.5 path at t.  PourF(vtime=...) / ulaw='emission' override per program.
+VTIME_DEFAULT = "emission"
+VTIMES = ("emission", "landing")
 
 
 def _prereg():
@@ -1108,10 +1114,17 @@ def pourf_class():
     from .solver import Inlet
 
     class PourF(drvf.PhysF):
-        def __init__(self, pattern, U_ms, kQ, params, pulse_cap, flow_phase=None, s_scale=None, ulaw="fs", **kw):
+        def __init__(self, pattern, U_ms, kQ, params, pulse_cap, flow_phase=None, s_scale=None, ulaw="fs", vtime=None,
+                     **kw):
             self.s_scale = {int(k): float(v) for k, v in (s_scale or {}).items()}
+            if ulaw == "emission":                     # shorthand: pitcher-table U_perp law at the emission time
+                ulaw, vtime = "pitcher", "emission"
             self.ulaw = ulaw
+            self.vtime = VTIME_DEFAULT if vtime is None else vtime
+            if self.vtime not in VTIMES:
+                raise ValueError(self.vtime)
             self.ptab = None
+            self._etab = None
             super().__init__(pattern, U_ms, kQ, params, pulse_cap, flow_phase, **kw)
 
         def envelope(self, t):
@@ -1122,6 +1135,22 @@ def pourf_class():
 
         def _ti(self, key, t):
             return float(np.interp(t, self.ptab["t"], self.ptab[key]))
+
+        def _emission_table(self):
+            """vtime 'emission', lat 'pitcher': the hand carries the spout tip along the V0.5 path minus the static jet
+            offset (origin offset + exit vector x static flight time), so that a uniform motion lands exactly on the
+            path; every parcel then leaves with v_o = v_tip + omega x r + exit vector (tip velocity and body rate from
+            the tables' tip / yaw / tilt / roll on the lag grid) and flies ballistically.  Cached per ptab."""
+            tab = self.ptab
+            if self._etab is not None and self._etab[0] is tab:
+                return self._etab[1]
+            self._etab = (tab, emission_kinematics(tab))
+            return self._etab[1]
+
+        def _emission(self, t):
+            E = self._emission_table()
+            s = float(np.interp(t, E["t_arr"], E["t"]))
+            return s, {k: float(np.interp(s, E["t"], E[k])) for k in ("x", "y", "vcx", "vcy", "U", "t_f")}
 
         def __call__(self, t):
             self.ncall += 1
@@ -1150,8 +1179,24 @@ def pourf_class():
             tab = self.ptab
             if tab is not None and tab.get("L") is not None:
                 z = z + self._ti("L", t)
+            emit = self.vtime == "emission"
+            xh = inl0.x_hit
+            if emit and self.lat == "pitcher":
+                if tab is None or tab.get("L") is None:
+                    raise ValueError("vtime 'emission' with lat 'pitcher' needs the pitcher tables (prog.ptab)")
+                s_e, em = self._emission(t)
+                xh = (em["x"] / drvf.D_M, em["y"] / drvf.D_M)
             if self.ulaw == "fs":
+                if emit:                               # drvf law at the emission time: vz = -0.35 m/s, t_f from z(t)
+                    tf = (drvf.U_of_z(z) - drvf.V0) / drvf.G
+                    s_e = max(t - tf, 0.0)
+                    ke = self.phase_index(s_e)
+                    z = self.z_at(s_e, ke, max(0.0, min(self.phases[ke]["duration"], s_e - self.events[ke])))
+                    if tab is not None and tab.get("L") is not None:
+                        z = z + self._ti("L", s_e)
                 U = drvf.U_of_z(z) / drvf.D_M
+            elif emit and self.lat == "pitcher":
+                U = em["U"] / drvf.D_M
             else:
                 vz = self._ti("vz", t)
                 oz = self._ti("oz", t)
@@ -1161,7 +1206,14 @@ def pourf_class():
             hi = min(0.40 / drvf.D_M, 1.0 * U)
             vh = (0.0, 0.0)
             osc = 0.0
-            if self.lat == "pitcher":
+            if self.lat == "pitcher" and emit:
+                vh = (em["vcx"] / drvf.D_M, em["vcy"] / drvf.D_M)
+                jx = self._ti("ex", s_e) / drvf.D_M + vh[0]
+                jy = self._ti("ey", s_e) / drvf.D_M + vh[1]
+                v = math.hypot(jx, jy)
+                if v > hi:
+                    jx, jy, v = jx * hi / v, jy * hi / v, hi
+            elif self.lat == "pitcher":
                 vh = self.hand_v(t)
                 jx = self._ti("ex", t) / drvf.D_M + vh[0]
                 jy = self._ti("ey", t) / drvf.D_M + vh[1]
@@ -1169,7 +1221,14 @@ def pourf_class():
                 if v > hi:
                     jx, jy, v = jx * hi / v, jy * hi / v, hi
             elif self.lat == "exitmin":
-                vh = self.hand_v(t)
+                if emit:                               # hand on the path; the parcel left at s_e with the hand speed then
+                    tf = (U * drvf.D_M - drvf.V0) / drvf.G
+                    s_e = max(t - tf, 0.0)
+                    vh = self.hand_v(s_e)
+                    xe = Program.__call__(self, s_e).x_hit
+                    xh = (xe[0] + vh[0] * (t - s_e), xe[1] + vh[1] * (t - s_e))
+                else:
+                    vh = self.hand_v(t)
                 nb = math.hypot(bx, by)
                 ex, ey = (bx / nb, by / nb) if nb > 0 else (0.0, -1.0)
                 ue = min(max(nb - (vh[0] * ex + vh[1] * ey), 0.10 / drvf.D_M), 0.27 / drvf.D_M)
@@ -1184,7 +1243,7 @@ def pourf_class():
             aspect = spd / U
             r = math.sqrt(Q / (math.pi * U))
             d = 2 * math.sqrt(Q / spd / math.pi)
-            out = Inlet(active=True, x_hit=inl0.x_hit, S_eff=self.kQ * Q, u_in=(jx, jy), U_perp=U, d_jet=d,
+            out = Inlet(active=True, x_hit=xh, S_eff=self.kQ * Q, u_in=(jx, jy), U_perp=U, d_jet=d,
                         r1=r * math.sqrt(aspect), r2=r / math.sqrt(aspect), phi=math.atan2(jy, jx), scan_speed=inl0.scan_speed)
             ex_speed = math.hypot(jx - vh[0], jy - vh[1]) * drvf.D_M
             self.log.append((t, self.ncall % 2, k, ks, Qraw * drvf.ML, Q * drvf.ML, U * drvf.D_M, z * 100, v * drvf.D_M,
@@ -1197,7 +1256,7 @@ def pourf_class():
 
 
 def make_program(pattern, z_cm=None, s_scale=None, closure=None, lat="exitmin", ulaw="fs", pulse=0.0, flow_phase=None,
-                 lag=0.08):
+                 lag=0.08, vtime=None):
     """PourF on the V0.5 controls' control of `pattern` (drvf flags --lag 0.08 --ztr, bridges 0.3 s, ramps 0.1 s).  z_cm {phase index
     (0-based): wanted height [cm]} overrides FS's P2 heights; closure: solver parameters (FS's by default); pulse = cap of
     the 5 Hz flow modulation (0: none)."""
@@ -1211,7 +1270,41 @@ def make_program(pattern, z_cm=None, s_scale=None, closure=None, lat="exitmin", 
     if closure:
         params.update(closure)
     return PourF(pattern, sp["U"], sp["kappa_Q"], params, pulse, flow_phase, s_scale=s_scale, ulaw=ulaw, ramp=0.1,
-                 lat=lat, lag=lag, stop=False, ztr=True, zset=z_cm)
+                 lat=lat, lag=lag, stop=False, ztr=True, zset=z_cm, vtime=vtime)
+
+
+def emission_kinematics(tab, g=G):
+    """Emission-time ballistic kinematics of the design inlet on the table grid tab['t'] (vtime 'emission').
+    The hand moves the spout tip along tip_h(s) = foot(s) - r_h(s) - e_h(s) t_f0(s) (r = origin - tip, world; e = exit
+    vector [m/s]; t_f0 = static flight time) at height z_tip = zw + L; the parcel leaving at s has
+    v_o(s) = d tip/ds + omega(s) x r(s) + e(s) and lands at t_arr = s + t_f(s), x = tip_h + r_h + v_o,h t_f,
+    U_perp = sqrt(v_oz^2 + 2 g z0).  Returns arrays on tab['t']: t, t_arr (made non-decreasing), t_f, x, y [m], vcx,
+    vcy (carried part v_o,h - e_h) [m/s], U [m/s], vox, voy, voz, tipx, tipy, tipz."""
+    from .pitcher import ForwardPitcher
+    t = np.asarray(tab["t"], float)
+    n = len(t)
+    zero = np.zeros(n)
+    yaw = np.asarray(tab["yaw"], float)
+    tilt = np.radians(np.asarray(tab["tilt"], float))
+    roll = np.radians(np.asarray(tab.get("roll", zero), float))
+    ox = np.asarray(tab.get("ox", zero), float)
+    oy = np.asarray(tab.get("oy", zero), float)
+    oz = np.asarray(tab["oz"], float)
+    cy, sy = np.cos(yaw), np.sin(yaw)
+    r = np.stack([ox * cy - oy * sy, ox * sy + oy * cy, oz], -1)
+    e = np.stack([np.asarray(tab["ex"], float), np.asarray(tab["ey"], float), np.asarray(tab["vz"], float)], -1)
+    z_tip = np.asarray(tab["zw"], float) + np.asarray(tab["L"], float)
+    z0 = np.maximum(z_tip + oz, 0.0)
+    tf0 = (e[:, 2] + np.sqrt(e[:, 2] ** 2 + 2 * g * z0)) / g
+    tip = np.stack([np.asarray(tab["x"], float) - r[:, 0] - e[:, 0] * tf0,
+                    np.asarray(tab["y"], float) - r[:, 1] - e[:, 1] * tf0, z_tip], -1)
+    v_tip, om = ForwardPitcher.pose_rates(t, tip, yaw, tilt, roll)
+    vo = v_tip + np.cross(om, r) + e
+    tf = (vo[:, 2] + np.sqrt(vo[:, 2] ** 2 + 2 * g * z0)) / g
+    ta = np.maximum.accumulate(t + tf)
+    return dict(t=t, t_arr=ta, t_f=tf, x=tip[:, 0] + r[:, 0] + vo[:, 0] * tf, y=tip[:, 1] + r[:, 1] + vo[:, 1] * tf,
+                vcx=vo[:, 0] - e[:, 0], vcy=vo[:, 1] - e[:, 1], U=np.sqrt(vo[:, 2] ** 2 + 2 * g * z0),
+                vox=vo[:, 0], voy=vo[:, 1], voz=vo[:, 2], tipx=tip[:, 0], tipy=tip[:, 1], tipz=tip[:, 2])
 
 
 def flow_schedule(prog):
@@ -1671,11 +1764,12 @@ def pitcher_tables(prog, SS, alpha, fill, yaw_deg, roll_deg, ctilt_fn=None, hand
     R = np.where(stop, 0.0, np.maximum(zmin - zw, 0.0))
     L = plan_lift(R, dt, hand)
     return dict(t=tg, Q=fs_["Q"], V=V, x=XY[:, 0], y=XY[:, 1], yaw=yaw, roll=roll, tilt=f["tilt"], u0=u0, vz=u0 * ez,
-                oz=f["oz"], ex=ex, ey=ey, zmin=zmin, zw=zw, R=R, L=L, k=kk, ctilt=(ct if ct is not None else np.full_like(tg, np.nan)))
+                oz=f["oz"], ox=f["ox"], oy=f["oy"], ex=ex, ey=ey, zmin=zmin, zw=zw, R=R, L=L, k=kk, ctilt=(ct if ct is not None else np.full_like(tg, np.nan)))
 
 
-def build_design_program(spec, D, pattern, kappa_r=None, SS=None):
-    """PourF (lat/ulaw 'pitcher') of one pattern from a design dict D (alpha<a>.json 'design' + closure)."""
+def build_design_program(spec, D, pattern, kappa_r=None, SS=None, vtime=None):
+    """PourF (lat/ulaw 'pitcher') of one pattern from a design dict D (alpha<a>.json 'design' + closure).  vtime: None =
+    VTIME_DEFAULT ('emission'); 'landing' reproduces the programs before the emission-time switch."""
     SS = SS or SpecSurrogate(spec)
     P = D["patterns"][pattern]
     st = {int(r["n"]) - 1: r for r in P["strokes"].values()}
@@ -1684,7 +1778,8 @@ def build_design_program(spec, D, pattern, kappa_r=None, SS=None):
     clo = dict(FS_FIXED, B_dep=D["B"], p_dep=D["p"], kappa_t=D["kt"])
     if kappa_r is not None:
         clo["kappa_r"] = kappa_r
-    prog = make_program(pattern, z_cm=z_cm, s_scale=s_sc, closure=clo, lat="pitcher", ulaw="pitcher", pulse=0.0)
+    prog = make_program(pattern, z_cm=z_cm, s_scale=s_sc, closure=clo, lat="pitcher", ulaw="pitcher", pulse=0.0,
+                        vtime=vtime)
     ctf = cup_tilt_fn(pattern) if SS.maps is not None else None
     prog.ptab = pitcher_tables(prog, SS, D["alpha"], P["fill"], {k: r["yaw"] for k, r in st.items()},
                                {k: r["roll"] for k, r in st.items()}, ctf)
