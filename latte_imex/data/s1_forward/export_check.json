@@ -1,0 +1,32 @@
+{
+ "heart": {
+  "n": 2134,
+  "mismatch": 0,
+  "table_identical": true
+ },
+ "push_heart": {
+  "n": 1780,
+  "mismatch": 0,
+  "table_identical": true
+ },
+ "layered_heart": {
+  "n": 2416,
+  "mismatch": 0,
+  "table_identical": true
+ },
+ "tulip": {
+  "n": 3125,
+  "mismatch": 0,
+  "table_identical": true
+ },
+ "leaf": {
+  "n": 3211,
+  "mismatch": 0,
+  "table_identical": true
+ },
+ "swan": {
+  "n": 3549,
+  "mismatch": 0,
+  "table_identical": true
+ }
+}

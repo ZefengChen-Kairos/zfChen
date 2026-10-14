@@ -1,6 +1,6 @@
 """GPU forward pitcher (cuda_pitcher.GPUForwardPitcher) against the CPU ForwardPitcher on recorded S1 poses.
 
-    python -m latte_imex.test_cuda_pitcher                          # GPU: full NX geometry, 3 patterns x 1500 steps
+    python -m latte_imex.test_cuda_pitcher                          # GPU: full NX geometry, 3 patterns x 2 windows x 1500 steps
     NUMBA_ENABLE_CUDASIM=1 python -m latte_imex.test_cuda_pitcher --nr 1 --steps 24 --patterns heart
                                                                     # no GPU: simulator, coarse cavity, few steps (slow)
 Pass: every emission quantity agrees to rounding (relative 1e-9 of its scale; the free-surface height to 1e-12 m) and
@@ -16,12 +16,14 @@ import numpy as np
 from .pitcher import ForwardLaw, ForwardPitcher, GridPitcherGeometry
 
 
-def windows(P, steps, nwin=1):
-    """Pose windows that start a little before the first flowing stroke (lip wets during the window)."""
+def windows(P, meta, steps):
+    """Two pose windows: one from just before the first stroke (the lip wets), one across the end of the last flowing
+    stroke (flow stops, dry lip, the tilt-back)."""
     n = len(P["t"])
     i0 = int(np.searchsorted(P["t"], -0.05))
-    starts = [min(max(i0, 0), n - steps)] + [int(x) for x in np.linspace(i0 + steps, n - steps, max(nwin - 1, 0) + 2)[1:-1]]
-    return starts[:nwin]
+    tend = meta["events"][max(meta["flowing"])]
+    i1 = int(np.searchsorted(P["t"], tend)) - steps // 2
+    return [min(max(i, 0), n - steps) for i in (i0, i1)]
 
 
 def main(argv=None):
@@ -31,9 +33,10 @@ def main(argv=None):
     ap.add_argument("--nr", type=int, default=6)
     ap.add_argument("--variants", default="fwd,arc,hbar")
     a = ap.parse_args(argv)
-    from .s1_forward import load_poses
+    from .s1_forward import load_poses, load_meta
     from .cuda_pitcher import GPUForwardPitcher, compare
     laws = dict(fwd=ForwardLaw(), arc=ForwardLaw(width="arc"), hbar=ForwardLaw(U_head="bar"), hk=ForwardLaw(h_k=0.8e-3),
+                local=ForwardLaw(U_head="local"),
                 inertia=ForwardLaw(inertia=True))
     ok = True
     worst = 0.0
@@ -42,10 +45,11 @@ def main(argv=None):
         geom = None
         for p in a.patterns.split(","):
             P = load_poses(p)
+            meta = load_meta(p)
             if geom is None:
                 geom = GridPitcherGeometry.load(nr=a.nr, lip_slope=math.radians(float(P["alpha_deg"])))
                 fp = ForwardPitcher(geom, laws[var])
-            for s0 in windows(P, a.steps):
+            for s0 in windows(P, meta, a.steps):
                 sl = slice(s0, s0 + a.steps)
                 te = P["t"][sl] - 0.5 * float(P["dt"])
                 V0 = float(P["fill_mL"]) * 1e-6

@@ -117,8 +117,8 @@ class FwdProgram(Program):
 
     def __init__(self, pattern, R, N=256, meta=None, data=DATA):
         meta = meta or load_meta(pattern, data)
-        super().__init__(meta["config"])
-        assert abs(self.duration - meta["duration"]) < 1e-12
+        super().__init__(dict(meta["config"], continuous_actions=False))   # the stored phases are final (bridges included)
+        assert np.allclose(self.events, meta["events"], rtol=0, atol=1e-12)
         self.meta = meta
         self.kQ, self.stop, self.cls = meta["kQ"], meta["stop"], list(meta["cls"])
         self.tab = table_from_arrivals(R, meta["dt"])
@@ -242,45 +242,92 @@ def run_pitcher(seqs, fp, backend="gpu"):
     return [fp.run(s["t"], s["tip"], s["yaw"], s["tilt"], s["roll"], s["V0"], s["dt"]) for s in seqs]
 
 
-def calibrate_flow(jobs, fp, backend="gpu", tol=0.003, maxit=6, step_deg=3.0, log=print):
+MAX_OFFSET = 6.0         # [deg] largest tilt offset of the flow-factor calibration
+
+
+def _next_offset(hist, tg, step):
+    """Next tilt offset for one stroke from its (offset, volume) history: regula falsi inside a bracket of the target
+    (the volume grows with the offset), secant / growing steps outside it (max 8 deg per step, |offset| <= MAX_OFFSET)."""
+    lo = [(x, v) for x, v in hist if v < tg]
+    hi = [(x, v) for x, v in hist if v > tg]
+    if lo and hi:
+        xl, vl = max(lo); xh, vh = min(hi)
+        if xh > xl:
+            x = xl + (tg - vl) * (xh - xl) / max(vh - vl, 1e-12)
+            return min(max(x, xl + 0.05 * (xh - xl)), xh - 0.05 * (xh - xl))
+    x1, v1 = hist[-1]
+    sgn = 1.0 if v1 < tg else -1.0
+    if len(hist) >= 2:
+        x0, v0 = hist[-2]
+        slope = (v1 - v0) / (x1 - x0) if x1 != x0 else 0.0
+        if slope > 1e-9:
+            x = x1 + (tg - v1) / slope
+            x = float(np.clip(x, x1 - math.radians(8.0), x1 + math.radians(8.0)))
+            return float(np.clip(x, -math.radians(MAX_OFFSET), math.radians(MAX_OFFSET)))
+        x = x1 + sgn * 2.0 * max(abs(x1 - x0), step)
+    else:
+        x = x1 + step * (tg / max(v1, 1e-6) - 1.0) / 0.2
+    return float(np.clip(x, -math.radians(MAX_OFFSET), math.radians(MAX_OFFSET)))
+
+
+def calibrate_flow(jobs, fp, backend="gpu", tol=0.003, maxit=8, step_deg=3.0, sweeps=2, log=print):
     """jobs: list of (P, meta, pert).  For every job with a flow error f != 1, find per-stroke tilt offsets so that the
-    emitted stroke volumes are f times those of the same job without the flow error (dz, dt kept).  Returns per job
-    (seq, E, info) with the final pose sequence and its emission history."""
+    emitted stroke volumes are f times those of the same job without the flow error (dz, dt kept).  The strokes are
+    calibrated in time order (a stroke's volume depends on the earlier strokes through the pitcher fill; the offset
+    ramps at a boundary of two adjacent strokes couple them back weakly, hence `sweeps` passes), all jobs batched in
+    every pitcher call; a stroke that cannot reach its target (e.g. a short cut stroke whose ramps alone
+    pour more) keeps the closest offset and the job is reported as not converged.
+    Returns per job dict(seq, E, offs, V, target, ratio, converged, iters)."""
     n = len(jobs)
     base = [perturb_poses(P, meta, {k: (v[0], 1.0, v[2]) for k, v in pert.items()}) for P, meta, pert in jobs]
     E0 = run_pitcher(base, fp, backend)
     V0 = [stroke_volumes(E, jobs[j][1]) for j, E in enumerate(E0)]
     target = [{k: V0[j][k] * jobs[j][2][k][1] for k in V0[j]} for j in range(n)]
-    need = [j for j in range(n) if any(abs(v[1] - 1.0) > 1e-12 for v in jobs[j][2].values())]
     res = [dict(seq=base[j], E=E0[j], offs={k: 0.0 for k in V0[j]}, V=V0[j], target=target[j], iters=0) for j in range(n)]
-    hist = {j: {k: [(0.0, V0[j][k])] for k in V0[j]} for j in need}
-    offs = {j: {k: math.radians(step_deg) * (jobs[j][2][k][1] - 1.0) / 0.2 for k in V0[j]} for j in need}
-    for it in range(1, maxit + 1):
-        if not need:
-            break
-        seqs = [perturb_poses(*jobs[j], offs=offs[j]) for j in need]
+    todo = [j for j in range(n) if any(abs(v[1] - 1.0) > 1e-12 for v in jobs[j][2].values())]
+    offs = {j: {k: 0.0 for k in V0[j]} for j in todo}
+    calls = 1
+    step = math.radians(step_deg)
+
+    def run(js):
+        seqs = [perturb_poses(*jobs[j], offs=offs[j]) for j in js]
         Es = run_pitcher(seqs, fp, backend)
-        nxt = []
-        for j, s, E in zip(need, seqs, Es):
-            V = stroke_volumes(E, jobs[j][1])
-            res[j].update(seq=s, E=E, offs=dict(offs[j]), V=V, iters=it)
-            err = max(abs(V[k] / max(target[j][k], 1e-9) - 1.0) for k in V)
-            if err <= tol:
-                continue
-            nxt.append(j)
-            for k in V:
-                hist[j][k].append((offs[j][k], V[k]))
-                (x0, y0), (x1, y1) = hist[j][k][-2], hist[j][k][-1]
-                tg = target[j][k]
-                if abs(y1 - y0) > 1e-6 and abs(x1 - x0) > 1e-9:
-                    x2 = x1 + (tg - y1) * (x1 - x0) / (y1 - y0)
-                else:
-                    x2 = x1 + math.radians(step_deg) * (tg / max(y1, 1e-6) - 1.0) / 0.2
-                offs[j][k] = float(np.clip(x2, x1 - math.radians(8.0), x1 + math.radians(8.0)))
-        log(f"  flow calibration iteration {it}: {len(need) - len(nxt)} of {len(need)} sequences within {tol:.1%}")
-        need = nxt
+        for j, sq, E in zip(js, seqs, Es):
+            res[j].update(seq=sq, E=E, offs=dict(offs[j]), V=stroke_volumes(E, jobs[j][1]), iters=res[j]["iters"] + 1)
+
+    nstroke = max((len(V0[j]) for j in todo), default=0)
+    for si in [i for _ in range(sweeps) for i in range(nstroke)]:
+        cur = {j: sorted(V0[j])[si] for j in todo if si < len(V0[j])}
+        hist = {j: [(offs[j][k], res[j]["V"][k])] for j, k in cur.items()}
+        err = lambda j: abs(res[j]["V"][cur[j]] / max(target[j][cur[j]], 1e-9) - 1.0)
+        act = [j for j in cur if err(j) > tol]
+        for it in range(maxit):
+            if not act:
+                break
+            for j in act:
+                offs[j][cur[j]] = _next_offset(hist[j], target[j][cur[j]], step)
+            run(act)
+            calls += 1
+            for j in act:
+                hist[j].append((offs[j][cur[j]], res[j]["V"][cur[j]]))
+            act = [j for j in act if err(j) > tol]
+        # keep the closest offset of every stroke that did not converge
+        redo = []
+        for j in act:
+            k = cur[j]
+            xb, vb = min(hist[j], key=lambda xv: abs(xv[1] / max(target[j][k], 1e-9) - 1.0))
+            if xb != offs[j][k]:
+                offs[j][k] = xb
+                redo.append(j)
+        if redo:
+            run(redo)
+            calls += 1
+        log(f"  flow calibration, stroke {si + 1}: {len(cur) - len(act)} of {len(cur)} sequences within {tol:.1%}")
     for j in range(n):
         r = res[j]
         r["ratio"] = {k: r["V"][k] / max(V0[j][k], 1e-9) for k in r["V"]}
-        r["converged"] = j not in need
+        r["converged"] = all(abs(r["V"][k] / max(target[j][k], 1e-9) - 1.0) <= 2 * tol for k in r["V"])
+    if todo:
+        log(f"  flow calibration: {calls} batched pitcher calls, {sum(res[j]['converged'] for j in todo)} of {len(todo)} "
+        f"sequences with every stroke within {2 * tol:.1%}")
     return res

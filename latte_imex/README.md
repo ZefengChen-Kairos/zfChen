@@ -67,22 +67,73 @@ Set `NUMBA_NUM_THREADS=1` when running several simulations in parallel on one ma
 
 ## CUDA back-end
 
-`cuda_solver.py` is a numba.cuda port of the same scheme (same discrete formulas; results agree with the CPU
-solver to ~1e-12). The whole state lives on the GPU; one thread per cell; the explicit momentum step, the
-layer right-hand side, the final flux + conservative update + milk transport are each one fused kernel, the
-PCG runs matrix-free on the device with block-reduced dot products.
+`cuda_solver.py` is a numba.cuda port of the same scheme (same discrete formulas; agrees with the CPU solver to
+rounding, ~1e-12 in l and m, ~1e-9 in q where the viscous PCG tolerance 1e-8 sets the level). The state lives on the
+GPU as `[B, N, N]` arrays: `CudaSolver` is the single-run drop-in (B = 1), `BatchCudaSolver` advances B independent
+simulations in one launch set (each member: own inlet, frame length, sub-steps, retries, ledger; a member reproduces
+its B = 1 run). Per sub-step 5 fused kernels + 2 per PCG iteration, PCG scalars and the convergence test on the
+device, ~2 host polls per sub-step; inlet kernel, off-cup fraction Z and CFL maxima are computed on the device from
+the inlet scalars. Details and numbers: `CUDA_PERF.md`. The GPU forward pitcher is `cuda_pitcher.py`
+(batched `ForwardPitcher.run`, same results to rounding).
 
 ```
-bash scripts/autodl_setup.sh                                   # installs numba-cuda[cu12], runs the CPU-vs-CUDA smoke test
+bash scripts/autodl_setup.sh                                   # install + GPU self-tests + short benchmark
 python -m latte_imex.run --pattern heart --N 768 --control v05 --backend cuda
-python -m latte_imex.bench_cuda --N 768 --video                # six patterns, wall times, finalize overview
-NUMBA_ENABLE_CUDASIM=1 python -m latte_imex.test_cuda --N 24 --T 0.05   # no GPU: simulator (slow)
+python -m latte_imex.bench_cuda --quick --N 256 --B 1,8,32      # launches / syncs per sub-step, batched throughput
+python -m latte_imex.bench_cuda --N 768 --video                # six patterns (V0.5 controls), wall times
+NUMBA_ENABLE_CUDASIM=1 python -m latte_imex.test_cuda --N 20 --T 0.02 --batchN 16 --frames 2   # no GPU: simulator
 ```
 
-Differences from the CPU solver: viscosity and mixing are always explicit (sub-cycled when `nu*dt/h^2` or
-`D*dt/h^2` exceeds 0.2), the deposited-milk ledger uses the exact kernel normalisation (`chi*S*dt`).
-Per sub-step there are ~10 kernel launches plus 2 host reads per PCG iteration; at N=768 this is launch-bound
-(~0.5 ms per sub-step), so a 10 000-step pattern is expected to take 5–10 s on an RTX 4090 in FP64.
+Differences from the CPU solver (unchanged from before): componentwise viscosity and mixing are explicit (sub-cycled
+when `nu*dt/h^2` or `D*dt/h^2` exceeds 0.2), the deposited-milk ledger uses the exact kernel normalisation
+(`chi*S*dt`), q^{n+1} uses the gradient of the PCG solution (CPU: of the conservative l^{n+1}; they differ by the
+PCG tolerance), and the retry guard is evaluated once per frame (a failing sub-step fails the frame in both).
+
+## AutoDL 使用说明（GPU：对齐模型 + 前向壶 + 手误差稳健性）
+
+**要求**：一块 CUDA 12 的 NVIDIA GPU（RTX 4090 / A100 一类；全程 FP64，A100 的 FP64 快得多，4090 也能跑），
+驱动 ≥ 525，Python 3.9–3.12，显存 ≤ 2 GB（(b) 60 个成员一批 256² 约 1.3 GB；(a) 512² 六个一批约 0.6 GB）。不需要本仓库以外的数据：S1 理想手的姿态和设计程序
+在 `latte_imex/data/s1_forward/`（1.6 MB，`s1_forward.export` 从复核目录导出，导出时已逐位核对与
+`v05_forward.forward_program` 给出的入口记录相同）。
+
+**一行命令**（在仓库根目录）：
+
+```
+bash scripts/autodl_setup.sh                 # 装环境；真 GPU 上自检：CPU 与 GPU 求解器对比、批量 = 单跑、GPU 壶与 CPU 壶对比；短基准
+bash scripts/autodl_run_v05_aligned.sh       # (a) 六图案 256²/512² 终图+视频+指标 (b) 手误差网格 256² (c) 汇总图和 results.json
+```
+
+可用环境变量改：`OUT=results/xxx`（输出目录）、`NS=256,512`（(a) 的分辨率）、`NR=256`（(b) 的分辨率）、
+`CHUNK=30`（(b) 每批成员数，显存不够时用；0 = 60 个一批）。分步跑：
+
+```
+python -m latte_imex.autodl_v05 aligned --N 256,512 --video
+python -m latte_imex.autodl_v05 robust --N 256
+python -m latte_imex.autodl_v05 figures
+```
+
+**做了什么**
+- 模型：`Params` 默认值，即对称黏性（耦合隐式，GPU 上无矩阵 CG）+ 杯外入流记账（`offcup="account"`）。
+- 入口：前向壶 `ForwardPitcher`（V1 模式 B）在 GPU 上批量回放 S1 理想手姿态 → 到达记录 → 设计程序的入口规则
+  （`s1_forward.FwdProgram`，与 `v05_pourable.pl_program` 的 'pitcher' 路径逐位一致）。
+- 手误差（`v05_pourable/data/robust_prereg.json` 的 P1–P6、R1–R3，逐出流笔）：高度 ±3 mm 加在壶嘴高度上；
+  流量 ×0.8/×1.2 用每笔一个倾角偏置实现，偏置由前向壶批量割线迭代标定到该笔倒出量 = f × 无流量误差时的量（容差 0.3%）；
+  ±50 ms 把倾角时间历程相对路径平移。路径、偏航、侧倾不变。与 §3.3 的不同：那里扰动的是代理模型的设计入口并重算壶表，
+  这里扰动的是姿态、入口来自前向壶；壶嘴不低于壶下限的截断这里没有做，只在 `metrics.json → extra.tip_z_min_mm` 里记录。
+- 稳健性图的标签是与名义运行的 c > 0.5 白区 IoU 和白区面积比，是指标不是判定（判定仍要看图）。
+
+**输出**（默认 `results/autodl_v05/`）
+- `aligned/N256|N512/<图案>/`：`final.png`、`movie.mp4`（V0.5 样式的视频，`render.make_video`）、`c.npz`、`final_state.npz`、
+  `snapshots_c.npz`、`metrics.json`（账本、统计、壶的数）、`trajectory.json`
+- `robust/N256/<扰动>/<图案>/`：`final.png`、`c.npz`、`metrics.json`（`extra` 里有每笔的倾角偏置、倒出量比、最低壶嘴高度）
+- `pitcher/<图案>_<扰动>.npz`：到达记录和所用的姿态扰动
+- `fig_aligned_six.png`、`fig_robust_grid.png`、`results.json`；日志 `log_*.txt`；自检日志 `results/autodl_selftest/`
+
+**预计用时**（未在真机上测过，按每个子步的启动数和带宽估算；以 `bench_cuda --quick` 的实测为准）
+- `autodl_setup.sh`：安装 2–5 min；自检 3–6 min（其中 CPU 参考的 256² 心形 1 s 和 CPU 壶 9 段各 1500 步占大头）；基准 1–2 min。
+- (a) 六图案：壶 < 1 min；256² 一批 6 个约 2–5 min，512² 约 5–15 min；视频编码（CPU）每个 0.5–1 min。
+- (b) 60 次运行（6 图案 × 10）：壶标定 1–3 min；256² 一批 60 个约 10–25 min。
+- (c) 几秒。
 
 ## Pitcher model (level 0)
 

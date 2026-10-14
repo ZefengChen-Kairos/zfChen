@@ -877,7 +877,7 @@ class _Launcher:
             k = self.cache.get(kern)
             if k is not None:
                 try:
-                    k.launch(args, grid, block, 0, 0)
+                    k.launch(args, tuple(grid) + (1,) * (3 - len(grid)), tuple(block) + (1,) * (3 - len(block)), 0, 0)
                     return
                 except Exception:
                     _Launcher.fast_ok = False
@@ -978,6 +978,15 @@ class BatchCudaSolver:
         self.L(k_concentration, self.grid3, TPB, self.m, self.l, self.mask, self.c)
         self.c[b].copy_to_host(self._cbuf)
         return np.where(self.g.mask, np.asarray(self._cbuf, np.float64), np.nan)
+
+    def concentrations(self, bs):
+        """{b: c (N, N) with NaN outside the cup} for several members, one launch (snapshots of a batch)."""
+        self.L(k_concentration, self.grid3, TPB, self.m, self.l, self.mask, self.c)
+        out = {}
+        for b in bs:
+            self.c[b].copy_to_host(self._cbuf)
+            out[b] = np.where(self.g.mask, np.asarray(self._cbuf, np.float64), np.nan)
+        return out
 
     def host_state(self, b=0):
         return dict(l=self.l[b].copy_to_host().astype(np.float64), qx=self.qx[b].copy_to_host().astype(np.float64),
