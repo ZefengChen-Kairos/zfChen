@@ -2485,7 +2485,8 @@ def pl_check(names, out=PLOUT):
         pw = pl_program(nm, "wanted", out=out)
         tm = json.loads(str(np.load(pl_table(nm, out))["meta"]))
         F = _final_setup(tm["tag"])
-        ref = build_design_program(F["spec"], F["design"], tm["pattern"], kappa_r=F["closure"]["kappa_r"])
+        ref = build_design_program(F["spec"], F["design"], tm["pattern"], kappa_r=F["closure"]["kappa_r"],
+                                   vtime="landing")      # the stored loop tables were made with the landing-time law
         tk = np.arange(pw.tab.n) * pw.tab.dt
         tk = tk[tk < pw.duration]
         bad = 0
