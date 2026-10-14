@@ -1,0 +1,38 @@
+[
+ {
+  "pattern": "heart",
+  "max_abs_diff_vs_PLS1": 0.0,
+  "T": 6.925,
+  "frames": 921
+ },
+ {
+  "pattern": "layered_heart",
+  "max_abs_diff_vs_PLS1": 0.0,
+  "T": 8.1,
+  "frames": 2712
+ },
+ {
+  "pattern": "leaf",
+  "max_abs_diff_vs_PLS1": 0.0,
+  "T": 11.408823529411766,
+  "frames": 4652
+ },
+ {
+  "pattern": "push_heart",
+  "max_abs_diff_vs_PLS1": 0.0,
+  "T": 5.449999999999999,
+  "frames": 1032
+ },
+ {
+  "pattern": "swan",
+  "max_abs_diff_vs_PLS1": 0.0,
+  "T": 12.820000000000002,
+  "frames": 5289
+ },
+ {
+  "pattern": "tulip",
+  "max_abs_diff_vs_PLS1": 0.0,
+  "T": 11.05,
+  "frames": 3600
+ }
+]
