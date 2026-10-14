@@ -261,3 +261,67 @@ def zbp(r, diag, beta, p):
     for j in prange(N):
         for i in range(M):
             p[j, i] = r[j, i] / diag[j, i] + beta * p[j, i]
+
+
+# --------------------------------------------------------------------------- symmetric viscosity (visc="symmetric")
+# l u+ - dt div(2 nu l S(u+)) = l u-,  S = sym grad u.  Discrete form K = G^T W G from the dissipation
+#   Phi = 1/2 sum h^2 [ wx (u_x)^2 on x faces + wy (v_y)^2 on y faces + wc (u_y + v_x)^2 on corners ]
+#       + 1/2 sum over wall faces of h^2 ww_f (2 u.n_b / h)^2
+# wx = wy = 2 nu l_f, wc = nu l_corner (corners whose 4 cells are in the cup), u_y + v_x at a corner from its 2x2 cells.
+# The wall rows impose no-penetration (mirror ghost u.n_b -> -u.n_b on the true cup normal n_b); the tangential traction
+# at the wall is zero (no corner rows across the wall): free slip.  Translations and the rigid rotation are free in the
+# interior, the rotation also at the wall (u.n_b = 0).
+
+@njit(parallel=True, cache=True)
+def sym_corner_T(ux, uy, wc, inv_h, T):
+    """T = wc * (u_y + v_x) on the (N-1, N-1) cell corners (corner (j, i) between rows j, j+1 and columns i, i+1)."""
+    M = T.shape[0]
+    for j in prange(M):
+        for i in range(M):
+            w = wc[j, i]
+            if w != 0.0:
+                g = (ux[j + 1, i] + ux[j + 1, i + 1] - ux[j, i] - ux[j, i + 1]
+                     + uy[j, i + 1] + uy[j + 1, i + 1] - uy[j, i] - uy[j + 1, i]) * 0.5 * inv_h
+                T[j, i] = w * g
+            else:
+                T[j, i] = 0.0
+
+
+@njit(parallel=True, cache=True)
+def sym_visc_apply(ux, uy, lsn, wx, wy, T, ww, nbx, nby, mask, dt, inv_h, outx, outy):
+    """[outx, outy] = l u + dt K u (K = G^T W G, see above); identity outside the cup. T from sym_corner_T."""
+    N = ux.shape[0]
+    inv_h2 = inv_h * inv_h
+    for j in prange(N):
+        for i in range(N):
+            u = ux[j, i]; v = uy[j, i]
+            if not mask[j, i]:
+                outx[j, i] = u; outy[j, i] = v
+                continue
+            ku = 0.0; kv = 0.0
+            if i < N - 1:
+                ku -= wx[j, i] * (ux[j, i + 1] - u)
+            if i > 0:
+                ku -= wx[j, i - 1] * (ux[j, i - 1] - u)
+            if j < N - 1:
+                kv -= wy[j, i] * (uy[j + 1, i] - v)
+            if j > 0:
+                kv -= wy[j - 1, i] * (uy[j - 1, i] - v)
+            ku *= inv_h2; kv *= inv_h2
+            c = 0.0; d = 0.0
+            if j < N - 1 and i < N - 1:          # corner (j, i): this cell is lower-left
+                c -= T[j, i]; d -= T[j, i]
+            if j < N - 1 and i > 0:              # corner (j, i-1): lower-right
+                c -= T[j, i - 1]; d += T[j, i - 1]
+            if j > 0 and i < N - 1:              # corner (j-1, i): upper-left
+                c += T[j - 1, i]; d -= T[j - 1, i]
+            if j > 0 and i > 0:                  # corner (j-1, i-1): upper-right
+                c += T[j - 1, i - 1]; d += T[j - 1, i - 1]
+            ku += 0.5 * inv_h * c; kv += 0.5 * inv_h * d
+            w = ww[j, i]
+            if w != 0.0:
+                un = w * (u * nbx[j, i] + v * nby[j, i])
+                ku += un * nbx[j, i]; kv += un * nby[j, i]
+            l = lsn[j, i]
+            outx[j, i] = l * u + dt * ku
+            outy[j, i] = l * v + dt * kv

@@ -7,7 +7,12 @@ Splitting per sub-step (inlet fields s, Lambda, v* frozen within a control frame
   A  explicit momentum advection, Rusanov flux, alpha = 2 max(|u_n,L|, |u_n,R|)
   B  implicit mass + pressure + drag/traction -> SPD elliptic equation for l^{n+1}, PCG
   C  milk transported with the SAME face flux G_f, upwind c_f with van Leer limiter
-  D  implicit viscosity (per velocity component) and implicit mixing, l frozen at l^{n+1}
+  D  implicit viscosity and implicit mixing, l frozen at l^{n+1}; viscosity (closure 'chi'):
+     Params.visc = "symmetric":     l u+ - dt div(2 nu l S(u+)) = l u-, S = sym grad u, coupled x/y, PCG (default)
+                   "componentwise": nu l grad u on each velocity component (the V0.5 runs)
+Off-cup inlet (closure 'chi'): Params.offcup = "account": the received source is S_eff * Z, Z = fraction of the full
+(unclipped) footprint kernel inside the cup cells, (1 - Z) S_eff dt goes to the 'spilled' ledger (default);
+"renormalise": the whole footprint is moved into the cup (the V0.5 runs).
 """
 from __future__ import annotations
 from . import kernels as K
@@ -68,6 +73,9 @@ class Params:
     tau_y_crema: float = 0.0  # same for the crema
     yield_eps: float = 0.02   # strain-rate regularization of the yield stress [1/s]
     nu_max: float = 0.5       # cap of the effective viscosity [D_L^2/s]
+    # ---- switches of the 'chi' closure (old behaviour: visc="componentwise", offcup="renormalise")
+    visc: str = "symmetric"     # "symmetric": div(2 nu l S(u)), S = sym grad u, implicit, coupled ; "componentwise": div(nu l grad u_i)
+    offcup: str = "account"     # "account": source S_eff Z, (1 - Z) S_eff spilled ; "renormalise": footprint renormalised to the cup
 
     def as_dict(self):
         return asdict(self)
@@ -128,6 +136,22 @@ class Grid:
         self.nfx = np.zeros((N, N)); self.nfx[:, :-1] += self.fx; self.nfx[:, 1:] += self.fx
         self.nfy = np.zeros((N, N)); self.nfy[:-1, :] += self.fy; self.nfy[1:, :] += self.fy
 
+    def sym_geometry(self):
+        """Constant geometry of the symmetric viscosity: active corners (all 4 cells in the cup), the true outward cup
+        normal n_b at every cell and the wall weight 4/h^2 (|n_x| #inactive x-neighbours + |n_y| #inactive y-neighbours)
+        (each wall face weighted by its projection on n_b, so the weights sum to the wall length on a staircase)."""
+        if getattr(self, "_symgeo", None) is None:
+            N, m = self.N, self.mask
+            cm = m[:-1, :-1] & m[1:, :-1] & m[:-1, 1:] & m[1:, 1:]
+            pad = np.zeros((N + 2, N + 2), bool); pad[1:-1, 1:-1] = m
+            nwx = (~pad[1:-1, :-2]).astype(float) + (~pad[1:-1, 2:])
+            nwy = (~pad[:-2, 1:-1]).astype(float) + (~pad[2:, 1:-1])
+            r = np.maximum(self.r, 1e-300)
+            nbx, nby = self.x / r, self.y / r
+            geo = np.where(m, 4.0 / (self.h * self.h) * (np.abs(nbx) * nwx + np.abs(nby) * nwy), 0.0)
+            self._symgeo = (cm, geo, np.ascontiguousarray(nbx), np.ascontiguousarray(nby))
+        return self._symgeo
+
     def div(self, Fx, Fy):
         """Divergence of face fluxes (normal flux density per face). Fx (N,N-1), Fy (N-1,N)."""
         return K.div(np.ascontiguousarray(Fx), np.ascontiguousarray(Fy), 1.0 / self.h, np.empty((self.N, self.N)))
@@ -156,6 +180,41 @@ class Grid:
         """phi - dt * div( k grad phi )  (the implicit layer operator), one fused pass."""
         return K.apply_diffusion(phi, kx, ky, self.fx, self.fy, self.one, dt, 1.0 / (self.h * self.h),
                                  np.empty((self.N, self.N)))
+
+
+# --------------------------------------------------------------------------- off-cup fraction
+def kernel_fraction(g, num, inlet):
+    """Z = fraction of the full (unclipped) footprint kernel inside the cup cells: the same per-cell quadrature as
+    Solver.kernel on the whole bounding box of the ellipse, not clipped to the grid; Z = 1 exactly when no cell with
+    kernel mass lies outside the cup, 0 when the footprint misses the cup."""
+    r1, r2, phi = max(inlet.r1, 1.5 * g.h), max(inlet.r2, 1.5 * g.h), inlet.phi
+    x0, y0 = inlet.x_hit
+    q = min(max(num.kernel_quadrature, int(math.ceil(4 * g.h / min(r1, r2)))), 12)
+    R = max(r1, r2)
+    i0 = int(math.floor((x0 - R + 0.5) / g.h)) - 1; i1 = int(math.floor((x0 + R + 0.5) / g.h)) + 2
+    j0 = int(math.floor((y0 - R + 0.5) / g.h)) - 1; j1 = int(math.floor((y0 + R + 0.5) / g.h)) + 2
+    ii = np.arange(i0, i1); jj = np.arange(j0, j1)
+    xs = ((ii + 0.5) * g.h - 0.5)[None, :]; ys = ((jj + 0.5) * g.h - 0.5)[:, None]
+    offs = (np.arange(q) + 0.5) / q - 0.5
+    cphi, sphi = math.cos(phi), math.sin(phi)
+    Kf = np.zeros((len(jj), len(ii)))
+    for ox in offs:
+        for oy in offs:
+            dx = xs + ox * g.h - x0
+            dy = ys + oy * g.h - y0
+            a = (cphi * dx + sphi * dy) / r1
+            b = (-sphi * dx + cphi * dy) / r2
+            Kf += np.maximum(0.0, 1.0 - a * a - b * b) ** 2
+    inside = np.zeros(Kf.shape, bool)
+    vi = (ii >= 0) & (ii < g.N); vj = (jj >= 0) & (jj < g.N)
+    if vi.any() and vj.any():
+        inside[np.ix_(vj, vi)] = g.mask[np.ix_(jj[vj], ii[vi])]
+    tot = float(Kf.sum())
+    if tot <= 0:
+        return 0.0
+    if not (Kf[~inside] > 0).any():
+        return 1.0
+    return float(Kf[inside].sum()) / tot
 
 
 # --------------------------------------------------------------------------- PCG
@@ -243,7 +302,15 @@ class Solver:
         self.foam_src = None; self.tau_new = 0.0
         self.Ge = None; self.phi_e = np.zeros((g.N, g.N))   # surface upwelling flow of the entrained coffee (face fluxes)
         self.stats = dict(steps=0, frames=0, cg_mass=0, cg_visc=0, cg_mix=0,
-                          clip_mass=0.0, max_substeps=0, max_u=0.0, retries=0)
+                          clip_mass=0.0, max_substeps=0, max_u=0.0, retries=0,
+                          kernel_clamp=0, offcup_frames=0, min_Z=1.0)
+        self.spilled = 0.0             # off-cup inlet (offcup="account"): (1 - Z) S_eff dt summed over frames
+        self.last_Z = 1.0              # fraction of the footprint kernel inside the cup, last active inlet
+        self._spill_rate = 0.0
+        if params.visc not in ("symmetric", "componentwise"):
+            raise ValueError(f"Params.visc must be 'symmetric' or 'componentwise', got {params.visc!r}")
+        if params.offcup not in ("account", "renormalise"):
+            raise ValueError(f"Params.offcup must be 'account' or 'renormalise', got {params.offcup!r}")
         self.l_floor = 1e-3
         self._kernel_cache = {}
         self.brown_net = 0.0
@@ -254,10 +321,15 @@ class Solver:
             self._ssa = None
 
     # ----- inlet fields -----------------------------------------------------
+    def kernel_fraction(self, inlet: Inlet):
+        return kernel_fraction(self.g, self.num, inlet)
+
     def kernel(self, inlet: Inlet):
         """Normalised compact ellipse kernel K on cells, sum(K)*area = 1 inside the cup.
         Evaluated only on the bounding box of the footprint; sub-cell quadrature adapts to thin footprints."""
         g = self.g
+        if inlet.r1 < 1.5 * g.h or inlet.r2 < 1.5 * g.h:
+            self.stats["kernel_clamp"] += 1          # semi-axis clamped to 1.5 h
         r1, r2, phi = max(inlet.r1, 1.5 * g.h), max(inlet.r2, 1.5 * g.h), inlet.phi
         x0, y0 = inlet.x_hit
         q = max(self.num.kernel_quadrature, int(math.ceil(4 * g.h / min(r1, r2))))
@@ -292,9 +364,28 @@ class Solver:
         if not inlet.active or inlet.S_eff <= 0:
             z = np.zeros((g.N, g.N))
             self.foam_src = None; self._SE = 0.0; self._S = 0.0; self._Lam_jet = None
+            self._spill_rate = 0.0
             return z, z, z, z, 0.0
-        K, _ = self.kernel(inlet)
+        self._spill_rate = 0.0
         d = max(inlet.d_jet, 1e-6)
+        S_rec = inlet.S_eff
+        if P.closure == "chi":
+            Zr = self.kernel_fraction(inlet)
+            self.last_Z = Zr
+            if Zr < 1.0:
+                self.stats["offcup_frames"] += 1
+                self.stats["min_Z"] = min(self.stats["min_Z"], Zr)
+            if P.offcup == "account":
+                # V1 3.2: K normalised to the cup, the source scaled by Z, the rest is reported as spilled
+                S_rec = inlet.S_eff * Zr
+                self._spill_rate = (1.0 - Zr) * inlet.S_eff
+                if Zr <= 0.0:
+                    if inlet.r1 < 1.5 * g.h or inlet.r2 < 1.5 * g.h:
+                        self.stats["kernel_clamp"] += 1
+                    zc = inlet.U_perp ** 2 / (P.B_dep * d)
+                    z = np.zeros((g.N, g.N))
+                    return z, z, z, z, 1.0 / (1.0 + zc ** P.p_dep)
+        K, _ = self.kernel(inlet)
         if P.closure in ("twolayer", "v2"):
             Fr2 = inlet.U_perp ** 2 / (P.g_red * d)
             chi = 1.0 / (1.0 + (Fr2 / P.Fr_c2) ** P.p_dep)
@@ -332,8 +423,8 @@ class Solver:
             self.tau_cur = P.tau_d
         zc = inlet.U_perp ** 2 / (P.B_dep * d)
         chi = 1.0 / (1.0 + zc ** P.p_dep)
-        s = chi * inlet.S_eff * K
-        Lam = P.kappa_c * (1.0 - chi) * inlet.S_eff * K
+        s = chi * S_rec * K
+        Lam = P.kappa_c * (1.0 - chi) * S_rec * K
         # target velocity
         dx = g.x - inlet.x_hit[0]
         dy = g.y - inlet.x_hit[1]
@@ -528,6 +619,12 @@ class Solver:
             self.stats["cg_visc"] += it
             qx_new = np.where(mask, lsn * ux_new, 0.0)
             qy_new = np.where(mask, lsn * uy_new, 0.0)
+        elif P.nu > 0 and P.visc == "symmetric" and P.closure == "chi":
+            # l u+ - dt div(2 nu l S(u+)) = l u-, coupled x/y, PCG (V1 3.4)
+            ux_new, uy_new, it = self.sym_visc_step(qx_new / lsn, qy_new / lsn, lsn, dt)
+            self.stats["cg_visc"] += it
+            qx_new = np.where(mask, lsn * ux_new, 0.0)
+            qy_new = np.where(mask, lsn * uy_new, 0.0)
         elif P.nu > 0 and P.nu * dt / (h * h) < self.num.explicit_visc_limit:
             # explicit, stable for nu*dt/h^2 < 1/4 (2-D); l frozen at l^{n+1}
             lfx, lfy = g.face_avg(lsn)
@@ -586,6 +683,51 @@ class Solver:
         self.brown_net = getattr(self, "brown_net", 0.0) + brown_rate * dt
         self.stats["steps"] += 1
         return True
+
+    # ----- symmetric viscosity -------------------------------------------------------
+    def sym_visc_coefs(self, lsn):
+        """Weights of K = G^T W G (kernels.sym_visc_apply): wx, wy = 2 nu l_f on active faces, wc = nu l_corner on
+        active corners, ww = 2 nu l * wall geometry; plus the outward cup normal."""
+        g, nu = self.g, self.P.nu
+        cm, geo, nbx, nby = g.sym_geometry()
+        lfx, lfy = g.face_avg(lsn)
+        wx = np.ascontiguousarray(2.0 * nu * lfx); wy = np.ascontiguousarray(2.0 * nu * lfy)
+        wc = np.ascontiguousarray(np.where(cm, nu * 0.25 * (lsn[:-1, :-1] + lsn[1:, :-1] + lsn[:-1, 1:] + lsn[1:, 1:]), 0.0))
+        ww = np.ascontiguousarray(2.0 * nu * lsn * geo)
+        return wx, wy, wc, ww, nbx, nby
+
+    def sym_visc_operator(self, lsn, dt):
+        """(apply, diag) of A = L + dt K on stacked velocities X = [u; v] of shape (2N, N); identity outside the cup."""
+        g = self.g; N = g.N; inv_h = 1.0 / g.h
+        wx, wy, wc, ww, nbx, nby = self.sym_visc_coefs(lsn)
+        T = np.empty((N - 1, N - 1))
+        mask = g.mask
+
+        def apply(X):
+            out = np.empty_like(X)
+            K.sym_corner_T(X[:N], X[N:], wc, inv_h, T)
+            K.sym_visc_apply(X[:N], X[N:], lsn, wx, wy, T, ww, nbx, nby, mask, dt, inv_h, out[:N], out[N:])
+            return out
+
+        c4 = np.zeros((N, N))
+        c4[:-1, :-1] += wc; c4[:-1, 1:] += wc; c4[1:, :-1] += wc; c4[1:, 1:] += wc
+        ex = np.zeros((N, N)); ex[:, :-1] += wx; ex[:, 1:] += wx
+        ey = np.zeros((N, N)); ey[:-1, :] += wy; ey[1:, :] += wy
+        ih2 = inv_h * inv_h
+        du = lsn + dt * (ex * ih2 + 0.25 * ih2 * c4 + ww * nbx * nbx)
+        dv = lsn + dt * (ey * ih2 + 0.25 * ih2 * c4 + ww * nby * nby)
+        diag = np.concatenate([np.where(mask, du, 1.0), np.where(mask, dv, 1.0)])
+        return apply, diag
+
+    def sym_visc_step(self, ux, uy, lsn, dt):
+        """Backward Euler step of l du/dt = div(2 nu l S(u)) with l frozen: (L + dt K) u+ = L u-, PCG (SPD)."""
+        g = self.g; N = g.N; mask = g.mask
+        apply, diag = self.sym_visc_operator(lsn, dt)
+        X0 = np.concatenate([np.where(mask, ux, 0.0), np.where(mask, uy, 0.0)])
+        L2 = np.concatenate([np.where(mask, lsn, 1.0), np.where(mask, lsn, 1.0)])
+        b = np.where(np.concatenate([mask, mask]), L2 * X0, 0.0)
+        X, it = pcg(apply, b, diag, X0, self.num.visc_tol, self.num.cg_maxiter)
+        return X[:N], X[N:], it
 
     def _bulk_flow(self):
         """Coffee under the film (quasi-steady potential flows, depth = 1).
@@ -799,6 +941,7 @@ class Solver:
             nsub *= 2
         else:
             raise RuntimeError(f"frame at t={self.t:.4f} failed after retries (nsub={nsub})")
+        self.spilled += self._spill_rate * frame_dt
         self.stats["max_substeps"] = max(self.stats["max_substeps"], nsub)
         if self.P.closure == "v2" and self.num.ssa_per_frame:
             # step D of LATTE_MODEL.md 5.3 once for the whole frame (l, m frozen at the end of the frame)
@@ -820,7 +963,7 @@ class Solver:
         L = float(self.l[g.mask].sum() * g.area)
         M = float(self.m[g.mask].sum() * g.area)
         R = float(self.msub[g.mask].sum() * g.area)
-        return dict(t=self.t, layer=L, milk=M, brown=L - M, deposited=self.deposited, reservoir=R,
+        return dict(t=self.t, layer=L, milk=M, brown=L - M, deposited=self.deposited, reservoir=R, spilled=self.spilled,
                     brown_net=getattr(self, "brown_net", 0.0),
                     layer_error=L - (g.n_cells * g.area + self.deposited + getattr(self, "brown_net", 0.0)),
                     milk_error=M - self.deposited)

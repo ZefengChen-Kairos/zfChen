@@ -49,7 +49,10 @@ the spout direction from the script instead of Codex's jet direction and no flow
   source           S_eff = kappa_Q Q / D^3   (Q_rec in D^3/s; 1 D^3 = 512 mL)
   solver record    Inlet(active, x_hit = (x_f, y_f), S_eff, u_in = u_h / D, U_perp / D, d_jet = d / D, r1 / D, r2 / D,
                    phi, scan_speed = max |v_h| over the current move (frame-length bound of the solver))
-  off the cup      a foot farther than cup_radius + max(r1, r2) from the centre gives no inlet (counted in the ledger)
+  off the cup      a foot farther than cup_radius + max(r1, r2) from the centre is flagged (off_cup, counted in the
+                   ledger) and passed on: the solver keeps the in-cup fraction Z of the footprint and reports the rest
+                   as 'spilled' (Params.offcup = "account"); PhysInlet(drop_off_cup=True) restores the old rule
+                   (no inlet)
   no pulsation     the clips do not measure a 5 Hz flow modulation, so none is added.
   The solver then applies the unchanged V0.5 closure: chi = 1 / (1 + (U_perp^2 / (B_dep d))^p_dep), deposition
   s = chi S_eff K, traction Lambda = kappa_c (1 - chi) S_eff K, target velocity v* = kappa_t u_in + kappa_r V_R e_r
@@ -126,8 +129,9 @@ class PhysInlet:
     """Physical inlet of a physical-time stage script (model time tau = 0 at the script's first stage)."""
 
     def __init__(self, script, kappa_Q, u_exit=U_EXIT, tau_spout=TAU_SPOUT, Q_scale=1.0, cup_radius=0.49,
-                 t_end=None, lag_dt=LAG_DT, foot_scale=1.0):
+                 t_end=None, lag_dt=LAG_DT, foot_scale=1.0, drop_off_cup=False):
         self.path = WantedPath(script, Q_scale=Q_scale)
+        self.drop_off_cup = bool(drop_off_cup)               # old rule: no inlet when the foot is off the cup
         self.foot_scale = float(foot_scale)                  # diagnostic: footprint and jet diameter x foot_scale
         self.moves = self.path.moves
         self.T = self.path.T
@@ -249,8 +253,9 @@ class PhysInlet:
         out.update(U=U, uh=(ux, uy), r=r, d=d, r1=r1, r2=r2, phi=phi, S_eff=S)
         if math.hypot(x, y) > self.cup_radius + max(r1, r2) / D_CUP:
             out["off_cup"] = True
-            out["inlet"] = Inlet(active=False, x_hit=(x, y), S_eff=0.0, scan_speed=scan)
-            return out
+            if self.drop_off_cup:
+                out["inlet"] = Inlet(active=False, x_hit=(x, y), S_eff=0.0, scan_speed=scan)
+                return out
         out["active"] = True
         out["inlet"] = Inlet(active=True, x_hit=(x, y), S_eff=S, u_in=(ux / D_CUP, uy / D_CUP), U_perp=U / D_CUP,
                              d_jet=d / D_CUP, r1=r1 / D_CUP, r2=r2 / D_CUP, phi=phi, scan_speed=scan)
@@ -327,8 +332,12 @@ class V05Model:
     preroll  'drop' (default: V0.5 has no first-white delay) or 'keep'
     """
 
-    def __init__(self, base=None, u_exit=U_EXIT, tau_spout=TAU_SPOUT, preroll="drop", numerics=None):
+    def __init__(self, base=None, u_exit=U_EXIT, tau_spout=TAU_SPOUT, preroll="drop", numerics=None, switches=None,
+                 drop_off_cup=False):
         self.base = dict(FS if base is None else base)
+        # solver switches, e.g. dict(visc="componentwise", offcup="renormalise") + drop_off_cup=True = the old runs
+        self.switches = dict(switches or {})
+        self.drop_off_cup = bool(drop_off_cup)
         self.u_exit, self.tau_spout, self.preroll = u_exit, tau_spout, preroll
         self.numerics = dict(numerics or {})
         self.space = dict(SPACE)
@@ -345,7 +354,7 @@ class V05Model:
 
     def solver_params(self, params):
         c = self.closure(params)
-        return Params(closure="chi", return_law="v05", **c)
+        return Params(closure="chi", return_law="v05", **c, **self.switches)
 
     def inlet(self, script, params=None, cup_radius=0.49, t_end=None):
         p = params or {}
@@ -353,7 +362,8 @@ class V05Model:
                                                                               float(script["stages"][0]["t0"])))
         inl = PhysInlet(sc, kappa_Q=self.closure(p)["kappa_Q"], u_exit=float(p.get("u_exit", self.u_exit)),
                         tau_spout=float(p.get("tau_spout", self.tau_spout)), Q_scale=float(p.get("Q_scale", 1.0)),
-                        cup_radius=cup_radius, t_end=t_end, foot_scale=float(p.get("foot_scale", 1.0)))
+                        cup_radius=cup_radius, t_end=t_end, foot_scale=float(p.get("foot_scale", 1.0)),
+                        drop_off_cup=self.drop_off_cup)
         return inl, t_start
 
     def _nearest(self, mask):
@@ -436,7 +446,8 @@ class V05Model:
 
         led = dict(ok=ok and bool(filled.all()), error=err, t_start=t_start, T_model=float(sol.t),
                    layer_error=float(L["layer_error"]), milk_error=float(L["milk_error"]), layer=float(L["layer"]),
-                   milk=float(L["milk"]), deposited=float(L["deposited"]),
+                   milk=float(L["milk"]), deposited=float(L["deposited"]), spilled=float(L.get("spilled", 0.0)),
+                   offcup_frames=int(sol.stats.get("offcup_frames", 0)), kernel_clamp=int(sol.stats.get("kernel_clamp", 0)),
                    V_wanted_mL=Vw / ML, V_received_mL=Vr / ML, chi_flow_weighted=chi_w / chi_q if chi_q > 0 else None,
                    frames_off_cup=n_off, ranges=dict(Q_mLs=rng("Q_mLs"), z_cm=rng("z_cm"), U_ms=rng("U_ms"),
                                                      r_mm=rng("r_mm"), d_mm=rng("d_mm"), chi=rng("chi")),

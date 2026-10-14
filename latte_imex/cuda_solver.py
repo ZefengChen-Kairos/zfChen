@@ -9,6 +9,9 @@ everything stays on the device, one thread per cell, fused kernels:
   PCG             matrix-free apply (k_apply_A), dots by block reduction + atomics            (~6 launches/iter)
   k_finish        step B/C: final flux, conservative l^{n+1}, q^{n+1}, van Leer milk flux     (1 launch)
   k_viscosity     step D: explicit viscosity (sub-cycled if nu dt/h^2 is large)              (1 launch)
+                  (Params.visc = "componentwise")
+  k_sym_*         step D, Params.visc = "symmetric": l u+ - dt div(2 nu l S(u+)) = l u-, matrix-free Jacobi PCG on
+                  the stacked velocity [u; v] (2N x N), same discrete operator as kernels.sym_visc_apply
   k_mixing        step D: explicit mixing                                                     (1 launch)
   k_check/k_umax  reductions for the retry guard and the material CFL                        (2 launches)
 
@@ -20,7 +23,7 @@ import math, time
 import numpy as np
 from numba import cuda, float64, int32
 
-from .solver import Params, Numerics, Inlet, Grid
+from .solver import Params, Numerics, Inlet, Grid, kernel_fraction
 
 TPB = (16, 16)     # threads per block (i fastest -> coalesced along rows)
 RED = 256          # threads per block for 1-D reductions
@@ -383,6 +386,215 @@ def k_mixing(l, m, mask, D, dt, inv_h2, m_out):
     m_out[j, i] = min(max(mn, 0.0), lc)
 
 
+# ----------------------------------------------------------------------------- step D, symmetric viscosity
+@cuda.jit
+def k_sym_coefs(l, mask, cmask, geo, nu, wx, wy, wc, ww):
+    """wx, wy = 2 nu l_f on active faces; wc = nu l_corner on active corners; ww = 2 nu l * wall geometry."""
+    i, j = cuda.grid(2)
+    N = l.shape[0]
+    if j >= N or i >= N:
+        return
+    if i < N - 1:
+        wx[j, i] = (2.0 * nu) * (0.5 * (l[j, i] + l[j, i + 1])) if (mask[j, i] != 0 and mask[j, i + 1] != 0) else 0.0
+    if j < N - 1:
+        wy[j, i] = (2.0 * nu) * (0.5 * (l[j, i] + l[j + 1, i])) if (mask[j, i] != 0 and mask[j + 1, i] != 0) else 0.0
+    if i < N - 1 and j < N - 1:
+        wc[j, i] = (nu * 0.25) * (l[j, i] + l[j + 1, i] + l[j, i + 1] + l[j + 1, i + 1]) if cmask[j, i] != 0 else 0.0
+    ww[j, i] = ((2.0 * nu) * l[j, i]) * geo[j, i]
+
+
+@cuda.jit
+def k_sym_T(X, wc, inv_h, T):
+    """T = wc (u_y + v_x) on the corners; X = [u; v] stacked (2N, N)."""
+    i, j = cuda.grid(2)
+    M = T.shape[0]
+    if j >= M or i >= M:
+        return
+    w = wc[j, i]
+    if w != 0.0:
+        N = M + 1
+        g = (X[j + 1, i] + X[j + 1, i + 1] - X[j, i] - X[j, i + 1]
+             + X[N + j, i + 1] + X[N + j + 1, i + 1] - X[N + j, i] - X[N + j + 1, i]) * 0.5 * inv_h
+        T[j, i] = w * g
+    else:
+        T[j, i] = 0.0
+
+
+@cuda.jit
+def k_sym_apply(X, l, wx, wy, T, ww, nbx, nby, mask, dt, inv_h, out):
+    """out = l u + dt K u on the stacked velocity, identity outside the cup (kernels.sym_visc_apply)."""
+    i, j = cuda.grid(2)
+    N = l.shape[0]
+    if j >= N or i >= N:
+        return
+    u = X[j, i]; v = X[N + j, i]
+    if mask[j, i] == 0:
+        out[j, i] = u; out[N + j, i] = v
+        return
+    inv_h2 = inv_h * inv_h
+    ku = 0.0; kv = 0.0
+    if i < N - 1:
+        ku -= wx[j, i] * (X[j, i + 1] - u)
+    if i > 0:
+        ku -= wx[j, i - 1] * (X[j, i - 1] - u)
+    if j < N - 1:
+        kv -= wy[j, i] * (X[N + j + 1, i] - v)
+    if j > 0:
+        kv -= wy[j - 1, i] * (X[N + j - 1, i] - v)
+    ku *= inv_h2; kv *= inv_h2
+    c = 0.0; d = 0.0
+    if j < N - 1 and i < N - 1:
+        c -= T[j, i]; d -= T[j, i]
+    if j < N - 1 and i > 0:
+        c -= T[j, i - 1]; d += T[j, i - 1]
+    if j > 0 and i < N - 1:
+        c += T[j - 1, i]; d -= T[j - 1, i]
+    if j > 0 and i > 0:
+        c += T[j - 1, i - 1]; d += T[j - 1, i - 1]
+    ku += 0.5 * inv_h * c; kv += 0.5 * inv_h * d
+    w = ww[j, i]
+    if w != 0.0:
+        un = w * (u * nbx[j, i] + v * nby[j, i])
+        ku += un * nbx[j, i]; kv += un * nby[j, i]
+    lc = l[j, i]
+    out[j, i] = lc * u + dt * ku
+    out[N + j, i] = lc * v + dt * kv
+
+
+@cuda.jit
+def k_sym_rhs_diag(qx, qy, l, mask, wx, wy, wc, ww, nbx, nby, dt, inv_h, X, b, diag):
+    """X0 = q/l, b = l X0 (0 outside the cup), Jacobi diagonal of l + dt K (1 outside)."""
+    i, j = cuda.grid(2)
+    N = l.shape[0]
+    if j >= N or i >= N:
+        return
+    if mask[j, i] == 0:
+        X[j, i] = 0.0; X[N + j, i] = 0.0; b[j, i] = 0.0; b[N + j, i] = 0.0
+        diag[j, i] = 1.0; diag[N + j, i] = 1.0
+        return
+    lc = l[j, i]
+    u = qx[j, i] / lc; v = qy[j, i] / lc
+    X[j, i] = u; X[N + j, i] = v
+    b[j, i] = lc * u; b[N + j, i] = lc * v
+    ex = 0.0; ey = 0.0; c4 = 0.0
+    if i < N - 1:
+        ex += wx[j, i]
+    if i > 0:
+        ex += wx[j, i - 1]
+    if j < N - 1:
+        ey += wy[j, i]
+    if j > 0:
+        ey += wy[j - 1, i]
+    if j < N - 1 and i < N - 1:
+        c4 += wc[j, i]
+    if j < N - 1 and i > 0:
+        c4 += wc[j, i - 1]
+    if j > 0 and i < N - 1:
+        c4 += wc[j - 1, i]
+    if j > 0 and i > 0:
+        c4 += wc[j - 1, i - 1]
+    ih2 = inv_h * inv_h
+    w = ww[j, i]
+    diag[j, i] = lc + dt * (ex * ih2 + 0.25 * ih2 * c4 + w * nbx[j, i] * nbx[j, i])
+    diag[N + j, i] = lc + dt * (ey * ih2 + 0.25 * ih2 * c4 + w * nby[j, i] * nby[j, i])
+
+
+@cuda.jit
+def k_sym_finish(X, l, mask, qx, qy):
+    i, j = cuda.grid(2)
+    N = l.shape[0]
+    if j >= N or i >= N:
+        return
+    if mask[j, i] == 0:
+        qx[j, i] = 0.0; qy[j, i] = 0.0
+    else:
+        qx[j, i] = l[j, i] * X[j, i]; qy[j, i] = l[j, i] * X[N + j, i]
+
+
+@cuda.jit
+def k_g_init(rhs, Ax, diag, r, p):
+    """Generic shape: r = rhs - A x0, p = r/diag."""
+    i, j = cuda.grid(2)
+    if j >= rhs.shape[0] or i >= rhs.shape[1]:
+        return
+    rr = rhs[j, i] - Ax[j, i]
+    r[j, i] = rr
+    p[j, i] = rr / diag[j, i]
+
+
+@cuda.jit
+def k_g_axpy2(alpha, p, Ap, x, r):
+    i, j = cuda.grid(2)
+    if j >= x.shape[0] or i >= x.shape[1]:
+        return
+    x[j, i] += alpha * p[j, i]
+    r[j, i] -= alpha * Ap[j, i]
+
+
+@cuda.jit
+def k_g_update_p(r, diag, beta, p):
+    i, j = cuda.grid(2)
+    if j >= p.shape[0] or i >= p.shape[1]:
+        return
+    p[j, i] = r[j, i] / diag[j, i] + beta * p[j, i]
+
+
+@cuda.jit
+def k_g_dots(p, Ap, r, diag, out):
+    """Generic shape: block reduction of p.Ap, r.r, r.(r/diag) into out[0:3]."""
+    sh = cuda.shared.array((3, RED), float64)
+    t = cuda.threadIdx.x
+    C = p.shape[1]
+    n = p.shape[0] * C
+    k = cuda.grid(1)
+    s0 = 0.0; s1 = 0.0; s2 = 0.0
+    stride = cuda.gridsize(1)
+    while k < n:
+        jj = k // C; ii = k - jj * C
+        s0 += p[jj, ii] * Ap[jj, ii]
+        rv = r[jj, ii]
+        s1 += rv * rv
+        s2 += rv * rv / diag[jj, ii]
+        k += stride
+    sh[0, t] = s0; sh[1, t] = s1; sh[2, t] = s2
+    cuda.syncthreads()
+    w = RED // 2
+    while w > 0:
+        if t < w:
+            sh[0, t] += sh[0, t + w]; sh[1, t] += sh[1, t + w]; sh[2, t] += sh[2, t + w]
+        cuda.syncthreads()
+        w //= 2
+    if t == 0:
+        cuda.atomic.add(out, 0, sh[0, 0])
+        cuda.atomic.add(out, 1, sh[1, 0])
+        cuda.atomic.add(out, 2, sh[2, 0])
+
+
+@cuda.jit
+def k_g_dot1(a, b, out):
+    sh = cuda.shared.array(RED, float64)
+    t = cuda.threadIdx.x
+    C = a.shape[1]
+    n = a.shape[0] * C
+    k = cuda.grid(1)
+    s0 = 0.0
+    stride = cuda.gridsize(1)
+    while k < n:
+        jj = k // C; ii = k - jj * C
+        s0 += a[jj, ii] * b[jj, ii]
+        k += stride
+    sh[t] = s0
+    cuda.syncthreads()
+    w = RED // 2
+    while w > 0:
+        if t < w:
+            sh[t] += sh[t + w]
+        cuda.syncthreads()
+        w //= 2
+    if t == 0:
+        cuda.atomic.add(out, 0, sh[0])
+
+
 # ----------------------------------------------------------------------------- reductions for the frame logic
 @cuda.jit
 def k_check(l, qx, qy, m, mask, l_floor, flags):
@@ -502,7 +714,12 @@ class CudaSolver:
         self.t = 0.0
         self.deposited = 0.0
         self.stats = dict(steps=0, frames=0, cg_mass=0, cg_visc=0, cg_mix=0, clip_mass=0.0, max_substeps=0,
-                          max_u=0.0, retries=0, launches=0)
+                          max_u=0.0, retries=0, launches=0, kernel_clamp=0, offcup_frames=0, min_Z=1.0)
+        if params.visc not in ("symmetric", "componentwise"):
+            raise ValueError(f"Params.visc must be 'symmetric' or 'componentwise', got {params.visc!r}")
+        if params.offcup not in ("account", "renormalise"):
+            raise ValueError(f"Params.offcup must be 'account' or 'renormalise', got {params.offcup!r}")
+        self.spilled = 0.0; self.last_Z = 1.0; self._spill_rate = 0.0
         self.l_floor = 1e-3
         self.grid2 = ((N + TPB[0] - 1) // TPB[0], (N + TPB[1] - 1) // TPB[1])
         self.red_blocks = min(1024, (N * N + RED - 1) // RED)
@@ -519,6 +736,18 @@ class CudaSolver:
         self.flags = cuda.to_device(np.zeros(1, np.int32)); self._zero_flag = np.zeros(1, np.int32)
         self._chi = 0.0
         self._inlet_sum = 0.0   # sum(s)*area for the ledger (= chi * S_eff)
+        if params.visc == "symmetric":
+            cm, geo, nbx, nby = g.sym_geometry()
+            self.cmask = cuda.to_device(cm.astype(np.uint8)); self.sym_geo = cuda.to_device(geo)
+            self.nbx = cuda.to_device(nbx); self.nby = cuda.to_device(nby)
+            self.wx = cuda.to_device(np.zeros((N, N - 1))); self.wy = cuda.to_device(np.zeros((N - 1, N)))
+            self.wc = cuda.to_device(np.zeros((N - 1, N - 1))); self.ww = cuda.to_device(z)
+            self.Tc = cuda.to_device(np.zeros((N - 1, N - 1)))
+            z2 = np.zeros((2 * N, N))
+            for nm in ("vX", "vb", "vdiag", "vr", "vp", "vAp"):
+                setattr(self, nm, cuda.to_device(z2))
+            self.grid2s = ((N + TPB[0] - 1) // TPB[0], (2 * N + TPB[1] - 1) // TPB[1])
+            self.red_blocks2 = min(1024, (2 * N * N + RED - 1) // RED)
 
     # ----- data access -------------------------------------------------------
     def concentration(self):
@@ -532,7 +761,7 @@ class CudaSolver:
     def ledger(self):
         st = self.host_state(); g = self.g
         L = float(st["l"][g.mask].sum() * g.area); M = float(st["m"][g.mask].sum() * g.area)
-        return dict(t=self.t, layer=L, milk=M, brown=L - M, deposited=self.deposited,
+        return dict(t=self.t, layer=L, milk=M, brown=L - M, deposited=self.deposited, spilled=self.spilled,
                     layer_error=L - (g.n_cells * g.area + self.deposited), milk_error=M - self.deposited)
 
     def energy(self):
@@ -547,8 +776,26 @@ class CudaSolver:
         if not inlet.active or inlet.S_eff <= 0:
             for a in (self.s, self.Lam, self.vsx, self.vsy):
                 k_zero[self.grid2, TPB](a)
-            self._chi = 0.0; self._inlet_sum = 0.0
+            self._chi = 0.0; self._inlet_sum = 0.0; self._spill_rate = 0.0
             return 0.0
+        if inlet.r1 < 1.5 * g.h or inlet.r2 < 1.5 * g.h:
+            self.stats["kernel_clamp"] += 1          # semi-axis clamped to 1.5 h
+        Zr = kernel_fraction(g, self.num, inlet)
+        self.last_Z = Zr
+        if Zr < 1.0:
+            self.stats["offcup_frames"] += 1
+            self.stats["min_Z"] = min(self.stats["min_Z"], Zr)
+        S_rec = inlet.S_eff
+        self._spill_rate = 0.0
+        if P.offcup == "account":
+            S_rec = inlet.S_eff * Zr
+            self._spill_rate = (1.0 - Zr) * inlet.S_eff
+            if Zr <= 0.0:
+                for a in (self.s, self.Lam, self.vsx, self.vsy):
+                    k_zero[self.grid2, TPB](a)
+                zc = inlet.U_perp ** 2 / (P.B_dep * max(inlet.d_jet, 1e-6))
+                self._chi = 1.0 / (1.0 + zc ** P.p_dep); self._inlet_sum = 0.0
+                return self._chi
         r1, r2, phi = max(inlet.r1, 1.5 * g.h), max(inlet.r2, 1.5 * g.h), inlet.phi
         x0, y0 = inlet.x_hit
         q = min(12, max(self.num.kernel_quadrature, int(math.ceil(4 * g.h / min(r1, r2)))))
@@ -573,10 +820,10 @@ class CudaSolver:
             rad = P.kappa_r * VR
         else:
             rad = chi * P.kappa_r * inlet.U_perp
-        k_inlet_fields[self.grid2, TPB](self.Kraw, 1.0 / Z, chi * inlet.S_eff, P.kappa_c * (1.0 - chi) * inlet.S_eff,
+        k_inlet_fields[self.grid2, TPB](self.Kraw, 1.0 / Z, chi * S_rec, P.kappa_c * (1.0 - chi) * S_rec,
                                         g.h, x0, y0, Rdep, P.kappa_t * inlet.u_in[0], P.kappa_t * inlet.u_in[1], rad,
                                         self.s, self.Lam, self.vsx, self.vsy)
-        self._chi = chi; self._inlet_sum = chi * inlet.S_eff
+        self._chi = chi; self._inlet_sum = chi * S_rec
         return chi
 
     # ----- PCG ------------------------------------------------------------------
@@ -609,6 +856,50 @@ class CudaSolver:
             rz = rz_new
         return it
 
+    # ----- symmetric viscosity (step D, visc="symmetric") ---------------------------
+    def sym_visc(self, dt):
+        """(L + dt K) u+ = L u-, l frozen at l^{n+1}; matrix-free Jacobi PCG on [u; v]; overwrites qx_n, qy_n.
+        Same algorithm and stopping rule as solver.pcg with Numerics.visc_tol."""
+        P, g = self.P, self.g
+        G2, B, GS = self.grid2, TPB, self.grid2s
+        inv_h = 1.0 / g.h
+        k_sym_coefs[G2, B](self.l_n, self.mask, self.cmask, self.sym_geo, P.nu, self.wx, self.wy, self.wc, self.ww)
+        k_sym_rhs_diag[G2, B](self.qx_n, self.qy_n, self.l_n, self.mask, self.wx, self.wy, self.wc, self.ww,
+                              self.nbx, self.nby, dt, inv_h, self.vX, self.vb, self.vdiag)
+
+        def apply(src, dst):
+            k_sym_T[G2, B](src, self.wc, inv_h, self.Tc)
+            k_sym_apply[G2, B](src, self.l_n, self.wx, self.wy, self.Tc, self.ww, self.nbx, self.nby, self.mask, dt,
+                               inv_h, dst)
+
+        RB = self.red_blocks2
+        apply(self.vX, self.vAp)
+        k_g_init[GS, B](self.vb, self.vAp, self.vdiag, self.vr, self.vp)
+        self.scal.copy_to_device(self._zero4); self.red.copy_to_device(self._zero3)
+        k_g_dot1[RB, RED](self.vb, self.vb, self.scal)
+        k_g_dots[RB, RED](self.vp, self.vAp, self.vr, self.vdiag, self.red)
+        bnorm = math.sqrt(float(self.scal.copy_to_host()[0])) + 1e-300
+        rz = float(self.red.copy_to_host()[2])
+        tol = self.num.visc_tol
+        it = 0
+        for it in range(1, self.num.cg_maxiter + 1):
+            apply(self.vp, self.vAp)
+            self.scal.copy_to_device(self._zero4)
+            k_g_dot1[RB, RED](self.vp, self.vAp, self.scal)
+            pAp = float(self.scal.copy_to_host()[0])
+            alpha = rz / (pAp + 1e-300)
+            k_g_axpy2[GS, B](alpha, self.vp, self.vAp, self.vX, self.vr)
+            self.red.copy_to_device(self._zero3)
+            k_g_dots[RB, RED](self.vp, self.vAp, self.vr, self.vdiag, self.red)
+            v = self.red.copy_to_host()
+            if math.sqrt(v[1]) <= tol * bnorm:
+                break
+            rz_new = float(v[2])
+            k_g_update_p[GS, B](self.vr, self.vdiag, rz_new / rz, self.vp)
+            rz = rz_new
+        k_sym_finish[G2, B](self.vX, self.l_n, self.mask, self.qx_n, self.qy_n)
+        return it
+
     # ----- one sub-step -----------------------------------------------------------
     def substep(self, dt):
         P, g = self.P, self.g
@@ -626,7 +917,9 @@ class CudaSolver:
                         self.l_n, self.qx_n, self.qy_n, self.m_n, self.scal)
         self.stats["clip_mass"] += float(self.scal.copy_to_host()[0]) * g.area
         # step D: explicit viscosity (sub-cycled if needed) and mixing, l frozen at l^{n+1}
-        if P.nu > 0:
+        if P.nu > 0 and P.visc == "symmetric":
+            self.stats["cg_visc"] += self.sym_visc(dt)
+        elif P.nu > 0:
             r = P.nu * dt * inv_h2
             nsub = max(1, int(math.ceil(r / self.num.explicit_visc_limit)))
             src_x, src_y, dst_x, dst_y = self.qx_n, self.qy_n, self.qx_t, self.qy_t
@@ -691,6 +984,7 @@ class CudaSolver:
             nsub *= 2
         else:
             raise RuntimeError("sub-step failed repeatedly")
+        self.spilled += self._spill_rate * frame_dt
         self.t += frame_dt
         self.stats["frames"] += 1
         self.stats["max_substeps"] = max(self.stats["max_substeps"], nsub)

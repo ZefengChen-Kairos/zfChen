@@ -76,8 +76,11 @@ def run(pattern, N=256, out=None, params=None, snap_dt=1.0 / 24.0, video=True, q
             events.append(dict(t=round(sol.t, 4), phase=phase))
             last_phase = phase
         chi, nsub = sol.advance_frame(inl, frame_dt=fdt)
-        traj.append(dict(t=sol.t, x=inl.x_hit[0], y=inl.x_hit[1], active=bool(inl.active and inl.S_eff > 0),
-                         phase=phase, S=float(inl.S_eff if inl.active else 0.0), chi=float(chi)))
+        act = bool(inl.active and inl.S_eff > 0)
+        Zr = float(getattr(sol, "last_Z", 1.0)) if act else 1.0      # in-cup fraction of the footprint (solver)
+        traj.append(dict(t=sol.t, x=inl.x_hit[0], y=inl.x_hit[1], active=act,
+                         phase=phase, S=float(inl.S_eff if inl.active else 0.0), chi=float(chi),
+                         Z=Zr, off_cup=bool(act and Zr < 1.0)))
         if sol.t + 1e-9 >= next_snap:
             snaps.append((sol.t, sol.concentration().astype(np.float32)))
             next_snap += snap_dt
