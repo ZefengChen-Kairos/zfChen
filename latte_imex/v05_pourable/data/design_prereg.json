@@ -1,0 +1,694 @@
+{
+ "written": "2026-10-13 21:00:09",
+ "status": "pre-registered before any design optimisation was run (only the surrogate maps and the fixed references existed)",
+ "question": "Is there ONE shared V0.5 closure (physical bounds) plus per-pattern actions that the pitcher model can deliver, with which the six patterns still form?",
+ "specs": {
+  "S1": {
+   "pitcher": "nx",
+   "b_mm": 4.86,
+   "wall": "resolved",
+   "cup": "held (default Cup tilt 20 deg, no table)",
+   "why": "CAD NX as in the pitcher check; the azimuth-resolved outer wall (includes the spout flare) instead of the azimuth mean (the review found the mean optimistic by 4.6-6.7 mm near the spout); the cup held in the hand as in the clips"
+  },
+  "S2": {
+   "pitcher": "b20",
+   "b_mm": 20.0,
+   "wall": "resolved",
+   "cup": "held (default Cup tilt 20 deg)",
+   "why": "the video gives b = 5 mm (2-8), i.e. the barista's pitcher IS an NX-like short beak (r_tip/R 1.16 vs NX 1.17); S2 with the video's b would duplicate S1, so the task's fallback b = 20 mm (a long pointed latte-art spout, geometry wrapper of the surrogate) is used as the 'what if a pointed spout' hypothesis"
+  },
+  "S3": {
+   "pitcher": "b20",
+   "wall": "resolved",
+   "cup": "held, tilt c(t) from the video per pattern (piecewise linear in clip time, constant outside; layered_heart and push_heart use their own short series), consistent rim (near rim 1 mm above the coffee); maps at 5/10/20/30 deg, linear in c, clamped",
+   "why": "the surrogate's clearance test takes a static Cup; a time-varying tilt is represented by interpolating maps built at 5/10/20/30 deg. Solver coordinates are NOT stretched (the solver circle = the central 80 mm of the surface, as in S1/S2)",
+   "cup_tilt_series_deg": {
+    "heart": [
+     [
+      0.4,
+      25.4
+     ],
+     [
+      2.0,
+      27.3
+     ],
+     [
+      4.0,
+      19.4
+     ],
+     [
+      6.0,
+      13.9
+     ]
+    ],
+    "push_heart": [
+     [
+      0.53,
+      14.6
+     ],
+     [
+      2.53,
+      13.0
+     ]
+    ],
+    "layered_heart": [
+     [
+      0.0,
+      20.4
+     ],
+     [
+      2.4,
+      20.5
+     ],
+     [
+      4.4,
+      9.1
+     ]
+    ],
+    "tulip": [
+     [
+      0.4,
+      28.5
+     ],
+     [
+      1.47,
+      20.5
+     ],
+     [
+      2.53,
+      18.7
+     ],
+     [
+      6.0,
+      11.2
+     ]
+    ],
+    "leaf": [
+     [
+      0.0,
+      28.5
+     ],
+     [
+      2.53,
+      27.4
+     ],
+     [
+      4.0,
+      17.9
+     ],
+     [
+      6.0,
+      7.8
+     ],
+     [
+      12.53,
+      6.3
+     ]
+    ],
+    "swan": [
+     [
+      0.0,
+      32.7
+     ],
+     [
+      4.0,
+      20.5
+     ],
+     [
+      6.0,
+      14.5
+     ],
+     [
+      8.0,
+      11.5
+     ],
+     [
+      19.33,
+      0.7
+     ]
+    ]
+   },
+   "cup_tilt_note": "clip time used as V0.5-controls time (both start at the first pour frame / stroke); before the first and after the last measurement the nearest value is held"
+  }
+ },
+ "fixed_closure": {
+  "cp": 1.36,
+  "beta": 3.0,
+  "nu": 0.001,
+  "D": 1e-07,
+  "kappa_Q": 2.0,
+  "kappa_c": 1.0,
+  "why": "as FS; no reason to move them (cp physical nominal, beta/nu V0.5's own, not tuned on images)"
+ },
+ "shared_closure_variables": {
+  "B_dep": [
+   300.0,
+   6000.0,
+   "log"
+  ],
+  "p_dep": [
+   1.0,
+   8.0,
+   "lin"
+  ],
+  "kappa_t": [
+   0.0,
+   1.0,
+   "lin"
+  ],
+  "kappa_r": [
+   0.005,
+   0.2,
+   "log, fitted AFTER (B, p) exactly as FS (F-weighted log least squares of kappa_r V_R,w against V0.5's radial target)"
+  ],
+  "source": "v05_adapter.SPACE"
+ },
+ "pitcher_constant": {
+  "alpha_lip_deg": [
+   0,
+   10,
+   20,
+   30
+  ],
+  "rule": "scanned, NOT fitted per pattern; per spec the alpha with the lowest J_total is reported as the design, the others are reported too"
+ },
+ "per_pattern_variables": {
+  "fill_mL": {
+   "grid": [
+    100,
+    125,
+    150,
+    175,
+    200,
+    250,
+    300,
+    350,
+    400
+   ],
+   "constraint": "V(t) = fill - poured volume >= 20 mL (flow maps extended to 20 mL)"
+  }
+ },
+ "per_stroke_variables": {
+  "z_k": {
+   "low_mm": [
+    3.0,
+    25.0
+   ],
+   "cut_mm": [
+    12.0,
+    70.0
+   ],
+   "rule": "wanted tip height; delivered z(t) = max(z_k, Zreq(t)), Zreq = 0.25 s centred running max of the surrogate z_min(t) at the stream foot, yaw, roll and current fill; z_k solved exactly so that the flow-weighted chi equals the (clipped) target, or the bound if unreachable"
+  },
+  "s_k": {
+   "grid": [
+    0.67,
+    0.8,
+    0.9,
+    1.0,
+    1.1,
+    1.25,
+    1.5
+   ],
+   "rule": "flow scale of the V0.5 controls' F timeline for the stroke (applied to the command BEFORE the 0.08 s spout lag); Q clipped to 1-32 mL/s",
+   "cuts": "s = 1 for cut strokes (amended before any optimisation): their chi target (<= 0.03, clipped to 0.02) is reachable by height alone, and their flow sets the cut drag Lambda = kappa_c (1 - chi) S, which the deposit-weighted price (cut deposit ~0.0002) would leave practically free"
+  },
+  "yaw_k": {
+   "fixed": "atan2(b) of the V0.5 controls' jet b where the direction is not degenerate (|b| >= 0.035 m/s and |b| >= 1.5 x mean hand speed)",
+   "free": [
+    [
+     "tulip",
+     6
+    ],
+    [
+     "leaf",
+     4
+    ],
+    [
+     "swan",
+     8
+    ],
+    [
+     "swan",
+     9
+    ]
+   ],
+   "free_grid_deg": 15,
+   "free_constraint": "reachable from the neighbouring strokes' yaw at <= 300 deg/s (ideal hand) over the gap (bridge duration, or 0.1 s for directly adjacent strokes); the 90 deg/s 'video' hand is checked and reported, not imposed"
+  },
+  "roll_k_deg": [
+   -20,
+   0,
+   20
+  ]
+ },
+ "not_allowed": [
+  "5 Hz flow pulsation (pulse = 0 everywhere; a layered_heart variant with the wrist-limited pulsation may be run and is labelled)",
+  "changing the V0.5 controls' paths, timings, wiggles",
+  "per-pattern closure"
+ ],
+ "inlet_model": {
+  "flow": "drvf: V0.5-controls F x s_k (taper, 0.1 s ramps, bridges >= 0.3 s) -> first-order spout lag tau = 0.08 s -> Q = clip(F/kappa_Q, 1, 32 mL/s); bridges below 1 mL/s cut",
+  "height": "--ztr transitions between strokes (<= 0.11 m/s) of the wanted z_k, plus the hand's planned lift L(t) = plan_lift(max(z_min - z_w, 0)) (ideal hand) in the final inlet",
+  "U_perp": "surrogate: sqrt(v0z^2 + 2 g max(z + dz_origin, 0)), v0z = u0 e_z, u0 = sqrt(2 g max(h_bar, h_k)) from the weir at (Q, V, roll)",
+  "u_h": "cup frame u = exit (u0 e_h along the spout yaw, roll side component, alpha_lip) + v_hand (= d x_hit / dt as drvf); |u| <= min(0.40 m/s, U_perp) as drvf",
+  "footprint": "drvf continuity: r = sqrt(Q/(pi U)), aspect hypot(U,|u|)/U, d = 2 sqrt(Q/(|v| pi))",
+  "chi": "solver: 1/(1 + (U^2/(B_dep d))^p_dep)"
+ },
+ "objective": {
+  "J_total": "J_chi + J_s + J_uh + 0.25 J_oth  (pooled over the six patterns; per-pattern and per-stroke contributions reported)",
+  "J_chi": "sum_k w_k e_k^2 / sum_k w_k, w_k = V0.5 deposit of stroke k (allphys.base_targets 'dep'), e_k = logit(chi_k) - logit(chi_target,k), chi clipped to [0.02, 0.98] (FS's J, unchanged)",
+  "J_s": "sum_k w_k (0.4 ln s_k / ln 1.25)^2 / sum_k w_k  (a 25 % flow change costs as much as the 0.4 logit 'unreachable' threshold; s is new, it needs a price because it changes the deposit)",
+  "J_uh": "(1/6) sum_{k in LB} [max(0, ln(kappa_t |u|_k / (0.7 |u|_FS,k)))]^2  -- excess horizontal momentum given to the surface over FS's (FS: kappa_t 0.7, |u| from the stored FS inlet logs), LB = load-bearing strokes of ALLPHYS 6.1",
+  "J_oth": "sum_{k not in LB} F_k [ln(kappa_t |u|_k / (0.7 |u|_FS,k))]^2 / sum F_k  (two-sided; weight 0.25): keeps kappa_t from absorbing the LB excess by silently removing the cuts' and bases' momentum (FSx showed a larger cut momentum splits the tulip axis; a smaller one is untested)",
+  "LB": [
+   [
+    "heart",
+    1
+   ],
+   [
+    "heart",
+    2
+   ],
+   [
+    "tulip",
+    6
+   ],
+   [
+    "leaf",
+    4
+   ],
+   [
+    "swan",
+    8
+   ],
+   [
+    "swan",
+    9
+   ]
+  ],
+  "weights_rationale": "logit error 0.4 (the 'unreachable' threshold of allphys) ~ J contribution 0.16 per unit weight share; a 50 % momentum excess on an LB stroke gives ln(1.5)^2/6 = 0.027 per stroke, 0.16 if all six are 50 % over -> both terms of the same order",
+  "unreachable": "|e_k| > 0.4 at the optimum; reason classified as 'clearance' (z_k pinned at Zreq above the height that would hit the target), 'z bound' (pinned at the class bound), or 'U too low/high'"
+ },
+ "search": {
+  "pass1": "grid p in {1, 1.5, ..., 8} x 25 log-spaced B_dep in [300, 6000]; kappa_t grid 0..1 step 0.05; inside each: per stroke exact z_k solve (24-point z grid, 16 flow-weighted quantiles of U^2/d per height, linear interpolation in log z) and enumeration of (s, yaw, roll); per pattern enumeration of fill; V(t) depletion with s = 1",
+  "pass2": "fills fixed; V(t) recomputed with the pass-1 s_k; (B, p, kappa_t) re-optimised by coordinate refinement from the pass-1 optimum; combos re-chosen",
+  "sampling": "10 ms samples of the drvf-style schedule (pulse 0, lag 0.08, ztr) on the stroke's own phase window"
+ },
+ "screen": {
+  "grid": "128^2",
+  "patterns": "all six per spec + FS at 128^2 as the reference",
+  "processes": "<= 2, NUMBA_NUM_THREADS=1",
+  "judge": "ana-style structure measures (ref2/structm at h = 1/128) + visual, criteria of ALLPHYS 3.1 (heart: heart + tip; push_heart: arms separate; layered_heart: closed outline, >= 4 bright bands at x = +-0.05 D, curl c95 >= 0.7; tulip: closed, three stacked petals, >= 2 seams at x = +-0.06 D; leaf: >= 5 veins per line, amp >= ~0.15; swan: continuous neck, head, wing texture), judged relative to FS at 128^2",
+  "to_256": "the spec with the most 'yes' at 128^2; ties -> lower J_total -> S1 before S3 before S2 (S1 is the barista's own pitcher type per the video)"
+ },
+ "references": {
+  "heart": {
+   "1": {
+    "cls": "low",
+    "chi_t": 0.9999141137015837,
+    "dep": 0.19998282274031104,
+    "F_int": 0.1999999999999943,
+    "radial_t": 0.07891811190475678,
+    "V05_uh_ms": 0.03645149721797162,
+    "FS_uh_ms": 0.10080000000000001,
+    "FS_exit_ms": 0.1,
+    "FS_z_cm": 1.3264879069858584,
+    "FS_U_ms": 0.6186725164477868,
+    "FS_Q_mLs": 12.648742303335922
+   },
+   "2": {
+    "cls": "low",
+    "chi_t": 0.9999434604462897,
+    "dep": 0.04799728610142141,
+    "F_int": 0.04799999999999951,
+    "radial_t": 0.06553801324196977,
+    "V05_uh_ms": 0.030271139558175793,
+    "FS_uh_ms": 0.10798492638161204,
+    "FS_exit_ms": 0.1,
+    "FS_z_cm": 0.9897519748721876,
+    "FS_U_ms": 0.562729027814729,
+    "FS_Q_mLs": 8.018325890188677
+   },
+   "3": {
+    "cls": "cut",
+    "chi_t": 0.02653478739340211,
+    "dep": 0.00018383810174066903,
+    "F_int": 0.0069281919999999875,
+    "radial_t": 0.3382312742167486,
+    "V05_uh_ms": 0.14400000000000004,
+    "FS_uh_ms": 0.144,
+    "FS_exit_ms": 0.11790698390400427,
+    "FS_z_cm": 1.6562584364838733,
+    "FS_U_ms": 0.6688523702133549,
+    "FS_Q_mLs": 3.6659295661727396
+   }
+  },
+  "push_heart": {
+   "1": {
+    "cls": "low",
+    "chi_t": 0.9742664776700612,
+    "dep": 0.10351581325244529,
+    "F_int": 0.10625000000000132,
+    "radial_t": 0.28672609273729444,
+    "V05_uh_ms": 0.0959999999999982,
+    "FS_uh_ms": 0.108,
+    "FS_exit_ms": 0.1,
+    "FS_z_cm": 1.7047969473994946,
+    "FS_U_ms": 0.6760038173559236,
+    "FS_Q_mLs": 20.658086527741453
+   },
+   "3": {
+    "cls": "low",
+    "chi_t": 0.9772423194675248,
+    "dep": 0.08062249135607004,
+    "F_int": 0.08249999999999923,
+    "radial_t": 0.2709487765929862,
+    "V05_uh_ms": 0.09600000000000071,
+    "FS_uh_ms": 0.10698181818181822,
+    "FS_exit_ms": 0.09999999999999999,
+    "FS_z_cm": 1.5243300942950861,
+    "FS_U_ms": 0.6492869662180937,
+    "FS_Q_mLs": 18.057017099488217
+   },
+   "5": {
+    "cls": "low",
+    "chi_t": 0.9497964804858705,
+    "dep": 0.04630257842368613,
+    "F_int": 0.04874999999999994,
+    "radial_t": 0.3137345432417458,
+    "V05_uh_ms": 0.09600000000000104,
+    "FS_uh_ms": 0.10640000000000002,
+    "FS_exit_ms": 0.10000000000000002,
+    "FS_z_cm": 1.5807022927328696,
+    "FS_U_ms": 0.6577490325604357,
+    "FS_Q_mLs": 15.074056643504218
+   },
+   "7": {
+    "cls": "cut",
+    "chi_t": 0.014303411417864462,
+    "dep": 0.00015576415034054413,
+    "F_int": 0.010890000000000009,
+    "radial_t": 0.34366863484666693,
+    "V05_uh_ms": 0.14399999999999993,
+    "FS_uh_ms": 0.144,
+    "FS_exit_ms": 0.10328539265947356,
+    "FS_z_cm": 1.8383155165461456,
+    "FS_U_ms": 0.695109706698413,
+    "FS_Q_mLs": 2.6761812146302444
+   }
+  },
+  "layered_heart": {
+   "1": {
+    "cls": "low",
+    "chi_t": 0.5214341838944729,
+    "dep": 0.054437728798582996,
+    "F_int": 0.10440000000000003,
+    "radial_t": 0.4288505279616543,
+    "V05_uh_ms": 0.10369505113759467,
+    "FS_uh_ms": 0.10375196804481471,
+    "FS_exit_ms": 0.1,
+    "FS_z_cm": 1.8934403852841792,
+    "FS_U_ms": 0.702840750460747,
+    "FS_Q_mLs": 9.428572714345108
+   },
+   "2": {
+    "cls": "low",
+    "chi_t": 0.33515303335036567,
+    "dep": 0.04826203680245262,
+    "F_int": 0.14399999999999988,
+    "radial_t": 0.4864838580042282,
+    "V05_uh_ms": 0.1067867723041042,
+    "FS_uh_ms": 0.10756868815326028,
+    "FS_exit_ms": 0.10000000000000002,
+    "FS_z_cm": 2.495795216758713,
+    "FS_U_ms": 0.7824063045312464,
+    "FS_Q_mLs": 12.48575590478116
+   },
+   "3": {
+    "cls": "cut",
+    "chi_t": 0.02576288898149857,
+    "dep": 0.00021898455634273764,
+    "F_int": 0.008499999999999992,
+    "radial_t": 0.33801455295025046,
+    "V05_uh_ms": 0.14400000000000013,
+    "FS_uh_ms": 0.14400126840218588,
+    "FS_exit_ms": 0.10724699711588742,
+    "FS_z_cm": 1.7107573509339562,
+    "FS_U_ms": 0.676764487879374,
+    "FS_Q_mLs": 4.499997097757507
+   }
+  },
+  "tulip": {
+   "1": {
+    "cls": "low",
+    "chi_t": 0.5214341838944729,
+    "dep": 0.054437728798582996,
+    "F_int": 0.10440000000000003,
+    "radial_t": 0.4288505279616543,
+    "V05_uh_ms": 0.10369505113759467,
+    "FS_uh_ms": 0.10481437012437714,
+    "FS_exit_ms": 0.1,
+    "FS_z_cm": 1.8939621149666392,
+    "FS_U_ms": 0.7029120126572225,
+    "FS_Q_mLs": 9.365359141476175
+   },
+   "2": {
+    "cls": "low",
+    "chi_t": 0.33515303335036567,
+    "dep": 0.04826203680245262,
+    "F_int": 0.14399999999999988,
+    "radial_t": 0.4864838580042282,
+    "V05_uh_ms": 0.1067867723041042,
+    "FS_uh_ms": 0.10906905197994986,
+    "FS_exit_ms": 0.10000036723007119,
+    "FS_z_cm": 2.495168863309359,
+    "FS_U_ms": 0.7823340047745386,
+    "FS_Q_mLs": 12.406971999207604
+   },
+   "4": {
+    "cls": "low",
+    "chi_t": 0.33515303335036545,
+    "dep": 0.024131018401226344,
+    "F_int": 0.07200000000000009,
+    "radial_t": 0.48648385800422744,
+    "V05_uh_ms": 0.10678677230410356,
+    "FS_uh_ms": 0.10660981031767883,
+    "FS_exit_ms": 0.10000041675869442,
+    "FS_z_cm": 2.48847931538131,
+    "FS_U_ms": 0.7814983312060321,
+    "FS_Q_mLs": 11.963511276634911
+   },
+   "6": {
+    "cls": "low",
+    "chi_t": 0.9999524518101677,
+    "dep": 0.01679920119041087,
+    "F_int": 0.016800000000000054,
+    "radial_t": 0.06601904345070198,
+    "V05_uh_ms": 0.02,
+    "FS_uh_ms": 0.10941945555216542,
+    "FS_exit_ms": 0.09999999999999999,
+    "FS_z_cm": 0.6399357276084391,
+    "FS_U_ms": 0.4980515934687648,
+    "FS_Q_mLs": 6.244038605500903
+   },
+   "8": {
+    "cls": "cut",
+    "chi_t": 0.014303393148993346,
+    "dep": 0.00012036305334877878,
+    "F_int": 0.008414999999999983,
+    "radial_t": 0.34366860006234046,
+    "V05_uh_ms": 0.1440000000000001,
+    "FS_uh_ms": 0.15835294117647059,
+    "FS_exit_ms": 0.1,
+    "FS_z_cm": 1.8122910172028237,
+    "FS_U_ms": 0.6914271455295881,
+    "FS_Q_mLs": 2.5599063619774305
+   }
+  },
+  "leaf": {
+   "1": {
+    "cls": "low",
+    "chi_t": 0.5214341838944729,
+    "dep": 0.054437728798582996,
+    "F_int": 0.10440000000000003,
+    "radial_t": 0.4288505279616543,
+    "V05_uh_ms": 0.10369505113759467,
+    "FS_uh_ms": 0.10481437012437714,
+    "FS_exit_ms": 0.1,
+    "FS_z_cm": 1.8939851450606568,
+    "FS_U_ms": 0.7029151336635145,
+    "FS_Q_mLs": 9.365359141476175
+   },
+   "2": {
+    "cls": "low",
+    "chi_t": 0.33515303335036567,
+    "dep": 0.04826203680245262,
+    "F_int": 0.14399999999999988,
+    "radial_t": 0.4864838580042282,
+    "V05_uh_ms": 0.1067867723041042,
+    "FS_uh_ms": 0.10909373735162249,
+    "FS_exit_ms": 0.1,
+    "FS_z_cm": 2.491997017519326,
+    "FS_U_ms": 0.781912532511187,
+    "FS_Q_mLs": 12.482854846355135
+   },
+   "3": {
+    "cls": "low",
+    "chi_t": 0.7118675617001952,
+    "dep": 0.04271205370201172,
+    "F_int": 0.06000000000000001,
+    "radial_t": 0.3724966826537469,
+    "V05_uh_ms": 0.06330721777693914,
+    "FS_uh_ms": 0.10352104447084254,
+    "FS_exit_ms": 0.1,
+    "FS_z_cm": 1.3957018349084644,
+    "FS_U_ms": 0.6294553310171946,
+    "FS_Q_mLs": 7.668669275958356
+   },
+   "4": {
+    "cls": "low",
+    "chi_t": 0.999969772339332,
+    "dep": 0.012649617620092557,
+    "F_int": 0.012650000000000007,
+    "radial_t": 0.05453769389347148,
+    "V05_uh_ms": 0.025181519696334337,
+    "FS_uh_ms": 0.10224348034011971,
+    "FS_exit_ms": 0.09999999999999999,
+    "FS_z_cm": 0.6609820414734932,
+    "FS_U_ms": 0.5021040831569228,
+    "FS_Q_mLs": 5.624965832231361
+   },
+   "6": {
+    "cls": "cut",
+    "chi_t": 0.02927996306255168,
+    "dep": 0.00021387246654622357,
+    "F_int": 0.0073043967333333475,
+    "radial_t": 0.3245391221473136,
+    "V05_uh_ms": 0.14400000000000002,
+    "FS_uh_ms": 0.1544000000000001,
+    "FS_exit_ms": 0.1,
+    "FS_z_cm": 1.384353350071345,
+    "FS_U_ms": 0.6277819106059029,
+    "FS_Q_mLs": 1.8120931864242296
+   }
+  },
+  "swan": {
+   "1": {
+    "cls": "low",
+    "chi_t": 0.5214341838944729,
+    "dep": 0.054437728798582996,
+    "F_int": 0.10440000000000003,
+    "radial_t": 0.4288505279616543,
+    "V05_uh_ms": 0.10369505113759467,
+    "FS_uh_ms": 0.10481437012437714,
+    "FS_exit_ms": 0.1,
+    "FS_z_cm": 1.8939621149666392,
+    "FS_U_ms": 0.7029120126572225,
+    "FS_Q_mLs": 9.365359141476175
+   },
+   "2": {
+    "cls": "low",
+    "chi_t": 0.33515303335036567,
+    "dep": 0.04826203680245262,
+    "F_int": 0.14399999999999988,
+    "radial_t": 0.4864838580042282,
+    "V05_uh_ms": 0.1067867723041042,
+    "FS_uh_ms": 0.10907014247092037,
+    "FS_exit_ms": 0.10000000000000002,
+    "FS_z_cm": 2.495168863309359,
+    "FS_U_ms": 0.7823340047745386,
+    "FS_Q_mLs": 12.406971999207604
+   },
+   "4": {
+    "cls": "low",
+    "chi_t": 0.9913216153309613,
+    "dep": 0.044014679720694665,
+    "F_int": 0.04439999999999998,
+    "radial_t": 0.1600837279037043,
+    "V05_uh_ms": 0.05104170614848867,
+    "FS_uh_ms": 0.10371743014123727,
+    "FS_exit_ms": 0.1,
+    "FS_z_cm": 0.5525700909586498,
+    "FS_U_ms": 0.4805353804311261,
+    "FS_Q_mLs": 5.164434601047381
+   },
+   "6": {
+    "cls": "cut",
+    "chi_t": 0.00022281140856249363,
+    "dep": 1.5931015712218385e-06,
+    "F_int": 0.007150000000000041,
+    "radial_t": 0.28440105841218233,
+    "V05_uh_ms": 0.1520526224699848,
+    "FS_uh_ms": 0.1595387945588831,
+    "FS_exit_ms": 0.10000000000000002,
+    "FS_z_cm": 1.6768012729542994,
+    "FS_U_ms": 0.6719288725405641,
+    "FS_Q_mLs": 2.4580699259360954
+   },
+   "8": {
+    "cls": "low",
+    "chi_t": 0.9998709472613473,
+    "dep": 0.008998838525352099,
+    "F_int": 0.008999999999999973,
+    "radial_t": 0.06236074109311592,
+    "V05_uh_ms": 0.02400000000000016,
+    "FS_uh_ms": 0.12906847681973566,
+    "FS_exit_ms": 0.1,
+    "FS_z_cm": 0.32228133428384353,
+    "FS_U_ms": 0.43096581887950247,
+    "FS_Q_mLs": 2.158474516710786
+   },
+   "9": {
+    "cls": "low",
+    "chi_t": 0.9999265550256021,
+    "dep": 0.0029997796650768106,
+    "F_int": 0.0030000000000000044,
+    "radial_t": 0.06366080829149075,
+    "V05_uh_ms": 0.011313708498984722,
+    "FS_uh_ms": 0.10494794312084336,
+    "FS_exit_ms": 0.10000000000000002,
+    "FS_z_cm": 0.3006826103735496,
+    "FS_U_ms": 0.42602071684028925,
+    "FS_Q_mLs": 2.6735796071586075
+   },
+   "11": {
+    "cls": "cut",
+    "chi_t": 0.0005808091874868064,
+    "dep": 6.900013147343269e-07,
+    "F_int": 0.0011880000000000016,
+    "radial_t": 0.2607061303968743,
+    "V05_uh_ms": 0.16178998732925354,
+    "FS_uh_ms": 0.16179003591876978,
+    "FS_exit_ms": 0.13578223451474816,
+    "FS_z_cm": 1.2000000000000002,
+    "FS_U_ms": 0.5982808704947871,
+    "FS_Q_mLs": 1.0
+   }
+  }
+ },
+ "kappa_t_grid": "0.05..1.0 step 0.05 (kappa_t = 0 makes J_oth infinite)",
+ "amendments": [
+  "s fixed at 1 for cuts (before optimisation)",
+  "S3 maps at 5/10/20/30 deg (before optimisation)"
+ ],
+ "addenda": [
+  {
+   "written": "2026-10-13 21:14:13",
+   "after": "S1 design finished (all alphas), S2/S3 running; nothing of S1 was re-optimised because of this",
+   "sensitivity": "S1_V50: S1 with V(t) >= 50 mL instead of 20 mL (the S1 optimum empties the pitcher to 22-43 mL at 78-80 deg; the video's late-pour fill is ~60 mL (20-130) at 72.5-77 deg). Same objective, same grids; reported as a labelled sensitivity, not as a spec; 128^2 screen only if its J or unreachable list differs materially from S1.",
+   "reporting": "the video hand (60 deg/s, 2 m/s^2, 90 deg/s yaw) is checked and reported (tilt tracking error, yaw rate), not imposed; the ideal hand (300 deg/s yaw) bounds the free yaws as pre-registered"
+  }
+ ],
+ "corrections": [
+  {
+   "written": "2026-10-13 21:25:46",
+   "after": "the first 128^2 screen (v1, kept in design/v1/: S1 6/6 formed, S2/S3 with asymmetric curls in push_heart, layered_heart, tulip)",
+   "what": [
+    "roll: the roll's side exit component u0 sin(roll) sin(alpha_lip) rotated the horizontal jet of FIXED-direction strokes by up to ~24 deg at alpha 20 (S2/S3 chose roll +-20 for J gains < 1e-4) -> this broke the pre-registered rule 'yaw keeps the V0.5 controls' horizontal jet direction where it is load-bearing'. Fixed: roll = 0 for fixed-direction strokes; roll in {-20, 0, 20} only for the free-yaw strokes (whose direction is free anyway). At alpha 0 (S1 v1) the side component is zero, so S1 v1 was not affected by this.",
+    "ties: equal-cost yaw / roll candidates were resolved by np.argmin (the first grid value), which put tulip #6 at -165 deg and leaf #4 at -105 deg for no gain (the tulip base white was pushed left). Fixed with a tie-break regulariser 1e-5 x [(angle to the circular mean of the neighbouring fixed strokes' yaw / 90 deg)^2 + (roll / 20 deg)^2] added to the stroke cost (J changes < 1e-4; reported J excludes it)."
+   ],
+   "unchanged": "objective, weights, grids, bounds, fills, alpha scan, closure search, LB set, free-yaw set and windows"
+  }
+ ]
+}

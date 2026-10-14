@@ -66,6 +66,10 @@ PITCHER LOOP (the design poured by the full pitcher model with v05_pitcher_check
   python3 -m latte_imex.v05_pourable loop_check --tag S1                     (design-table records == PourF records)
   python3 -m latte_imex.v05_pourable loop_solve --tag S1 --pattern heart --N 256 [--kind pitcher|wanted]
                                                                              -> loop/runs256/PLS1_heart_N256/
+ROBUST (hand errors on the S1 design; prereg <review>/v05pour/robust/prereg.json; output <review>/v05pour/robust/):
+  python3 -m latte_imex.v05_pourable robust_check                            (unperturbed rb_program == the S1 Solve runs)
+  python3 -m latte_imex.v05_pourable robust_inlet                            -> robust/inlet.json (per-stroke chi, z, clip)
+  python3 -m latte_imex.v05_pourable robust_solve --tag P1 --pattern heart --N 256   -> robust/runs/P1_heart_N256/
 In code: S = Surrogate("b20", wall="resolved", cup="held"); S.tilt(Q, V); S.jet(Q, V, z_tip, roll, alpha);
 S.z_min(foot_x, foot_y, yaw, Q, V, roll); D = deliver(S, sched, fill_mL, alpha=10, hand="ideal"); stroke_summary(D, strokes).
 """
@@ -1004,8 +1008,8 @@ def selftest(out=OUT):
 #   pitcher const.  alpha_lip scanned over DS_ALPHAS (one value for all patterns)
 #   per pattern     start fill [mL] (V(t) = fill - poured >= DS_VMIN)
 #   per stroke      wanted tip height z_k (delivered z(t) = max(z_k, Zreq(t)), Zreq = 0.25 s running max of the surrogate
-#                   z_min at the stream foot), flow scale s_k of Codex's F (before the spout lag; 1 for cuts), roll, yaw
-#                   (Codex's jet direction where it is not degenerate, free on a 15 deg grid for FREE_YAW within the
+#                   z_min at the stream foot), flow scale s_k of the V0.5 controls' F (before the spout lag; 1 for cuts), roll, yaw
+#                   (the V0.5 controls' jet direction where it is not degenerate, free on a 15 deg grid for FREE_YAW within the
 #                   yaw-rate window of the neighbours)
 #   no 5 Hz pulsation; spout lag 0.08 s, 0.1 s ramps, bridges >= 0.3 s, ztr transitions (drvf rules)
 #   objective       J = J_chi + J_s + J_uh + LAM_OTH J_oth  (see prereg.json; per-stroke additive)
@@ -1048,7 +1052,7 @@ def _refs():
 
 
 def cup_tilt_fn(pattern):
-    """S3: cup tilt [deg] vs Codex time from the video series (clip time = Codex time, nearest value held outside)."""
+    """S3: cup tilt [deg] vs control time from the video series (clip time = control time, nearest value held outside)."""
     ser = _prereg()["specs"]["S3"]["cup_tilt_series_deg"][pattern]
     ts, cs = (np.array(v, float) for v in zip(*ser))
     return lambda t: np.interp(np.asarray(t, float), ts, cs)
@@ -1194,7 +1198,7 @@ def pourf_class():
 
 def make_program(pattern, z_cm=None, s_scale=None, closure=None, lat="exitmin", ulaw="fs", pulse=0.0, flow_phase=None,
                  lag=0.08):
-    """PourF on Codex's control of `pattern` (drvf flags --lag 0.08 --ztr, bridges 0.3 s, ramps 0.1 s).  z_cm {phase index
+    """PourF on the V0.5 controls' control of `pattern` (drvf flags --lag 0.08 --ztr, bridges 0.3 s, ramps 0.1 s).  z_cm {phase index
     (0-based): wanted height [cm]} overrides FS's P2 heights; closure: solver parameters (FS's by default); pulse = cap of
     the 5 Hz flow modulation (0: none)."""
     PourF = pourf_class()
@@ -1225,7 +1229,7 @@ def flow_schedule(prog):
 
 def design_samples(pattern, s_scale=None, dt=DS_DT):
     """Samples (dt, mid-interval) of the flowing strokes' own phase windows: Qraw [mL/s, before the 1-32 clip], foot x, y
-    [m], hand velocity [m/s], poured volume before t [mL], Codex's jet b [m/s]; per 0-based phase index."""
+    [m], hand velocity [m/s], poured volume before t [mL], the V0.5 controls' jet b [m/s]; per 0-based phase index."""
     from .v05_program import Program
     prog = make_program(pattern, s_scale=s_scale)
     fs_ = flow_schedule(prog)
@@ -1353,7 +1357,7 @@ out_ref = {}
 
 
 def yaw_windows(pattern, smp_all, step=15.0):
-    """Yaw candidates [deg] per flowing stroke: Codex's jet direction (fixed) or, for FREE_YAW, a 15 deg grid inside the
+    """Yaw candidates [deg] per flowing stroke: the V0.5 controls' jet direction (fixed) or, for FREE_YAW, a 15 deg grid inside the
     window reachable from the fixed neighbours at 0.9 x DS_YAW_RATE (bridge: its duration; directly adjacent: 0.1 s)."""
     st = smp_all["strokes"]
     prog = smp_all["prog"]
@@ -2437,6 +2441,193 @@ def pl_solve(name, kind="pitcher", N=256, out=PLOUT, tag=None):
     return od
 
 
+# =========================================================================== ROBUST: hand errors on a design
+# Hand-error robustness of a final design (prereg <review>/v05pour/robust/prereg.json).  A perturbation is a per-stroke
+# triple (dz [mm] on the DELIVERED tip height, f = flow factor on the command before the spout lag, dt [ms] = flow
+# timing relative to the path).  Path, yaw and roll are never changed; the pitcher tables are recomputed from the
+# perturbed flow; the tip never goes below the (perturbed) clearance: the extra lift is plan_lift of the shortfall.
+RBOUT = os.path.join(PC.REVIEW, "v05pour", "robust")
+RB_SPEC = "S1"
+RB_ZHW = 0.11            # [m/s] drvf's ztr height-transition speed (half-width 0.5 max(|dz| / v, 0.05 s))
+RB_THW = 0.08            # [s] half-width of the timing ramp between two adjacent flowing strokes
+
+
+def rb_pert(name, pattern):
+    """Per-stroke perturbation {phase index (0-based): (dz_mm, f, dt_ms)} of a named run from robust/prereg.json
+    ('nominal', 'P1'..'P6', 'R1'..'R3')."""
+    with open(os.path.join(RBOUT, "prereg.json")) as fh:
+        pre = json.load(fh)
+    ns = pre["flowing_strokes"][pattern]
+    if name == "nominal":
+        return {n - 1: (0.0, 1.0, 0.0) for n in ns}
+    P = pre["perturbations"]
+    if name in P and name != "R":
+        q = P[name]
+        return {n - 1: (q["dz_mm"], q["f"], q["dt_ms"]) for n in ns}
+    d = P["R"]["draws"][name][pattern]
+    return {n - 1: (d[str(n)]["dz_mm"], d[str(n)]["f"], d[str(n)]["dt_ms"]) for n in ns}
+
+
+def rb_profile(prog, vals, hw_fn):
+    """Per-stroke values {k: v} -> a time series on prog.tg: v_k inside stroke k, linear across a bridge/stop between two
+    flowing strokes, held outside, and a linear ramp of half-width hw_fn(|dv|) centred on a boundary between two
+    adjacent flowing strokes."""
+    fl = sorted(vals)
+    nt, nv = [], []
+    for i, k in enumerate(fl):
+        t0, t1 = prog.events[k], prog.events[k + 1]
+        a = t0
+        if i > 0 and fl[i - 1] == k - 1:
+            a = t0 + hw_fn(abs(vals[k] - vals[k - 1]))
+        b = t1
+        if i + 1 < len(fl) and fl[i + 1] == k + 1:
+            b = t1 - hw_fn(abs(vals[k + 1] - vals[k]))
+        nt += [a, b]
+        nv += [vals[k], vals[k]]
+    return np.interp(prog.tg, nt, nv)
+
+
+def rb_program(pattern, pert, F=None, SS=None, nominal_tab=None):
+    """PourF of the final design with the hand errors `pert` (rb_pert format).  Returns (prog, info)."""
+    F = F or load_final(RB_SPEC)
+    D = F["design"]
+    P = D["patterns"][pattern]
+    st = {int(r["n"]) - 1: r for r in P["strokes"].values()}
+    SS = SS or SpecSurrogate(F["spec"])
+    clo = dict(FS_FIXED, B_dep=D["B"], p_dep=D["p"], kappa_t=D["kt"], kappa_r=F["closure"]["kappa_r"])
+    z_cm = {k: r["z_mm"] / 10.0 for k, r in st.items()}
+    yaw = {k: r["yaw"] for k, r in st.items()}
+    roll = {k: r["roll"] for k, r in st.items()}
+    if nominal_tab is None:
+        s0 = {k: r["s"] for k, r in st.items() if abs(r["s"] - 1.0) > 1e-12}
+        p0 = make_program(pattern, z_cm=z_cm, s_scale=s0, closure=clo, lat="pitcher", ulaw="pitcher", pulse=0.0)
+        nominal_tab = pitcher_tables(p0, SS, D["alpha"], P["fill"], yaw, roll, None)
+    s_sc = {k: r["s"] * pert[k][1] for k, r in st.items()}
+    s_sc = {k: v for k, v in s_sc.items() if abs(v - 1.0) > 1e-12}
+    prog = make_program(pattern, z_cm=z_cm, s_scale=s_sc, closure=clo, lat="pitcher", ulaw="pitcher", pulse=0.0)
+    tg = prog.tg
+    dts = {k: pert[k][2] * 1e-3 for k in st}
+    if any(abs(v) > 0 for v in dts.values()):
+        delta = rb_profile(prog, dts, lambda dv: RB_THW)
+        E = np.interp(tg - delta, tg, prog.Ecmd, left=0.0, right=0.0)
+        a = 1.0 - math.exp(-float(tg[1] - tg[0]) / prog.lag)
+        Ef = np.empty_like(E)
+        y = 0.0
+        for i, e in enumerate(E):
+            y += a * (e - y)
+            Ef[i] = y
+        prog.Ecmd, prog.Ef = E, Ef
+    tab = pitcher_tables(prog, SS, D["alpha"], P["fill"], yaw, roll, None)
+    dz = rb_profile(prog, {k: pert[k][0] * 1e-3 for k in st}, lambda dv: 0.5 * max(dv / RB_ZHW, 0.05))
+    stop = np.array([prog.cls[k] == "stop" for k in range(len(prog.phases))])[tab["k"]]
+    base = nominal_tab["L"] + dz
+    short = np.where(stop, 0.0, np.maximum(tab["zmin"] - (tab["zw"] + base), 0.0))
+    Lx = plan_lift(short, float(tg[1] - tg[0]), "ideal")
+    tab.update(L_nom=nominal_tab["L"], dz=dz, L_x=Lx, L=base + Lx)
+    fs_ = flow_schedule(prog)
+    Vraw = P["fill"] - fs_["cum"]
+    prog.ptab = tab
+    info = dict(pert={str(k + 1): list(v) for k, v in pert.items()}, fill=P["fill"], poured_mL=float(fs_["cum"][-1]),
+                V_end_raw=float(Vraw[-1]), V_min_raw=float(Vraw.min()), V_clamped=bool(Vraw.min() < DS_VMIN),
+                z_below_zmin_mm=float(np.max(np.where(stop | (fs_["Q"] <= 0), -1.0, tab["zmin"] - tab["zw"] - tab["L"])) * 1e3))
+    return prog, info
+
+
+def rb_inlet(prog, F, nominal=None):
+    """Per-stroke inlet numbers (inlet_strokes) + the extra clearance lift L_x (flow-weighted mean, max) per stroke."""
+    D = F["design"]
+    ex = inlet_strokes(prog, D["B"], D["p"])
+    tab = prog.ptab
+    fs_ = flow_schedule(prog)
+    for n, r in ex.items():
+        sel = (tab["k"] == n - 1) & (fs_["Q"] > 0)
+        w = fs_["Q"][sel]
+        r["clip_mm"] = float(np.sum(w * tab["L_x"][sel]) / max(np.sum(w), 1e-12) * 1e3) if sel.any() else 0.0
+        r["clip_max_mm"] = float(tab["L_x"][sel].max() * 1e3) if sel.any() else 0.0
+        r["dz_mm"] = float(np.sum(w * tab["dz"][sel]) / max(np.sum(w), 1e-12) * 1e3) if sel.any() else 0.0
+        if nominal is not None and n in nominal:
+            for key in ("chi", "z_mm", "Q_mLs", "U_ms", "uh_ms", "V_mL", "tilt"):
+                r["d_" + key] = r[key] - nominal[n][key]
+    return ex
+
+
+def rb_check(patterns=PC.PATTERNS):
+    """Identity check: the unperturbed rb_program replays the Solve step's S1 inlet logs row for row."""
+    F = load_final(RB_SPEC)
+    global DS_VMIN
+    DS_VMIN = F.get("vmin_mL", DS_VMIN)
+    SS = SpecSurrogate(F["spec"])
+    out = {}
+    for p in patterns:
+        ref = np.load(os.path.join(DSN, "runs", f"{RB_SPEC}_{p}_N256", "inlet_log.npy"))
+        prog, info = rb_program(p, rb_pert("nominal", p), F, SS)
+        n0 = len(prog.log)
+        for t in ref[:, 0]:
+            prog(float(t))
+        got = np.array(prog.log[n0:])
+        cols = [j for j in range(ref.shape[1]) if j != 1]
+        same = got.shape == ref.shape and bool(np.array_equal(got[:, cols], ref[:, cols]))
+        dmax = float(np.max(np.abs(got[:, cols] - ref[:, cols]))) if got.shape == ref.shape else None
+        out[p] = dict(rows=int(ref.shape[0]), identical=same, max_abs_diff=dmax, L_x_max_mm=float(prog.ptab["L_x"].max() * 1e3))
+        print(p, out[p], flush=True)
+    with open(os.path.join(RBOUT, "identity_check.json"), "w") as fh:
+        json.dump(out, fh, indent=1)
+    return out
+
+
+def rb_inlet_all(names=("nominal", "P1", "P2", "P3", "P4", "P5", "P6", "R1", "R2", "R3"), patterns=PC.PATTERNS):
+    """Perturbed inlet numbers of every run (no solver) -> robust/inlet.json."""
+    F = load_final(RB_SPEC)
+    global DS_VMIN
+    DS_VMIN = F.get("vmin_mL", DS_VMIN)
+    SS = SpecSurrogate(F["spec"])
+    out = {}
+    for p in patterns:
+        nomprog, _ = rb_program(p, rb_pert("nominal", p), F, SS)
+        nom = rb_inlet(nomprog, F)
+        out[p] = {}
+        for nm in names:
+            prog, info = rb_program(p, rb_pert(nm, p), F, SS, nominal_tab=nomprog.ptab)
+            ex = rb_inlet(prog, F, nom)
+            out[p][nm] = dict(info=info, strokes={str(n): r for n, r in ex.items()})
+            print(p, nm, "chi", " ".join(f"{n}:{r['chi']:.3f}" for n, r in ex.items()),
+                  "clip", " ".join(f"{n}:{r['clip_mm']:.1f}/{r['clip_max_mm']:.1f}" for n, r in ex.items() if r["clip_max_mm"] > 0.05),
+                  f"Vend {info['V_end_raw']:.1f}", flush=True)
+    with open(os.path.join(RBOUT, "inlet.json"), "w") as fh:
+        json.dump(_jsonable(out), fh, indent=1, default=float)
+    return out
+
+
+def rb_solve(name, pattern, N=256):
+    """One robustness run (solver unchanged, as solve_design) -> robust/runs/<name>_<pattern>_N<N>/."""
+    import latte_imex.run as RR
+    F = load_final(RB_SPEC)
+    global DS_VMIN
+    DS_VMIN = F.get("vmin_mL", DS_VMIN)
+    prog, info = rb_program(pattern, rb_pert(name, pattern), F)
+    RR.v05_program = lambda name_: prog
+    out = os.path.join(RBOUT, "runs", f"{name}_{pattern}_N{N}")
+    os.makedirs(out, exist_ok=True)
+    t0 = time.time()
+    sol, m = RR.run(pattern, N=N, out=out, video=False, quiet=True, control="v05")
+    wall = time.time() - t0
+    np.savez_compressed(os.path.join(out, "c.npz"), c=sol.concentration().astype(np.float32), mask=sol.g.mask.copy())
+    np.save(os.path.join(out, "inlet_log.npy"), np.array(prog.log))
+    np.savez_compressed(os.path.join(out, "ptab.npz"), **prog.ptab)
+    for fn in ("snapshots_c.npz", "final_state.npz"):
+        try:
+            os.remove(os.path.join(out, fn))
+        except OSError:
+            pass
+    res = dict(tag=name, spec=RB_SPEC, pattern=pattern, N=N, params=dict(prog.config["parameters"]), wall_s=wall,
+               stats=m["stats"], ledger=m["ledger"], T=m["T"], extra=info)
+    with open(os.path.join(out, "res.json"), "w") as fh:
+        json.dump(_jsonable(res), fh, indent=1, default=float)
+    print(json.dumps(dict(tag=name, pattern=pattern, N=N, wall_s=round(wall, 1), deposited=m["ledger"].get("deposited"))),
+          flush=True)
+    return out
+
+
 # =========================================================================== CLI
 def main(argv=None):
     ap = argparse.ArgumentParser()
@@ -2517,6 +2708,12 @@ def main(argv=None):
                   if os.path.exists(os.path.join(PLOUT, "runs", pl_name(a.tag or "S1", p, a.variant) + ".npz"))])
     elif a.cmd == "loop_solve":                   # loop_solve --tag S1 --pattern heart --N 256 [--kind pitcher|wanted]
         pl_solve(pl_name(a.tag or "S1", a.pattern, a.variant), a.kind, a.N)
+    elif a.cmd == "robust_check":                 # robust_check   (unperturbed rb_program == the S1 Solve runs)
+        rb_check()
+    elif a.cmd == "robust_inlet":                 # robust_inlet   -> robust/inlet.json
+        rb_inlet_all()
+    elif a.cmd == "robust_solve":                 # robust_solve --tag P1 --pattern heart --N 256
+        rb_solve(a.tag, a.pattern, a.N)
     elif a.cmd == "report":
         closed_form_check()
         jet_tables()

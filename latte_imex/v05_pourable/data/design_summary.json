@@ -1,0 +1,1735 @@
+{
+ "S1": {
+  "alpha_lip": 0.0,
+  "closure": {
+   "cp": 1.36,
+   "beta": 3.0,
+   "nu": 0.001,
+   "D": 1e-07,
+   "kappa_Q": 2.0,
+   "kappa_c": 1.0,
+   "B_dep": 1617.8960968517451,
+   "p_dep": 7.0,
+   "kappa_t": 0.79,
+   "kappa_r": 0.036982430119419096
+  },
+  "J_design": 0.0077258160505644345,
+  "J_inlet": 0.01303334789428363,
+  "J_parts": {
+   "chi": 0.0053047306731936784,
+   "s": 0.0,
+   "uh": 0.00011579965557710434,
+   "oth": 0.0076128175655128475
+  },
+  "alpha_scan": {
+   "0.0": {
+    "J": 0.0077258160505644345,
+    "J_pass1": 0.0077258160505644345,
+    "B": 1617.8960968517451,
+    "p": 7.0,
+    "kt": 0.79,
+    "fills": {
+     "heart": 100.0,
+     "push_heart": 100.0,
+     "layered_heart": 100.0,
+     "tulip": 125.0,
+     "leaf": 125.0,
+     "swan": 100.0
+    }
+   },
+   "10.0": {
+    "J": 0.015689831744775166,
+    "J_pass1": 0.015681659242234233,
+    "B": 1649.7603993793982,
+    "p": 8.0,
+    "kt": 1.0,
+    "fills": {
+     "heart": 150.0,
+     "push_heart": 150.0,
+     "layered_heart": 150.0,
+     "tulip": 175.0,
+     "leaf": 150.0,
+     "swan": 125.0
+    }
+   },
+   "20.0": {
+    "J": 0.033860128113472825,
+    "J_pass1": 0.03385963598756238,
+    "B": 1630.5672911941285,
+    "p": 8.0,
+    "kt": 1.0,
+    "fills": {
+     "heart": 150.0,
+     "push_heart": 200.0,
+     "layered_heart": 250.0,
+     "tulip": 250.0,
+     "leaf": 250.0,
+     "swan": 100.0
+    }
+   },
+   "30.0": {
+    "J": 0.04420396038424501,
+    "J_pass1": 0.04420396038424501,
+    "B": 1520.0078670199464,
+    "p": 7.5,
+    "kt": 0.85,
+    "fills": {
+     "heart": 100.0,
+     "push_heart": 100.0,
+     "layered_heart": 100.0,
+     "tulip": 125.0,
+     "leaf": 125.0,
+     "swan": 100.0
+    }
+   }
+  },
+  "patterns": {
+   "heart": {
+    "fill": 100.0,
+    "poured": 64.58565163089074,
+    "V_end": 35.41434836910926,
+    "tilt_range": [
+     66.52622724939283,
+     79.47078997788395
+    ],
+    "J": 0.0008349785906561045,
+    "unreachable": [
+     {
+      "n": 3,
+      "why": "matched in the design (chi 0.027) but not in the inlet: the 0.08 s spout lag / ztr height transition carries the previous stroke's flow and height into this one",
+      "chi_t": 0.02653478739340211,
+      "chi": 0.06315814011933894
+     }
+    ],
+    "form128": "yes (seam 21 mm, FS128 30 mm)",
+    "metrics128": {
+     "iou04": 0.7,
+     "r_hp": -0.009,
+     "white": 0.272,
+     "white_ref": 0.255,
+     "hp_rel": 0.98,
+     "dips": [
+      0,
+      2
+     ],
+     "dips_ref": [
+      0,
+      0
+     ],
+     "chi": {
+      "1": 0.981,
+      "2": 0.978,
+      "3": 0.063
+     },
+     "iou04_FS128": 0.94,
+     "white_FS128": 0.277,
+     "wall_s": 18.0,
+     "deposited": 0.23908525812583908,
+     "retries": 0
+    },
+    "struct128": {
+     "tip_y": -0.266,
+     "lobe_bottom_y": 0.172,
+     "notch_depth_D": 0.264,
+     "axis_dark_len_D": 0.264
+    }
+   },
+   "push_heart": {
+    "fill": 100.0,
+    "poured": 57.45178370947894,
+    "V_end": 42.54821629052106,
+    "tilt_range": [
+     66.52622724939283,
+     80.2198995085414
+    ],
+    "J": 0.005574609551587588,
+    "unreachable": [],
+    "form128": "yes",
+    "metrics128": {
+     "iou04": 0.869,
+     "r_hp": 0.834,
+     "white": 0.245,
+     "white_ref": 0.27,
+     "hp_rel": 1.13,
+     "dips": [
+      2,
+      6
+     ],
+     "dips_ref": [
+      2,
+      8
+     ],
+     "chi": {
+      "1": 0.97,
+      "2": 0.684,
+      "3": 0.975,
+      "4": 0.685,
+      "5": 0.941,
+      "6": 0.484,
+      "7": 0.013
+     },
+     "iou04_FS128": 0.862,
+     "white_FS128": 0.248,
+     "wall_s": 15.7,
+     "deposited": 0.2041422433106275,
+     "retries": 0
+    },
+    "struct128": {
+     "y-0.1": {
+      "white_bands": 4,
+      "dark_seams": 4,
+      "amp": 0.78
+     },
+     "y+0.0": {
+      "white_bands": 5,
+      "dark_seams": 4,
+      "amp": 0.78
+     },
+     "y+0.1": {
+      "white_bands": 6,
+      "dark_seams": 5,
+      "amp": 0.56
+     }
+    }
+   },
+   "layered_heart": {
+    "fill": 100.0,
+    "poured": 65.4865479772558,
+    "V_end": 34.513452022744204,
+    "tilt_range": [
+     66.52622724939283,
+     80.68956060634042
+    ],
+    "J": 0.0007786676558723674,
+    "unreachable": [],
+    "form128": "partial (outline + curls c95 0.76/0.76; no bright axis line, axis c 0.47 vs FS128 0.59; as FSnp)",
+    "metrics128": {
+     "iou04": 0.847,
+     "r_hp": 0.33,
+     "white": 0.19,
+     "white_ref": 0.179,
+     "hp_rel": 1.29,
+     "dips": [
+      0,
+      2
+     ],
+     "dips_ref": [
+      0,
+      1
+     ],
+     "chi": {
+      "1": 0.519,
+      "2": 0.335,
+      "3": 0.025
+     },
+     "iou04_FS128": 0.875,
+     "white_FS128": 0.179,
+     "wall_s": 23.5,
+     "deposited": 0.10049838794870075,
+     "retries": 0
+    },
+    "struct128": {
+     "x-0.10": {
+      "bright": 2,
+      "dark": 1,
+      "amp": 0.16
+     },
+     "x-0.05": {
+      "bright": 2,
+      "dark": 1,
+      "amp": 0.4
+     },
+     "x+0.05": {
+      "bright": 3,
+      "dark": 2,
+      "amp": 0.18
+     },
+     "x+0.10": {
+      "bright": 2,
+      "dark": 1,
+      "amp": 0.17
+     },
+     "y+0.10": {
+      "bright": 4,
+      "dark": 3,
+      "amp": 0.34
+     },
+     "curl_c95": [
+      0.755,
+      0.764
+     ],
+     "axis_upper_c_mean": 0.47
+    }
+   },
+   "tulip": {
+    "fill": 125.0,
+    "poured": 85.40070721181034,
+    "V_end": 39.59929278818966,
+    "tilt_range": [
+     63.34154579229046,
+     79.03359107374607
+    ],
+    "J": 0.0015799745780980432,
+    "unreachable": [],
+    "form128": "yes (3 stacked petals, base splits into two drops as FS)",
+    "metrics128": {
+     "iou04": 0.519,
+     "r_hp": -0.055,
+     "white": 0.214,
+     "white_ref": 0.226,
+     "hp_rel": 1.15,
+     "dips": [
+      2,
+      7
+     ],
+     "dips_ref": [
+      2,
+      6
+     ],
+     "chi": {
+      "1": 0.519,
+      "2": 0.334,
+      "3": 0.03,
+      "4": 0.334,
+      "5": 0.056,
+      "6": 0.983,
+      "7": 0.694,
+      "8": 0.02
+     },
+     "iou04_FS128": 0.618,
+     "white_FS128": 0.22,
+     "wall_s": 32.0,
+     "deposited": 0.13527051902531026,
+     "retries": 0
+    },
+    "struct128": {
+     "axis_bright": 3,
+     "axis_dark": 2,
+     "axis_amp": 0.29,
+     "off_dark": [
+      3,
+      2
+     ],
+     "base_center_c": 0.0
+    }
+   },
+   "leaf": {
+    "fill": 125.0,
+    "poured": 83.37517280862089,
+    "V_end": 41.62482719137911,
+    "tilt_range": [
+     63.34154579229046,
+     77.51109650723365
+    ],
+    "J": 0.00170512091309263,
+    "unreachable": [],
+    "form128": "yes (veins 4.25/line vs FS128 2.25)",
+    "metrics128": {
+     "iou04": 0.693,
+     "r_hp": -0.061,
+     "white": 0.248,
+     "white_ref": 0.258,
+     "hp_rel": 1.13,
+     "dips": [
+      1,
+      7
+     ],
+     "dips_ref": [
+      1,
+      5
+     ],
+     "chi": {
+      "1": 0.519,
+      "2": 0.338,
+      "3": 0.71,
+      "4": 0.976,
+      "5": 0.626,
+      "6": 0.029
+     },
+     "iou04_FS128": 0.787,
+     "white_FS128": 0.277,
+     "wall_s": 35.8,
+     "deposited": 0.15704492448090146,
+     "retries": 0
+    },
+    "struct128": {
+     "x-0.08": {
+      "veins": 5,
+      "amp": 0.12
+     },
+     "x-0.05": {
+      "veins": 5,
+      "amp": 0.09
+     },
+     "x+0.05": {
+      "veins": 4,
+      "amp": 0.11
+     },
+     "x+0.08": {
+      "veins": 3,
+      "amp": 0.19
+     },
+     "mean_veins": 4.25,
+     "mean_amp": 0.128,
+     "axis_upper_c_mean": 0.408
+    }
+   },
+   "swan": {
+    "fill": 100.0,
+    "poured": 78.10206614077453,
+    "V_end": 21.897933859225475,
+    "tilt_range": [
+     66.52622724939283,
+     80.51531894606863
+    ],
+    "J": 0.002559996604976897,
+    "unreachable": [],
+    "form128": "yes (continuous neck, head 11.3 mm^2 c>0.6)",
+    "metrics128": {
+     "iou04": 0.836,
+     "r_hp": 0.404,
+     "white": 0.252,
+     "white_ref": 0.258,
+     "hp_rel": 1.28,
+     "dips": [
+      2,
+      5
+     ],
+     "dips_ref": [
+      1,
+      2
+     ],
+     "chi": {
+      "1": 0.519,
+      "2": 0.334,
+      "3": 0.049,
+      "4": 0.98,
+      "5": 0.605,
+      "6": 0.016,
+      "7": 0.003,
+      "8": 0.977,
+      "9": 0.982,
+      "10": 0.862,
+      "11": 0.019
+     },
+     "iou04_FS128": 0.771,
+     "white_FS128": 0.262,
+     "wall_s": 35.0,
+     "deposited": 0.1519995822762283,
+     "retries": 0
+    },
+    "struct128": {
+     "neck_min_cmax": 0.587,
+     "neck_frac_cmax_gt_0p6": 0.882,
+     "neck_width_med_mm": 1.88,
+     "neck_width_max_mm": 15.94,
+     "head_area_mm2": 11.3,
+     "beak_left_x": -0.23,
+     "upper_neck_arc_c_min": 0.587,
+     "upper_neck_arc_c_mean": 0.702
+    }
+   }
+  }
+ },
+ "S2": {
+  "alpha_lip": 0.0,
+  "closure": {
+   "cp": 1.36,
+   "beta": 3.0,
+   "nu": 0.001,
+   "D": 1e-07,
+   "kappa_Q": 2.0,
+   "kappa_c": 1.0,
+   "B_dep": 1520.0078670199464,
+   "p_dep": 6.5,
+   "kappa_t": 0.4,
+   "kappa_r": 0.03839983300561809
+  },
+  "J_design": 0.0023701052230868927,
+  "J_inlet": 0.010083663919967442,
+  "J_parts": {
+   "chi": 0.007718835943653398,
+   "s": 0.0,
+   "uh": 3.519519291864523e-07,
+   "oth": 0.0023644760243848586
+  },
+  "alpha_scan": {
+   "0.0": {
+    "J": 0.0023701052230868927,
+    "J_pass1": 0.0023701052230868927,
+    "B": 1520.0078670199464,
+    "p": 6.5,
+    "kt": 0.4,
+    "fills": {
+     "heart": 125.0,
+     "push_heart": 125.0,
+     "layered_heart": 150.0,
+     "tulip": 175.0,
+     "leaf": 175.0,
+     "swan": 175.0
+    }
+   },
+   "10.0": {
+    "J": 0.002383494503888712,
+    "J_pass1": 0.002383494503888712,
+    "B": 1722.0883108585679,
+    "p": 8.0,
+    "kt": 0.5,
+    "fills": {
+     "heart": 150.0,
+     "push_heart": 175.0,
+     "layered_heart": 200.0,
+     "tulip": 200.0,
+     "leaf": 200.0,
+     "swan": 200.0
+    }
+   },
+   "20.0": {
+    "J": 0.003810260022685242,
+    "J_pass1": 0.003810260022685242,
+    "B": 1722.0883108585679,
+    "p": 7.0,
+    "kt": 0.81,
+    "fills": {
+     "heart": 175.0,
+     "push_heart": 175.0,
+     "layered_heart": 175.0,
+     "tulip": 200.0,
+     "leaf": 200.0,
+     "swan": 175.0
+    }
+   },
+   "30.0": {
+    "J": 0.013609866183316433,
+    "J_pass1": 0.013609918962428018,
+    "B": 1762.867680447896,
+    "p": 8.0,
+    "kt": 1.0,
+    "fills": {
+     "heart": 250.0,
+     "push_heart": 250.0,
+     "layered_heart": 250.0,
+     "tulip": 250.0,
+     "leaf": 250.0,
+     "swan": 200.0
+    }
+   }
+  },
+  "patterns": {
+   "heart": {
+    "fill": 125.0,
+    "poured": 64.58565163089074,
+    "V_end": 60.41434836910926,
+    "tilt_range": [
+     54.262301820839276,
+     65.21564753988812
+    ],
+    "J": 0.0034449676306304053,
+    "unreachable": [
+     {
+      "n": 3,
+      "why": "matched in the design (chi 0.027) but not in the inlet: the 0.08 s spout lag / ztr height transition carries the previous stroke's flow and height into this one",
+      "chi_t": 0.02653478739340211,
+      "chi": 0.060934487851192404
+     }
+    ],
+    "form128": "yes (seam 29 mm)",
+    "metrics128": {
+     "iou04": 0.722,
+     "r_hp": -0.033,
+     "white": 0.273,
+     "white_ref": 0.255,
+     "hp_rel": 1.0,
+     "dips": [
+      0,
+      2
+     ],
+     "dips_ref": [
+      0,
+      0
+     ],
+     "chi": {
+      "1": 0.982,
+      "2": 0.974,
+      "3": 0.061
+     },
+     "iou04_FS128": 0.966,
+     "white_FS128": 0.277,
+     "wall_s": 17.6,
+     "deposited": 0.2390089693481085,
+     "retries": 0
+    },
+    "struct128": {
+     "tip_y": -0.264,
+     "lobe_bottom_y": 0.255,
+     "notch_depth_D": 0.358,
+     "axis_dark_len_D": 0.358
+    }
+   },
+   "push_heart": {
+    "fill": 125.0,
+    "poured": 57.45178370947894,
+    "V_end": 67.54821629052105,
+    "tilt_range": [
+     54.262301820839276,
+     66.28979277329003
+    ],
+    "J": 0.004374212267535012,
+    "unreachable": [],
+    "form128": "yes",
+    "metrics128": {
+     "iou04": 0.895,
+     "r_hp": 0.798,
+     "white": 0.251,
+     "white_ref": 0.27,
+     "hp_rel": 1.08,
+     "dips": [
+      2,
+      8
+     ],
+     "dips_ref": [
+      2,
+      8
+     ],
+     "chi": {
+      "1": 0.97,
+      "2": 0.76,
+      "3": 0.975,
+      "4": 0.759,
+      "5": 0.942,
+      "6": 0.524,
+      "7": 0.013
+     },
+     "iou04_FS128": 0.916,
+     "white_FS128": 0.248,
+     "wall_s": 15.4,
+     "deposited": 0.20482755267702665,
+     "retries": 0
+    },
+    "struct128": {
+     "y-0.1": {
+      "white_bands": 4,
+      "dark_seams": 4,
+      "amp": 0.5
+     },
+     "y+0.0": {
+      "white_bands": 5,
+      "dark_seams": 4,
+      "amp": 0.76
+     },
+     "y+0.1": {
+      "white_bands": 6,
+      "dark_seams": 6,
+      "amp": 0.51
+     }
+    }
+   },
+   "layered_heart": {
+    "fill": 150.0,
+    "poured": 65.4865479772558,
+    "V_end": 84.5134520227442,
+    "tilt_range": [
+     51.72997774495196,
+     62.94628721449624
+    ],
+    "J": 0.0002306552090330219,
+    "unreachable": [],
+    "form128": "partial (as S1, axis c 0.38)",
+    "metrics128": {
+     "iou04": 0.683,
+     "r_hp": 0.274,
+     "white": 0.175,
+     "white_ref": 0.179,
+     "hp_rel": 1.32,
+     "dips": [
+      0,
+      2
+     ],
+     "dips_ref": [
+      0,
+      1
+     ],
+     "chi": {
+      "1": 0.519,
+      "2": 0.335,
+      "3": 0.025
+     },
+     "iou04_FS128": 0.892,
+     "white_FS128": 0.179,
+     "wall_s": 25.6,
+     "deposited": 0.1004549977919163,
+     "retries": 0
+    },
+    "struct128": {
+     "x-0.10": {
+      "bright": 2,
+      "dark": 1,
+      "amp": 0.18
+     },
+     "x-0.05": {
+      "bright": 2,
+      "dark": 1,
+      "amp": 0.41
+     },
+     "x+0.05": {
+      "bright": 2,
+      "dark": 1,
+      "amp": 0.36
+     },
+     "x+0.10": {
+      "bright": 2,
+      "dark": 1,
+      "amp": 0.18
+     },
+     "y+0.10": {
+      "bright": 4,
+      "dark": 3,
+      "amp": 0.31
+     },
+     "curl_c95": [
+      0.792,
+      0.766
+     ],
+     "axis_upper_c_mean": 0.377
+    }
+   },
+   "tulip": {
+    "fill": 175.0,
+    "poured": 85.40070721181034,
+    "V_end": 89.59929278818966,
+    "tilt_range": [
+     49.360568062472396,
+     61.780916922626254
+    ],
+    "J": 0.0008561689308097493,
+    "unreachable": [],
+    "form128": "yes",
+    "metrics128": {
+     "iou04": 0.503,
+     "r_hp": -0.089,
+     "white": 0.222,
+     "white_ref": 0.226,
+     "hp_rel": 1.07,
+     "dips": [
+      2,
+      6
+     ],
+     "dips_ref": [
+      2,
+      6
+     ],
+     "chi": {
+      "1": 0.519,
+      "2": 0.334,
+      "3": 0.036,
+      "4": 0.334,
+      "5": 0.068,
+      "6": 0.976,
+      "7": 0.656,
+      "8": 0.012
+     },
+     "iou04_FS128": 0.68,
+     "white_FS128": 0.22,
+     "wall_s": 33.1,
+     "deposited": 0.1350849250221313,
+     "retries": 0
+    },
+    "struct128": {
+     "axis_bright": 3,
+     "axis_dark": 2,
+     "axis_amp": 0.32,
+     "off_dark": [
+      3,
+      2
+     ],
+     "base_center_c": 0.0
+    }
+   },
+   "leaf": {
+    "fill": 175.0,
+    "poured": 83.37517280862089,
+    "V_end": 91.62482719137911,
+    "tilt_range": [
+     49.360568062472396,
+     60.31200589186876
+    ],
+    "J": 0.0004659386572306608,
+    "unreachable": [],
+    "form128": "yes (veins 3.25)",
+    "metrics128": {
+     "iou04": 0.676,
+     "r_hp": 0.119,
+     "white": 0.256,
+     "white_ref": 0.258,
+     "hp_rel": 1.09,
+     "dips": [
+      1,
+      6
+     ],
+     "dips_ref": [
+      1,
+      5
+     ],
+     "chi": {
+      "1": 0.519,
+      "2": 0.338,
+      "3": 0.71,
+      "4": 0.978,
+      "5": 0.682,
+      "6": 0.029
+     },
+     "iou04_FS128": 0.814,
+     "white_FS128": 0.277,
+     "wall_s": 37.5,
+     "deposited": 0.157033677527487,
+     "retries": 0
+    },
+    "struct128": {
+     "x-0.08": {
+      "veins": 4,
+      "amp": 0.13
+     },
+     "x-0.05": {
+      "veins": 2,
+      "amp": 0.13
+     },
+     "x+0.05": {
+      "veins": 3,
+      "amp": 0.11
+     },
+     "x+0.08": {
+      "veins": 4,
+      "amp": 0.14
+     },
+     "mean_veins": 3.25,
+     "mean_amp": 0.128,
+     "axis_upper_c_mean": 0.384
+    }
+   },
+   "swan": {
+    "fill": 175.0,
+    "poured": 78.10206614077453,
+    "V_end": 96.89793385922547,
+    "tilt_range": [
+     49.360568062472396,
+     59.679044224780405
+    ],
+    "J": 0.000711721224728593,
+    "unreachable": [],
+    "form128": "yes, head weak (c>0.6 head 1.3 mm^2; c>0.5 17.6 mm^2, max c 0.85)",
+    "metrics128": {
+     "iou04": 0.655,
+     "r_hp": 0.048,
+     "white": 0.243,
+     "white_ref": 0.258,
+     "hp_rel": 1.08,
+     "dips": [
+      1,
+      4
+     ],
+     "dips_ref": [
+      1,
+      2
+     ],
+     "chi": {
+      "1": 0.519,
+      "2": 0.334,
+      "3": 0.058,
+      "4": 0.983,
+      "5": 0.692,
+      "6": 0.018,
+      "7": 0.004,
+      "8": 0.977,
+      "9": 0.983,
+      "10": 0.884,
+      "11": 0.02
+     },
+     "iou04_FS128": 0.728,
+     "white_FS128": 0.262,
+     "wall_s": 39.6,
+     "deposited": 0.15216128738608173,
+     "retries": 0
+    },
+    "struct128": {
+     "neck_min_cmax": 0.523,
+     "neck_frac_cmax_gt_0p6": 0.5,
+     "neck_width_med_mm": 3.28,
+     "neck_width_max_mm": 17.19,
+     "head_area_mm2": 1.3,
+     "beak_left_x": -0.203,
+     "upper_neck_arc_c_min": 0.517,
+     "upper_neck_arc_c_mean": 0.68
+    }
+   }
+  }
+ },
+ "S3": {
+  "alpha_lip": 0.0,
+  "closure": {
+   "cp": 1.36,
+   "beta": 3.0,
+   "nu": 0.001,
+   "D": 1e-07,
+   "kappa_Q": 2.0,
+   "kappa_c": 1.0,
+   "B_dep": 1617.8960968517451,
+   "p_dep": 8.0,
+   "kappa_t": 0.4,
+   "kappa_r": 0.03669510311713139
+  },
+  "J_design": 0.002668575602828829,
+  "J_inlet": 0.010704577058455003,
+  "J_parts": {
+   "chi": 0.008041195495774405,
+   "s": 0.0,
+   "uh": 3.519519291864523e-07,
+   "oth": 0.0026630296107514107
+  },
+  "alpha_scan": {
+   "0.0": {
+    "J": 0.002668575602828829,
+    "J_pass1": 0.002668575602828829,
+    "B": 1617.8960968517451,
+    "p": 8.0,
+    "kt": 0.4,
+    "fills": {
+     "heart": 125.0,
+     "push_heart": 125.0,
+     "layered_heart": 150.0,
+     "tulip": 175.0,
+     "leaf": 175.0,
+     "swan": 150.0
+    }
+   },
+   "10.0": {
+    "J": 0.003266304671961119,
+    "J_pass1": 0.003266304671961119,
+    "B": 1722.0883108585679,
+    "p": 7.5,
+    "kt": 0.56,
+    "fills": {
+     "heart": 125.0,
+     "push_heart": 150.0,
+     "layered_heart": 150.0,
+     "tulip": 175.0,
+     "leaf": 175.0,
+     "swan": 150.0
+    }
+   },
+   "20.0": {
+    "J": 0.005831264096311305,
+    "J_pass1": 0.005831264096311305,
+    "B": 1776.6742771893855,
+    "p": 8.0,
+    "kt": 0.96,
+    "fills": {
+     "heart": 150.0,
+     "push_heart": 150.0,
+     "layered_heart": 150.0,
+     "tulip": 175.0,
+     "leaf": 175.0,
+     "swan": 150.0
+    }
+   },
+   "30.0": {
+    "J": 0.021194534023632458,
+    "J_pass1": 0.021194534023632458,
+    "B": 1722.0883108585679,
+    "p": 6.5,
+    "kt": 1.0,
+    "fills": {
+     "heart": 200.0,
+     "push_heart": 250.0,
+     "layered_heart": 250.0,
+     "tulip": 250.0,
+     "leaf": 250.0,
+     "swan": 100.0
+    }
+   }
+  },
+  "patterns": {
+   "heart": {
+    "fill": 125.0,
+    "poured": 64.58565163089074,
+    "V_end": 60.41434836910926,
+    "tilt_range": [
+     54.262301820839276,
+     65.21564753988812
+    ],
+    "J": 0.0005585848854160037,
+    "unreachable": [
+     {
+      "n": 3,
+      "why": "matched in the design (chi 0.027) but not in the inlet: the 0.08 s spout lag / ztr height transition carries the previous stroke's flow and height into this one",
+      "chi_t": 0.02653478739340211,
+      "chi": 0.061225392871122886
+     }
+    ],
+    "form128": "yes (seam 29 mm)",
+    "metrics128": {
+     "iou04": 0.719,
+     "r_hp": -0.034,
+     "white": 0.273,
+     "white_ref": 0.255,
+     "hp_rel": 1.01,
+     "dips": [
+      0,
+      2
+     ],
+     "dips_ref": [
+      0,
+      0
+     ],
+     "chi": {
+      "1": 0.98,
+      "2": 0.983,
+      "3": 0.061
+     },
+     "iou04_FS128": 0.964,
+     "white_FS128": 0.277,
+     "wall_s": 17.6,
+     "deposited": 0.23894268699590906,
+     "retries": 0
+    },
+    "struct128": {
+     "tip_y": -0.264,
+     "lobe_bottom_y": 0.255,
+     "notch_depth_D": 0.359,
+     "axis_dark_len_D": 0.359
+    }
+   },
+   "push_heart": {
+    "fill": 125.0,
+    "poured": 57.45178370947894,
+    "V_end": 67.54821629052105,
+    "tilt_range": [
+     54.262301820839276,
+     66.28979277329003
+    ],
+    "J": 0.008045207431860033,
+    "unreachable": [],
+    "form128": "yes",
+    "metrics128": {
+     "iou04": 0.886,
+     "r_hp": 0.798,
+     "white": 0.248,
+     "white_ref": 0.27,
+     "hp_rel": 1.1,
+     "dips": [
+      2,
+      8
+     ],
+     "dips_ref": [
+      2,
+      8
+     ],
+     "chi": {
+      "1": 0.969,
+      "2": 0.636,
+      "3": 0.973,
+      "4": 0.641,
+      "5": 0.94,
+      "6": 0.473,
+      "7": 0.016
+     },
+     "iou04_FS128": 0.916,
+     "white_FS128": 0.248,
+     "wall_s": 15.2,
+     "deposited": 0.2035814972007402,
+     "retries": 0
+    },
+    "struct128": {
+     "y-0.1": {
+      "white_bands": 4,
+      "dark_seams": 3,
+      "amp": 0.75
+     },
+     "y+0.0": {
+      "white_bands": 6,
+      "dark_seams": 4,
+      "amp": 0.78
+     },
+     "y+0.1": {
+      "white_bands": 6,
+      "dark_seams": 5,
+      "amp": 0.51
+     }
+    }
+   },
+   "layered_heart": {
+    "fill": 150.0,
+    "poured": 65.4865479772558,
+    "V_end": 84.5134520227442,
+    "tilt_range": [
+     51.72997774495196,
+     62.94628721449624
+    ],
+    "J": 0.00022972255128917682,
+    "unreachable": [],
+    "form128": "partial (as S1, axis c 0.38)",
+    "metrics128": {
+     "iou04": 0.688,
+     "r_hp": 0.296,
+     "white": 0.174,
+     "white_ref": 0.179,
+     "hp_rel": 1.31,
+     "dips": [
+      0,
+      2
+     ],
+     "dips_ref": [
+      0,
+      1
+     ],
+     "chi": {
+      "1": 0.519,
+      "2": 0.335,
+      "3": 0.025
+     },
+     "iou04_FS128": 0.895,
+     "white_FS128": 0.179,
+     "wall_s": 23.8,
+     "deposited": 0.1004852385249619,
+     "retries": 0
+    },
+    "struct128": {
+     "x-0.10": {
+      "bright": 2,
+      "dark": 1,
+      "amp": 0.19
+     },
+     "x-0.05": {
+      "bright": 2,
+      "dark": 1,
+      "amp": 0.43
+     },
+     "x+0.05": {
+      "bright": 2,
+      "dark": 1,
+      "amp": 0.37
+     },
+     "x+0.10": {
+      "bright": 2,
+      "dark": 1,
+      "amp": 0.18
+     },
+     "y+0.10": {
+      "bright": 4,
+      "dark": 3,
+      "amp": 0.32
+     },
+     "curl_c95": [
+      0.79,
+      0.764
+     ],
+     "axis_upper_c_mean": 0.378
+    }
+   },
+   "tulip": {
+    "fill": 175.0,
+    "poured": 85.40070721181034,
+    "V_end": 89.59929278818966,
+    "tilt_range": [
+     49.360568062472396,
+     61.780916922626254
+    ],
+    "J": 0.0005612402866294806,
+    "unreachable": [],
+    "form128": "yes",
+    "metrics128": {
+     "iou04": 0.507,
+     "r_hp": -0.084,
+     "white": 0.222,
+     "white_ref": 0.226,
+     "hp_rel": 1.08,
+     "dips": [
+      2,
+      6
+     ],
+     "dips_ref": [
+      2,
+      6
+     ],
+     "chi": {
+      "1": 0.519,
+      "2": 0.334,
+      "3": 0.022,
+      "4": 0.334,
+      "5": 0.043,
+      "6": 0.978,
+      "7": 0.652,
+      "8": 0.015
+     },
+     "iou04_FS128": 0.684,
+     "white_FS128": 0.22,
+     "wall_s": 32.3,
+     "deposited": 0.1350926864865839,
+     "retries": 0
+    },
+    "struct128": {
+     "axis_bright": 3,
+     "axis_dark": 2,
+     "axis_amp": 0.35,
+     "off_dark": [
+      3,
+      2
+     ],
+     "base_center_c": 0.0
+    }
+   },
+   "leaf": {
+    "fill": 175.0,
+    "poured": 83.37517280862089,
+    "V_end": 91.62482719137911,
+    "tilt_range": [
+     49.360568062472396,
+     60.31200589186876
+    ],
+    "J": 0.0004383919782064751,
+    "unreachable": [],
+    "form128": "yes (veins 3.25)",
+    "metrics128": {
+     "iou04": 0.678,
+     "r_hp": 0.104,
+     "white": 0.255,
+     "white_ref": 0.258,
+     "hp_rel": 1.13,
+     "dips": [
+      1,
+      5
+     ],
+     "dips_ref": [
+      1,
+      5
+     ],
+     "chi": {
+      "1": 0.519,
+      "2": 0.338,
+      "3": 0.71,
+      "4": 0.983,
+      "5": 0.647,
+      "6": 0.029
+     },
+     "iou04_FS128": 0.816,
+     "white_FS128": 0.277,
+     "wall_s": 33.8,
+     "deposited": 0.15720593900932867,
+     "retries": 0
+    },
+    "struct128": {
+     "x-0.08": {
+      "veins": 4,
+      "amp": 0.13
+     },
+     "x-0.05": {
+      "veins": 3,
+      "amp": 0.08
+     },
+     "x+0.05": {
+      "veins": 3,
+      "amp": 0.09
+     },
+     "x+0.08": {
+      "veins": 3,
+      "amp": 0.14
+     },
+     "mean_veins": 3.25,
+     "mean_amp": 0.11,
+     "axis_upper_c_mean": 0.389
+    }
+   },
+   "swan": {
+    "fill": 150.0,
+    "poured": 78.10206614077453,
+    "V_end": 71.89793385922547,
+    "tilt_range": [
+     51.72997774495196,
+     62.79802861345128
+    ],
+    "J": 0.0008714299250538343,
+    "unreachable": [],
+    "form128": "yes, head weak (c>0.6 head 2.2 mm^2; c>0.5 18.8 mm^2, max c 0.88)",
+    "metrics128": {
+     "iou04": 0.701,
+     "r_hp": 0.14,
+     "white": 0.244,
+     "white_ref": 0.258,
+     "hp_rel": 1.14,
+     "dips": [
+      1,
+      4
+     ],
+     "dips_ref": [
+      1,
+      2
+     ],
+     "chi": {
+      "1": 0.519,
+      "2": 0.334,
+      "3": 0.037,
+      "4": 0.984,
+      "5": 0.617,
+      "6": 0.02,
+      "7": 0.003,
+      "8": 0.98,
+      "9": 0.985,
+      "10": 0.856,
+      "11": 0.012
+     },
+     "iou04_FS128": 0.754,
+     "white_FS128": 0.262,
+     "wall_s": 38.5,
+     "deposited": 0.15217027254082452,
+     "retries": 0
+    },
+    "struct128": {
+     "neck_min_cmax": 0.536,
+     "neck_frac_cmax_gt_0p6": 0.5,
+     "neck_width_med_mm": 2.97,
+     "neck_width_max_mm": 16.88,
+     "head_area_mm2": 2.2,
+     "beak_left_x": -0.207,
+     "upper_neck_arc_c_min": 0.564,
+     "upper_neck_arc_c_mean": 0.693
+    }
+   }
+  }
+ },
+ "S1_V50": {
+  "alpha_lip": 0.0,
+  "closure": {
+   "cp": 1.36,
+   "beta": 3.0,
+   "nu": 0.001,
+   "D": 1e-07,
+   "kappa_Q": 2.0,
+   "kappa_c": 1.0,
+   "B_dep": 1643.3377250157187,
+   "p_dep": 8.0,
+   "kappa_t": 0.63,
+   "kappa_r": 0.036354018535731725
+  },
+  "J_design": 0.021036427332083246,
+  "J_inlet": 0.04657649874156703,
+  "J_parts": {
+   "chi": 0.03804325262800375,
+   "s": 0.004560388636131276,
+   "uh": 0.0,
+   "oth": 0.003972857477432002
+  },
+  "alpha_scan": {
+   "0.0": {
+    "J": 0.021036427332083246,
+    "J_pass1": 0.020994818803226845,
+    "B": 1643.3377250157187,
+    "p": 8.0,
+    "kt": 0.63,
+    "fills": {
+     "heart": 125.0,
+     "push_heart": 125.0,
+     "layered_heart": 150.0,
+     "tulip": 150.0,
+     "leaf": 150.0,
+     "swan": 150.0
+    }
+   },
+   "10.0": {
+    "J": 0.026296006858563415,
+    "J_pass1": 0.026270217793142512,
+    "B": 1662.6811516326388,
+    "p": 8.0,
+    "kt": 0.97,
+    "fills": {
+     "heart": 150.0,
+     "push_heart": 150.0,
+     "layered_heart": 150.0,
+     "tulip": 175.0,
+     "leaf": 175.0,
+     "swan": 150.0
+    }
+   },
+   "20.0": {
+    "J": 0.06021872492072418,
+    "J_pass1": 0.057520490305310375,
+    "B": 1722.0883108585679,
+    "p": 8.0,
+    "kt": 1.0,
+    "fills": {
+     "heart": 175.0,
+     "push_heart": 250.0,
+     "layered_heart": 250.0,
+     "tulip": 250.0,
+     "leaf": 250.0,
+     "swan": 150.0
+    }
+   },
+   "30.0": {
+    "J": 0.07792179978597885,
+    "J_pass1": 0.07800578454159632,
+    "B": 1669.1794261169443,
+    "p": 8.0,
+    "kt": 1.0,
+    "fills": {
+     "heart": 125.0,
+     "push_heart": 125.0,
+     "layered_heart": 125.0,
+     "tulip": 150.0,
+     "leaf": 150.0,
+     "swan": 150.0
+    }
+   }
+  },
+  "patterns": {
+   "heart": {
+    "fill": 125.0,
+    "poured": 64.58565163089074,
+    "V_end": 60.41434836910926,
+    "tilt_range": [
+     63.34154579229046,
+     75.0941172291597
+    ],
+    "J": 0.0004343716657218814,
+    "unreachable": [
+     {
+      "n": 3,
+      "why": "matched in the design (chi 0.027) but not in the inlet: the 0.08 s spout lag / ztr height transition carries the previous stroke's flow and height into this one",
+      "chi_t": 0.02653478739340211,
+      "chi": 0.06139228561377959
+     }
+    ],
+    "form128": null,
+    "metrics128": {},
+    "struct128": null
+   },
+   "push_heart": {
+    "fill": 125.0,
+    "poured": 57.45178370947894,
+    "V_end": 67.54821629052105,
+    "tilt_range": [
+     63.34154579229046,
+     76.10536789989283
+    ],
+    "J": 0.010870043107781047,
+    "unreachable": [],
+    "form128": null,
+    "metrics128": {},
+    "struct128": null
+   },
+   "layered_heart": {
+    "fill": 150.0,
+    "poured": 65.4865479772558,
+    "V_end": 84.5134520227442,
+    "tilt_range": [
+     60.380246749084776,
+     72.53669362989298
+    ],
+    "J": 0.00047869842106116283,
+    "unreachable": [],
+    "form128": null,
+    "metrics128": {},
+    "struct128": null
+   },
+   "tulip": {
+    "fill": 150.0,
+    "poured": 85.40070721181034,
+    "V_end": 64.59929278818966,
+    "tilt_range": [
+     60.380246749084776,
+     74.87785796832631
+    ],
+    "J": 0.0029585828572631073,
+    "unreachable": [],
+    "form128": null,
+    "metrics128": {},
+    "struct128": null
+   },
+   "leaf": {
+    "fill": 150.0,
+    "poured": 83.37517280862089,
+    "V_end": 66.62482719137911,
+    "tilt_range": [
+     60.380246749084776,
+     73.31700953584351
+    ],
+    "J": 0.0009663995355266936,
+    "unreachable": [],
+    "form128": null,
+    "metrics128": {},
+    "struct128": null
+   },
+   "swan": {
+    "fill": 150.0,
+    "poured": 79.18299918082752,
+    "V_end": 70.81700081917248,
+    "tilt_range": [
+     60.380246749084776,
+     72.38111495732907
+    ],
+    "J": 0.030868403154213138,
+    "unreachable": [
+     {
+      "n": 8,
+      "why": "clearance: z pinned at the pitcher's z_min (Zreq 8.5 mm > design 3.0 mm)",
+      "chi_t": 0.9998709472613473,
+      "chi": 0.9317151067905532
+     },
+     {
+      "n": 9,
+      "why": "matched in the design (chi 0.980) but not in the inlet: the 0.08 s spout lag / ztr height transition carries the previous stroke's flow and height into this one",
+      "chi_t": 0.9999265550256021,
+      "chi": 0.8983089414018367
+     }
+    ],
+    "form128": "neck continuous, head weak (c>0.6 2.1 mm^2); design: #8 chi 0.93, #9 0.90 (unreachable)",
+    "metrics128": {
+     "iou04": 0.676,
+     "r_hp": 0.175,
+     "white": 0.244,
+     "white_ref": 0.258,
+     "hp_rel": 1.15,
+     "dips": [
+      1,
+      4
+     ],
+     "dips_ref": [
+      1,
+      2
+     ],
+     "chi": {
+      "1": 0.519,
+      "2": 0.34,
+      "3": 0.035,
+      "4": 0.974,
+      "5": 0.548,
+      "6": 0.011,
+      "7": 0.001,
+      "8": 0.932,
+      "9": 0.898,
+      "10": 0.776,
+      "11": 0.013
+     },
+     "iou04_FS128": 0.733,
+     "white_FS128": 0.262,
+     "wall_s": 39.6,
+     "deposited": 0.1558743382119055,
+     "retries": 0
+    },
+    "struct128": {
+     "neck_min_cmax": 0.653,
+     "neck_frac_cmax_gt_0p6": 1.0,
+     "neck_width_med_mm": 3.75,
+     "neck_width_max_mm": 17.19,
+     "head_area_mm2": 2.1,
+     "beak_left_x": -0.203,
+     "upper_neck_arc_c_min": 0.562,
+     "upper_neck_arc_c_mean": 0.692
+    }
+   }
+  }
+ },
+ "FS128_struct": {
+  "heart": {
+   "tip_y": -0.287,
+   "lobe_bottom_y": 0.255,
+   "notch_depth_D": 0.379,
+   "axis_dark_len_D": 0.379
+  },
+  "push_heart": {
+   "y-0.1": {
+    "white_bands": 5,
+    "dark_seams": 4,
+    "amp": 0.45
+   },
+   "y+0.0": {
+    "white_bands": 6,
+    "dark_seams": 5,
+    "amp": 0.68
+   },
+   "y+0.1": {
+    "white_bands": 6,
+    "dark_seams": 5,
+    "amp": 0.48
+   }
+  },
+  "layered_heart": {
+   "x-0.10": {
+    "bright": 2,
+    "dark": 1,
+    "amp": 0.19
+   },
+   "x-0.05": {
+    "bright": 3,
+    "dark": 2,
+    "amp": 0.24
+   },
+   "x+0.05": {
+    "bright": 2,
+    "dark": 1,
+    "amp": 0.44
+   },
+   "x+0.10": {
+    "bright": 2,
+    "dark": 1,
+    "amp": 0.19
+   },
+   "y+0.10": {
+    "bright": 4,
+    "dark": 3,
+    "amp": 0.35
+   },
+   "curl_c95": [
+    0.79,
+    0.786
+   ],
+   "axis_upper_c_mean": 0.587
+  },
+  "tulip": {
+   "axis_bright": 3,
+   "axis_dark": 2,
+   "axis_amp": 0.24,
+   "off_dark": [
+    2,
+    2
+   ],
+   "base_center_c": 0.0
+  },
+  "leaf": {
+   "x-0.08": {
+    "veins": 3,
+    "amp": 0.07
+   },
+   "x-0.05": {
+    "veins": 1,
+    "amp": 0.13
+   },
+   "x+0.05": {
+    "veins": 2,
+    "amp": 0.11
+   },
+   "x+0.08": {
+    "veins": 3,
+    "amp": 0.09
+   },
+   "mean_veins": 2.25,
+   "mean_amp": 0.1,
+   "axis_upper_c_mean": 0.58
+  },
+  "swan": {
+   "neck_min_cmax": 0.445,
+   "neck_frac_cmax_gt_0p6": 0.824,
+   "neck_width_med_mm": 2.5,
+   "neck_width_max_mm": 5.94,
+   "head_area_mm2": 25.0,
+   "beak_left_x": -0.187,
+   "upper_neck_arc_c_min": 0.283,
+   "upper_neck_arc_c_mean": 0.467
+  }
+ },
+ "V05_128_struct": {
+  "heart": {
+   "tip_y": -0.243,
+   "lobe_bottom_y": 0.301,
+   "notch_depth_D": 0.036,
+   "axis_dark_len_D": 0.036
+  },
+  "push_heart": {
+   "y-0.1": {
+    "white_bands": 4,
+    "dark_seams": 3,
+    "amp": 0.75
+   },
+   "y+0.0": {
+    "white_bands": 6,
+    "dark_seams": 4,
+    "amp": 0.61
+   },
+   "y+0.1": {
+    "white_bands": 6,
+    "dark_seams": 5,
+    "amp": 0.53
+   }
+  },
+  "layered_heart": {
+   "x-0.10": {
+    "bright": 1,
+    "dark": 0,
+    "amp": 0.35
+   },
+   "x-0.05": {
+    "bright": 3,
+    "dark": 2,
+    "amp": 0.07
+   },
+   "x+0.05": {
+    "bright": 3,
+    "dark": 2,
+    "amp": 0.11
+   },
+   "x+0.10": {
+    "bright": 1,
+    "dark": 0,
+    "amp": 0.35
+   },
+   "y+0.10": {
+    "bright": 2,
+    "dark": 1,
+    "amp": 0.69
+   },
+   "curl_c95": [
+    0.696,
+    0.723
+   ],
+   "axis_upper_c_mean": 0.637
+  },
+  "tulip": {
+   "axis_bright": 3,
+   "axis_dark": 2,
+   "axis_amp": 0.4,
+   "off_dark": [
+    2,
+    2
+   ],
+   "base_center_c": 0.812
+  },
+  "leaf": {
+   "x-0.08": {
+    "veins": 3,
+    "amp": 0.1
+   },
+   "x-0.05": {
+    "veins": 2,
+    "amp": 0.16
+   },
+   "x+0.05": {
+    "veins": 2,
+    "amp": 0.12
+   },
+   "x+0.08": {
+    "veins": 3,
+    "amp": 0.1
+   },
+   "mean_veins": 2.5,
+   "mean_amp": 0.12,
+   "axis_upper_c_mean": 0.616
+  },
+  "swan": {
+   "neck_min_cmax": 0.616,
+   "neck_frac_cmax_gt_0p6": 1.0,
+   "neck_width_med_mm": 2.19,
+   "neck_width_max_mm": 13.75,
+   "head_area_mm2": 16.6,
+   "beak_left_x": -0.242,
+   "upper_neck_arc_c_min": 0.646,
+   "upper_neck_arc_c_mean": 0.711
+  }
+ },
+ "recommend_256": {
+  "prereg_rule": "S2 (all specs 5 yes + 1 partial; tie -> lowest J_total: S2 0.0101 < S3 0.0107 < S1 0.0130)",
+  "recommended": "S1",
+  "why": "video: barista's pitcher b = 5 mm = NX (S2 is hypothetical); S1 has the clearer swan head; S1 has the lowest J_chi (0.0053 vs 0.0077/0.0080); the J_total gap is the soft J_oth momentum term only"
+ },
+ "driver_check": {
+  "N48_tulip": "c max|dc| = 0 in the mask, inlet log identical (2403 rows)",
+  "N256_heart": "c bitwise identical to v05allphys/final/runs/FS_heart in the mask, inlet log identical (1620 rows), deposited 0.239101299782866 both"
+ }
+}

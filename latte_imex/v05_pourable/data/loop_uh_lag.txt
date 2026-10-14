@@ -1,0 +1,17 @@
+wiggle strokes: delivered vs design surface horizontal velocity, 2.5 Hz component (cup frame, solver units D/s)
+S1_layered_heart_ideal #1: x: amp del/des 1.03, phase lag +10 deg (+11 ms); ux: amp del/des 1.04, phase lag +33 deg (+37 ms); t_hit 41 ms -> theory lag atan(w t_hit) 33 deg, amp 1/sqrt(1+(w t)^2) 0.84
+S1_layered_heart_ideal #2: x: amp del/des 0.93, phase lag +8 deg (+9 ms); ux: amp del/des 0.95, phase lag +42 deg (+47 ms); t_hit 46 ms -> theory lag atan(w t_hit) 36 deg, amp 1/sqrt(1+(w t)^2) 0.81
+S2_layered_heart_ideal #1: x: amp del/des 1.02, phase lag +5 deg (+5 ms); ux: amp del/des 0.93, phase lag +33 deg (+36 ms); t_hit 41 ms -> theory lag atan(w t_hit) 33 deg, amp 1/sqrt(1+(w t)^2) 0.84
+S2_layered_heart_ideal #2: x: amp del/des 0.99, phase lag +5 deg (+6 ms); ux: amp del/des 0.91, phase lag +38 deg (+42 ms); t_hit 46 ms -> theory lag atan(w t_hit) 36 deg, amp 1/sqrt(1+(w t)^2) 0.81
+S1_tulip_ideal #1: x: amp del/des 1.10, phase lag +10 deg (+11 ms); ux: amp del/des 1.03, phase lag +30 deg (+33 ms); t_hit 42 ms -> theory lag atan(w t_hit) 34 deg, amp 1/sqrt(1+(w t)^2) 0.83
+S1_tulip_ideal #2: x: amp del/des 1.02, phase lag +13 deg (+14 ms); ux: amp del/des 1.04, phase lag +38 deg (+42 ms); t_hit 47 ms -> theory lag atan(w t_hit) 37 deg, amp 1/sqrt(1+(w t)^2) 0.80
+S2_tulip_ideal #1: x: amp del/des 1.04, phase lag +5 deg (+5 ms); ux: amp del/des 0.92, phase lag +32 deg (+36 ms); t_hit 43 ms -> theory lag atan(w t_hit) 34 deg, amp 1/sqrt(1+(w t)^2) 0.83
+S2_tulip_ideal #2: x: amp del/des 1.02, phase lag +6 deg (+6 ms); ux: amp del/des 0.91, phase lag +37 deg (+41 ms); t_hit 47 ms -> theory lag atan(w t_hit) 36 deg, amp 1/sqrt(1+(w t)^2) 0.80
+S1_leaf_ideal #1: x: amp del/des 1.10, phase lag +10 deg (+11 ms); ux: amp del/des 1.03, phase lag +30 deg (+33 ms); t_hit 42 ms -> theory lag atan(w t_hit) 34 deg, amp 1/sqrt(1+(w t)^2) 0.83
+S1_leaf_ideal #2: x: amp del/des 1.02, phase lag +13 deg (+14 ms); ux: amp del/des 1.04, phase lag +38 deg (+42 ms); t_hit 47 ms -> theory lag atan(w t_hit) 36 deg, amp 1/sqrt(1+(w t)^2) 0.80
+S2_leaf_ideal #1: x: amp del/des 1.04, phase lag +5 deg (+5 ms); ux: amp del/des 0.92, phase lag +32 deg (+36 ms); t_hit 43 ms -> theory lag atan(w t_hit) 34 deg, amp 1/sqrt(1+(w t)^2) 0.83
+S2_leaf_ideal #2: x: amp del/des 1.02, phase lag +6 deg (+6 ms); ux: amp del/des 0.91, phase lag +37 deg (+41 ms); t_hit 47 ms -> theory lag atan(w t_hit) 36 deg, amp 1/sqrt(1+(w t)^2) 0.80
+S1_swan_ideal #1: x: amp del/des 1.03, phase lag +10 deg (+11 ms); ux: amp del/des 1.04, phase lag +33 deg (+37 ms); t_hit 41 ms -> theory lag atan(w t_hit) 33 deg, amp 1/sqrt(1+(w t)^2) 0.84
+S1_swan_ideal #2: x: amp del/des 0.93, phase lag +8 deg (+9 ms); ux: amp del/des 0.95, phase lag +42 deg (+47 ms); t_hit 46 ms -> theory lag atan(w t_hit) 36 deg, amp 1/sqrt(1+(w t)^2) 0.81
+S2_swan_ideal #1: x: amp del/des 1.04, phase lag +5 deg (+5 ms); ux: amp del/des 0.92, phase lag +32 deg (+36 ms); t_hit 43 ms -> theory lag atan(w t_hit) 34 deg, amp 1/sqrt(1+(w t)^2) 0.83
+S2_swan_ideal #2: x: amp del/des 1.02, phase lag +6 deg (+6 ms); ux: amp del/des 0.91, phase lag +37 deg (+41 ms); t_hit 47 ms -> theory lag atan(w t_hit) 36 deg, amp 1/sqrt(1+(w t)^2) 0.80

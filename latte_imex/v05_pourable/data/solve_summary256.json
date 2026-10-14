@@ -1,0 +1,33 @@
+{
+ "runs": "v05pour/design/runs/{S1,S2}_<pattern>_N256 (v05_pourable solve, unchanged); diagnostic DGpulse_S2_layered_heart_N256 (diag.py)",
+ "judge_256": {
+  "heart": {
+   "S1": "yes (seam 30 mm; FS 34, V0.5 4)",
+   "S2": "yes (seam 31 mm)"
+  },
+  "push_heart": {
+   "S1": "yes (seams y-0.1/0/+0.1: 3/7/5; V0.5 3/5/5, FS 4/7/7)",
+   "S2": "yes (3/7/6)"
+  },
+  "layered_heart": {
+   "S1": "yes, weak (bands x-+0.05: 5/4, curl c95 0.856/0.847; axis upper c 0.45 vs V0.5 0.61)",
+   "S2": "partial (bands 4/3, curl c95 0.875/0.855, axis upper c 0.33)"
+  },
+  "tulip": {
+   "S1": "yes (axis seams 2, off-axis 4/3; base split in two drops like FS)",
+   "S2": "yes (same counts)"
+  },
+  "leaf": {
+   "S1": "yes (veins 5.75/line, amp 0.34)",
+   "S2": "yes (veins 5.75, amp 0.25)"
+  },
+  "swan": {
+   "S1": "yes (neck bottleneck c 0.635, head blob 24 mm2 c>0.6, beak x -0.240)",
+   "S2": "yes, weak (neck short/wide, bottleneck c 0.56; head small, max c 0.86, 5 mm closer to body)"
+  }
+ },
+ "diagnostic": {
+  "S2 layered_heart + FS 5 Hz pulse 0.41 at pi/2": "bands 5/5 (prominence 0.08-0.24), curl c95 0.923/0.916 -> forms; axis upper c 0.34 unchanged; chi 0.553/0.395/0.028 (no-pulse 0.519/0.335/0.028), deposit x1.12",
+  "cause": "missing 5 Hz pulsation (not pourable per V05_PITCHER_CHECK); without it the arc count sits at the 4-band threshold (FSnp 2/3, S2 4/3, S1 5/4)"
+ }
+}
