@@ -61,6 +61,11 @@ DESIGN (pitcher-constrained inverse design of the V0.5 inlet, prereg <review>/v0
   python3 -m latte_imex.v05_pourable finalize --spec S1 [--alpha a]                  -> design/<spec>/final.json, ptab_*.npz
   python3 -m latte_imex.v05_pourable solve --spec S1 --pattern heart --N 128         -> design/runs/<tag>_<pattern>_N<N>/
   python3 -m latte_imex.v05_pourable fsrun --pattern heart --N 48 --via drvf|pourf   (driver reproduction check)
+PITCHER LOOP (the design poured by the full pitcher model with v05_pitcher_check.IdealHand; output <review>/v05pour/loop/):
+  python3 -m latte_imex.v05_pourable loop_sim --tag S1 --pattern heart       -> loop/runs/S1_heart_ideal.{npz,json,_cmp.json}
+  python3 -m latte_imex.v05_pourable loop_check --tag S1                     (design-table records == PourF records)
+  python3 -m latte_imex.v05_pourable loop_solve --tag S1 --pattern heart --N 256 [--kind pitcher|wanted]
+                                                                             -> loop/runs256/PLS1_heart_N256/
 In code: S = Surrogate("b20", wall="resolved", cup="held"); S.tilt(Q, V); S.jet(Q, V, z_tip, roll, alpha);
 S.z_min(foot_x, foot_y, yaw, Q, V, roll); D = deliver(S, sched, fill_mL, alpha=10, hand="ideal"); stroke_summary(D, strokes).
 """
@@ -1896,6 +1901,542 @@ def solve_fs(pattern, N=128, tag="FSr", via="pourf", pulse=0.41):
     return out
 
 
+# =========================================================================== PITCHER LOOP: the design through the full model
+# The design (final.json of a spec) was made on the QUASI-STATIC surrogate: flat free surface, steady weir, no slosh,
+# the drvf spout lag, lifts planned on the surrogate clearance map.  Here its inlet is poured by the full pitcher model
+# (pitcher.Pitcher through SpoutPitcher / FastPitcher, unmodified physics: first slosh mode zeta 0.3, lip buffer
+# tau 0.08 s / tau_stop 0.15 s, onset / stop hysteresis h_on / h_off, carried hand velocity, g_eff, collision lift on the
+# spec's wall and cup) driven by v05_pitcher_check.IdealHand (unchanged: preview, spout-lag inversion on the pitcher's own
+# lip buffer, weir inversion every 1 ms, 300 deg/s, 10 m/s^2 on a 0.15 m lever, lifts planned from the recorded clearance
+# requirement, max over passes), with NO 5 Hz pulsation, the design's start fill, yaw schedule and wanted heights z_w (the
+# hand adds the lift the full model requires; the design's own planned lift is kept only for comparison).
+# Geometry: the spec's (nx = CAD NX; b20 = spout_data's beak extension, a GridPitcherGeometry built from the modified CAD
+# grid, pitcher.py untouched) with lip_slope = the design's alpha_lip (Pitcher.exit_direction uses geom.lip_slope; the
+# default CAD load uses 10 deg).  Wall / cup as the spec ('resolved' outer wall, 'held' cup).  S3 (cup tilt schedule) is
+# not driven: IdealHand has one fixed cup.
+# What arrives on the coffee (the arrival record) is fed to the solver through the drvf rules (PC.drvf_record) on the
+# design program (spec closure, program duration = the design T; milk that arrives before t = 0 or after T is not fed).
+PLOUT = os.path.join(PC.REVIEW, "v05pour", "loop")
+PL_TAIL = 0.6
+PL_WKEYS = ("x", "y", "z", "z_des", "L_des", "Q", "Q_env", "Q_cmd", "U", "uhx", "uhy", "vhx", "vhy", "exit_h", "r", "d",
+            "k", "ks", "active", "S_eff", "U_D", "ux_D", "uy_D", "d_D", "r1_D", "r2_D", "phi", "scan", "chi")
+
+
+def loop_geometry(pitcher, alpha_deg, nr=6):
+    """GridPitcherGeometry of a pitcher spec name ('nx', 'b20', ...) with lip slope alpha_lip [deg]."""
+    sp = spec_from_name(pitcher)
+    sp.nr = nr
+    return GridPitcherGeometry(spout_data(sp), nr=nr, lip_slope=math.radians(alpha_deg))
+
+
+def _final_setup(tag):
+    global DS_VMIN
+    F = load_final(tag)
+    DS_VMIN = F.get("vmin_mL", DS_VMIN)
+    return F
+
+
+def design_wanted(tag, pattern, dt=PC.DT):
+    """1 ms table of the design inlet exactly as solve_design fed it (PourF, lat / ulaw 'pitcher'), in the
+    v05_pitcher_check 'wanted' format (x, y [D]; Q, Q_env [m^3/s] at the surface; U, uhx, uhy, exit_h [m/s]; r, d [m];
+    S_eff, U_D, ux_D, uy_D, d_D, r1_D, r2_D, phi as the solver Inlet), plus z = wanted tip height WITHOUT the planned lift
+    (what the hand is asked for), z_des = with the design's planned lift L_des, chi of the inlet (spec closure), and the
+    design's yaw / tilt / fill / z_min schedule (yaw [rad], tilt [deg], V_des [mL], zmin_des [m])."""
+    from .v05_program import Program
+    F = _final_setup(tag)
+    prog = build_design_program(F["spec"], F["design"], pattern, kappa_r=F["closure"]["kappa_r"])
+    B, p_ = F["closure"]["B_dep"], F["closure"]["p_dep"]
+    tab = prog.ptab
+    T = prog.duration
+    n = int(math.floor(T / dt + 1e-9))
+    t = np.arange(n) * dt
+    W = {k: np.full(n, np.nan) for k in PL_WKEYS}
+    kQ = prog.kQ
+    for i, ti in enumerate(t):
+        n0 = len(prog.log)
+        inl = prog(ti)
+        k = prog.phase_index(ti)
+        ph = prog.phases[k]
+        tt = max(0.0, min(ph["duration"], ti - prog.events[k]))
+        W["x"][i], W["y"][i] = inl.x_hit
+        zw = prog.z_at(ti, k, tt)
+        L = float(np.interp(ti, tab["t"], tab["L"]))
+        W["z"][i], W["L_des"][i], W["z_des"][i] = zw, L, zw + L
+        vh = prog.hand_v(ti)
+        W["vhx"][i], W["vhy"][i] = vh[0] * D_M, vh[1] * D_M
+        W["k"][i] = k
+        Ec = float(np.interp(ti, prog.tg, prog.Ecmd))
+        W["Q_cmd"][i] = min(Ec / kQ * PC.D3, 32 * ML)
+        W["scan"][i] = inl.scan_speed
+        if len(prog.log) > n0:
+            row = prog.log[-1]
+            W["Q"][i] = W["Q_env"][i] = row[5] * ML
+            W["U"][i] = row[6]
+            W["uhx"][i], W["uhy"][i] = row[9], row[10]
+            W["exit_h"][i] = row[13]
+            W["r"][i], W["d"][i] = row[14] * 1e-3, row[15] * 1e-3
+            W["ks"][i] = row[3]
+            W["active"][i] = 1.0
+            W["S_eff"][i] = inl.S_eff
+            W["U_D"][i] = inl.U_perp
+            W["ux_D"][i], W["uy_D"][i] = inl.u_in
+            W["d_D"][i], W["r1_D"][i], W["r2_D"][i], W["phi"][i] = inl.d_jet, inl.r1, inl.r2, inl.phi
+            zc = inl.U_perp ** 2 / (B * max(inl.d_jet, 1e-9))
+            W["chi"][i] = 1.0 / (1.0 + zc ** p_)
+        else:
+            for key in ("Q", "Q_env", "active", "S_eff"):
+                W[key][i] = 0.0
+            W["ks"][i] = -1
+    del prog.log[:]
+    W["yaw"] = np.interp(t, tab["t"], tab["yaw"])
+    W["tilt_des"] = np.interp(t, tab["t"], tab["tilt"])
+    W["V_des"] = np.interp(t, tab["t"], tab["V"])
+    W["zmin_des"] = np.interp(t, tab["t"], tab["zmin"])
+    vz, oz = np.interp(t, tab["t"], tab["vz"]), np.interp(t, tab["t"], tab["oz"])
+    W["thit_des"] = (vz + np.sqrt(vz ** 2 + 2 * G * np.maximum(W["z_des"] + oz, 0.0))) / G     # design flight time [s]
+    W["t"] = t
+    W["Q_lag"] = W["Q"]
+    P = F["patterns"][pattern]
+    st_d = {int(r["n"]): r for r in P["strokes"]}
+    strokes = []
+    for k, c in enumerate(prog.cls):
+        st = dict(k=k, n=k + 1, t0=prog.events[k], t1=prog.events[k + 1], cls=c, name=f"#{k + 1} {c}")
+        if c in FLOWING:
+            st["yaw"] = math.radians(st_d[k + 1]["yaw"])
+            st["z_design"] = prog.z[k]
+        strokes.append(st)
+    meta = dict(set="design", tag=tag, spec=F["spec"], pattern=pattern, T=T, dt=dt, strokes=strokes, kappa_Q=kQ,
+                fill_mL=P["fill"], alpha_deg=F["alpha"], closure=F["closure"], spec_def=DS_SPECS[F["spec"]],
+                source=f"v05_pourable.build_design_program({F['spec']}, final.json of {tag}); PourF lat/ulaw pitcher, lag 0.08, ztr")
+    return W, meta
+
+
+def _pl_preplan(W, fill, mkP, cup, n_ext, dt, every=0.01):
+    """As PC.lift_preplan, on the spec's pitcher and cup: collision requirement along the wanted path at the steady tilt
+    for the wanted flow (>= 0.5 mL/s), fill drawn down by the wanted volume, tip placed from a static jet."""
+    P = mkP()
+    Qw = np.nan_to_num(np.asarray(W["Q"], float))
+    used = np.cumsum(Qw) * dt
+    Qe = np.nan_to_num(np.asarray(W["Q_env"], float))
+    n_tab = len(Qw)
+    idx = np.arange(0, n_tab, max(1, int(round(every / dt))))
+    R = []
+    for i in idx:
+        V = fill * ML - used[i]
+        Q = max(Qe[i], 0.5 * ML)
+        foot = np.array([W["x"][i] * D, W["y"][i] * D])
+        z, yaw = float(W["z"][i]), float(W["yaw"][i])
+        tilt = P.tilt_for_flow(Pose((foot[0], foot[1], z), yaw, 0.0, 0.0), Q, V=V, iters=22)
+        pose = Pose((foot[0], foot[1], z), yaw, tilt, 0.0)
+        c, _ = P.free_surface(pose, V)
+        Wr = P.weir(pose, c)
+        J = P.jet(pose, Q, max(Wr["h_bar"], P.law.h_k), Wr["origin"], 0.0, Wr["width"], Wr["tangent"])
+        tip = foot - (J["x_hit"] - foot)
+        R.append(P.required_lift(Pose((tip[0], tip[1], z), yaw, tilt, 0.0), cup))
+    return np.interp(np.arange(n_ext), idx, np.asarray(R))
+
+
+def pl_name(tag, pattern, variant="ideal"):
+    return f"{tag}_{pattern}_{variant}"
+
+
+def pl_simulate(tag, pattern, variant="ideal", npass=3, hand=None, dt=PC.DT, tail=PL_TAIL, verbose=True, out=PLOUT):
+    """Ideal-hand pour of the design inlet of `pattern` (see the section comment); passes as PC.best_simulate (pass 0
+    lifts on the pre-planned requirement, each pass adds its recorded requirement, max over passes), no pulsation.
+    variant: 'ideal' (pitcher.OutflowLaw defaults, as the v05pitcher ideal-hand runs) or a PC.LAW_VARIANTS key.
+    Saves <out>/runs/<tag>_<pattern>_<variant>.{npz,json} in the v05_pitcher_check run format."""
+    t0w = time.time()
+    F = _final_setup(tag)
+    sd = DS_SPECS[F["spec"]]
+    if sd["cup"] == "video":
+        raise ValueError("the cup-tilt schedule of S3 is not supported by IdealHand (fixed cup)")
+    hand = dict(PC.HAND if hand is None else hand)
+    # variant 'zlead': the same hand, but the wanted height schedule is advanced by the design flight time (the hand
+    # changes height t_hit before the stream it releases must arrive at the new height; the IdealHand itself reads z_w at
+    # the release time, so without the lead every height change arrives 25-55 ms late)
+    # variant 'video' / 'videozl': the same IdealHand with the clip hand's limits HANDS['video'] (60 deg/s tilt, 2 m/s^2
+    # on 0.15 m, 90 deg/s yaw, 0.11 m/s lifts), without / with the height lead
+    law_kw = dict(PC.LAW_VARIANTS.get(variant, {}))
+    zlead = variant in ("zlead", "videozl")
+    if variant.startswith("video"):
+        hand = {k: v for k, v in HANDS["video"].items() if k in PC.HAND}
+    fill = float(F["patterns"][pattern]["fill"])
+    alpha = float(F["alpha"])
+    geom = loop_geometry(sd["pitcher"], alpha)
+    cup = make_cup(sd["cup"])
+
+    def mkP():
+        return SpoutPitcher(geom=geom, V0=fill * ML, law=OutflowLaw(**law_kw), wall=sd["wall"])
+    W0, meta0 = design_wanted(tag, pattern, dt)
+    Wh = dict(W0)
+    if zlead:
+        Wh["z"] = np.interp(W0["t"] + W0["thit_des"], W0["t"], W0["z"])
+    pre = PC.PREROLL
+    n_pre = int(round(pre / dt))
+    W = {k: np.concatenate([np.full(n_pre, 0.0 if k.startswith("Q") else np.asarray(Wh[k], float)[0]),
+                            np.asarray(Wh[k], float)]) for k in ("x", "y", "z", "yaw", "Q", "Q_env")}
+    W["t"] = np.arange(len(W["x"])) * dt
+    meta = json.loads(json.dumps(meta0))
+    meta["T"] += pre
+    for s_ in meta["strokes"]:
+        s_["t0"] += pre
+        s_["t1"] += pre
+    n_tab = len(W["t"])
+    n_ext = n_tab + int(round(tail / dt)) + 2
+    tg = np.arange(n_ext) * dt
+    Qw = np.concatenate([np.nan_to_num(W["Q"]), np.zeros(n_ext - n_tab)])
+    Qenv = np.concatenate([np.nan_to_num(W["Q_env"]), np.zeros(n_ext - n_tab)])
+    yaw_ext = np.concatenate([W["yaw"], np.full(n_ext - n_tab, W["yaw"][-1])])
+    yaw_plan = PC.smooth_yaw(yaw_ext, dt, hand["yaw_rate"])
+    nsteps = n_ext - 2
+    name = pl_name(tag, pattern, variant)
+    tp = time.time()
+    Rmax = _pl_preplan(W, fill, mkP, cup, n_ext, dt)
+    Lplan = PC.lift_plan(Rmax, dt, hand["speed"])
+    if verbose:
+        print(f"  {name} fill {fill:.0f} mL alpha {alpha:g} {sd}: lift pre-plan max {np.max(Rmax) * 1e3:.1f} mm "
+              f"[{time.time() - tp:.0f}s]", flush=True)
+    hist = []
+    for kp in range(npass):
+        tp = time.time()
+        P = mkP()
+        H = PC.IdealHand(P, W, meta, Qw, n_ext, hand=hand, lift_plan=Lplan, yaw_plan=yaw_plan, cup=cup, pulse=[],
+                         Q_env=Qenv)
+        A = {key: np.full(nsteps, np.nan) for key in PC.REC_KEYS + PC.XKEYS}
+        for i in range(nsteps):
+            rec = H.step(dt)
+            PC._flatten(rec, H, A, i)
+            for xk in PC.XKEYS:
+                A[xk][i] = float(rec[xk])
+        Qd = np.interp(tg, A["t"] - 0.5 * dt, A["Q_hit"], left=0.0, right=0.0)
+        e = Qw - Qd
+        R = np.concatenate([A["x_R"], np.full(n_ext - nsteps, A["x_R"][-1])])
+        viol = float(np.sum(A["x_R"] > A["lift"] + 5e-4) * dt)
+        strk = []
+        for s_ in meta["strokes"]:
+            if "yaw" in s_:
+                m_ = (tg >= s_["t0"]) & (tg < s_["t1"])
+                strk.append([s_["n"], float(np.sum(Qd[m_]) / max(np.sum(Qw[m_]), 1e-30)),
+                             float(np.sum(np.abs(e[m_])) / max(np.sum(Qw[m_]), 1e-30))])
+        hist.append(dict(k=kp, L1=float(np.sum(np.abs(e)) / max(np.sum(Qw), 1e-30)), strokes=strk,
+                         V_w_mL=float(np.sum(Qw) * dt / ML), V_d_mL=float(np.sum(Qd) * dt / ML),
+                         lift_max_mm=float(np.nanmax(A["lift"]) * 1e3), lift_violation_s=viol,
+                         tilt_rate_max_deg_s=float(np.degrees(np.nanmax(np.abs(A["x_rate"])))), evals=H.n_eval,
+                         wall_s=time.time() - tp))
+        if verbose:
+            print(f"  {name} pass {kp}: L1 {hist[-1]['L1'] * 100:.1f} %, V {hist[-1]['V_d_mL']:.1f}/{hist[-1]['V_w_mL']:.1f} mL,"
+                  f" lift max {hist[-1]['lift_max_mm']:.1f} mm, viol {viol:.3f} s [{time.time() - tp:.0f}s]  strokes "
+                  + " ".join(f"#{a_}:{b_:.2f}/{c_ * 100:.0f}%" for a_, b_, c_ in strk), flush=True)
+        if kp < npass - 1:
+            Rmax = np.maximum(Rmax, R)
+            Lplan = PC.lift_plan(Rmax, dt, hand["speed"])
+    V_pre = float(np.sum(A["Q_hit"][:n_pre]) * dt / ML)
+    A = {k: v[n_pre:].copy() for k, v in A.items()}
+    A["t"] = A["t"] - pre
+    info = dict(run=name, set="design", tag=tag, spec=F["spec"], pattern=pattern, variant=variant, fill_mL=fill,
+                alpha_deg=alpha, dt=dt, nr=geom.points.shape[0], steps=nsteps - n_pre, preroll_s=pre, V_preroll_mL=V_pre,
+                wall_s=time.time() - t0w, n_pass=npass, ilc=hist, pass_used=npass - 1, hand=hand, lift_acc=PC.LIFT_ACC,
+                law={k: getattr(P.law, k) for k in ("C_d", "h_k", "h_on", "h_off", "tau", "tau_stop", "zeta", "slosh",
+                                                    "carry_velocity")},
+                cup={k: getattr(cup, k) for k in ("r_in", "r_out", "height", "rim_z", "tilt", "margin")},
+                wall=sd["wall"], pitcher=sd["pitcher"], lip_slope_deg=math.degrees(geom.lip_slope),
+                tilt0_deg=math.degrees(H.tilt0),
+                yaw_plan_rate_max_deg_s=float(np.degrees(np.max(np.abs(np.diff(yaw_plan))) / dt)),
+                yaw_want_rate_max_deg_s=float(np.degrees(np.max(np.abs(np.diff(yaw_ext))) / dt)))
+    PC.save_run(W0, meta0, A, info, out=out)
+    return W0, meta0, A, info
+
+
+# ----------------------------------------------------------------------- delivered vs designed
+def _ang(a):
+    return (a + 180.0) % 360.0 - 180.0
+
+
+def pl_compare(name, out=PLOUT):
+    """Per stroke / bridge: the design inlet (W, as fed to the solver in solve_design) vs what the full model delivered
+    (arrival record).  Arrival quantities (Q, U, |u_h|, foot) are compared on the arrival clock in the stroke's phase
+    window; release quantities (tip z incl. lift, tilt, fill, exit horizontal speed) are put on the arrival clock by the
+    flight time and weighted by the released flow.  The delivered chi uses the inlet the solver gets (drvf rules: 1-32 mL/s
+    clip, |u| <= min(0.40 m/s, U), continuity d) with the spec closure."""
+    W, meta, A, info = PC.load_run(name, out)
+    F = load_final(meta["tag"])
+    B, p_ = F["closure"]["B_dep"], F["closure"]["p_dep"]
+    dt = info["dt"]
+    t = A["t"] - 0.5 * dt
+    Tt = meta["T"]
+    hit = A["h_on"] > 0
+    Qd = np.nan_to_num(A["Q_hit"])
+    tw = W["t"]
+
+    def wi(key, fill=0.0):
+        a = np.nan_to_num(np.asarray(W[key], float), nan=fill)
+        return np.where(t <= tw[-1] + dt, np.interp(t, tw, a), fill)
+    Qw = wi("Q")
+    Uw, uhxw, uhyw, exw = wi("U"), wi("uhx"), wi("uhy"), wi("exit_h")
+    zdes, Ldes, tdes, Vdes, chiw, zminw = wi("z_des"), wi("L_des"), wi("tilt_des"), wi("V_des"), wi("chi"), wi("zmin_des")
+    xw, yw = wi("x") * D, wi("y") * D
+    Ud = np.where(hit, A["h_U"], np.nan)
+    uhxd, uhyd = np.where(hit, A["h_uhx"], np.nan), np.where(hit, A["h_uhy"], np.nan)
+    # delivered solver inlet chi (drvf rules, SI -> D units)
+    Qc = np.clip(Qd / ML, 1.0, 32.0) * ML
+    U_D = np.nan_to_num(Ud) / D
+    v_D = np.minimum(np.hypot(np.nan_to_num(uhxd), np.nan_to_num(uhyd)) / D, np.minimum(0.40 / D, U_D))
+    spd = np.hypot(U_D, v_D)
+    d_D = 2 * np.sqrt(Qc / D ** 3 / np.pi / np.maximum(spd, 1e-12))
+    zc = U_D ** 2 / (B * np.maximum(d_D, 1e-12))
+    chid = np.where(hit & (Qd > 0), 1.0 / (1.0 + zc ** p_), np.nan)
+    ex = (A["h_xh"] - xw) * 1e3
+    ey = (A["h_yh"] - yw) * 1e3
+    efoot = np.where(hit, np.hypot(ex, ey), np.nan)
+    jon = A["j_on"] > 0
+    ta = t + np.where(jon, A["j_thit"], 0.0)             # arrival time of the parcel released in this step
+    Qrel = np.where(jon, np.nan_to_num(A["Q"]), 0.0)
+    rate = np.nan_to_num(A["x_rate"])
+    acc = np.abs(np.gradient(rate, dt)) * info["hand"]["pivot_L"]
+    # the 1 ms tracker jitter (bang-bang on a target that moves with the slosh) vs the motion a hand would feel:
+    # acceleration of the 20 ms moving-average tilt rate
+    acc_s = np.abs(np.gradient(PC._movavg(rate, int(round(0.02 / dt))), dt)) * info["hand"]["pivot_L"]
+    tilt_d = np.degrees(A["tilt"])
+    out_s, out_b = [], []
+    for s in meta["strokes"]:
+        m = (t >= s["t0"]) & (t < s["t1"])
+        if not m.any():
+            continue
+        if s["cls"] in FLOWING:
+            o = dict(n=s["n"], cls=s["cls"], t0=s["t0"], t1=s["t1"])
+            wW, wD = np.where(m, Qw, 0.0), np.where(m & hit, Qd, 0.0)
+            o["V_des_mL"], o["V_del_mL"] = float(wW.sum() * dt / ML), float(wD.sum() * dt / ML)
+            o["V_ratio"] = o["V_del_mL"] / max(o["V_des_mL"], 1e-12)
+            o["Q_L1"] = float(np.sum(np.abs(Qd[m] - Qw[m])) / max(np.sum(Qw[m]), 1e-30))
+            k20 = 20
+            q1, q2 = PC._movavg(Qd, k20), PC._movavg(Qw, k20)
+            o["Q_L1_20ms"] = float(np.sum(np.abs(q1[m] - q2[m])) / max(np.sum(q2[m]), 1e-30))
+            o["Q_des_fw"], o["Q_del_fw"] = PC._fw(Qw / ML, wW), PC._fw(Qd / ML, wD)
+            mw = m & (Qw >= 1 * ML)
+            from_zero = float(np.interp(s["t0"] - 2 * dt, t, Qw)) < 1 * ML      # start delay only after a no-flow gap
+            if mw.any() and from_zero:
+                t_on = t[mw][0]
+                md = (t >= t_on - 0.2) & (Qd >= 1 * ML) & (t < s["t1"] + 0.3)
+                o["start_delay_ms"] = float((t[md][0] - t_on) * 1e3) if md.any() else None
+                mb = m & (t > (t[md][0] if md.any() else s["t1"])) & (Qw >= 1 * ML) & (Qd < 0.5 * ML)
+                o["break_s"] = float(mb.sum() * dt)
+            o["U_des"], o["U_del"] = PC._fw(Uw, wW), PC._fw(Ud, wD)
+            o["uh_des"], o["uh_del"] = PC._fw(np.hypot(uhxw, uhyw), wW), PC._fw(np.hypot(uhxd, uhyd), wD)
+            vd = np.array([PC._fw(uhxw, wW), PC._fw(uhyw, wW)])
+            vv = np.array([PC._fw(uhxd, wD), PC._fw(uhyd, wD)])
+            o["uh_dir_err_deg"] = float(_ang(math.degrees(math.atan2(vv[1], vv[0]) - math.atan2(vd[1], vd[0]))))
+            o["chi_des"], o["chi_del"] = PC._fw(chiw, wW), PC._fw(chid, wD)
+            o["chi_design_final"] = next((r["chi_inlet"] for r in F["patterns"][meta["pattern"]]["strokes"] if r["n"] == s["n"]), None)
+            o["chi_target"] = next((r["chi_t"] for r in F["patterns"][meta["pattern"]]["strokes"] if r["n"] == s["n"]), None)
+            mf = m & hit & (Qd > 0)
+            if mf.any():
+                wf = Qd[mf]
+                o["foot_rms_mm"] = float(np.sqrt(np.sum(wf * efoot[mf] ** 2) / wf.sum()))
+                o["foot_mean_dx_mm"] = float(np.sum(wf * ex[mf]) / wf.sum())
+                o["foot_mean_dy_mm"] = float(np.sum(wf * ey[mf]) / wf.sum())
+                o["foot_p95_mm"] = float(np.percentile(efoot[mf], 95))
+            # release side on the arrival clock
+            mr = (ta >= s["t0"]) & (ta < s["t1"]) & jon
+            wr = np.where(mr, Qrel, 0.0)
+            zdes_a = np.interp(ta, tw, np.nan_to_num(W["z_des"]))
+            o["z_des_mm"] = PC._fw(zdes * 1e3, wW)
+            o["L_des_mm"], o["L_des_max_mm"] = PC._fw(Ldes * 1e3, wW), float(np.max(Ldes[m]) * 1e3)
+            o["z_del_mm"] = PC._fw(A["tip_z"] * 1e3, wr)
+            o["z_err_mm"] = PC._fw(np.abs(A["tip_z"] - zdes_a) * 1e3, wr)
+            o["L_del_mm"], o["L_del_max_mm"] = PC._fw(A["lift"] * 1e3, wr), float(np.nanmax(np.where(mr, A["lift"], 0.0)) * 1e3)
+            o["R_del_mm"] = PC._fw(A["x_R"] * 1e3, wr)
+            o["zmin_des_mm"] = PC._fw(zminw * 1e3, wW)
+            o["tilt_des"], o["tilt_del"] = PC._fw(tdes, wW), PC._fw(tilt_d, wr)
+            o["V_pitcher_des"], o["V_pitcher_del"] = PC._fw(Vdes, wW), PC._fw(A["V"] / ML, wr)
+            o["exit_des"], o["exit_del"] = PC._fw(exw, wW), PC._fw(np.where(jon, A["j_exh"], np.nan), wr)
+            o["u0_del"] = PC._fw(np.where(jon, A["j_u0"], np.nan), wr)
+            o["thit_ms"] = PC._fw(np.where(jon, A["j_thit"], np.nan) * 1e3, wr)
+            o["slope_deg"] = float(np.degrees(np.arctan(np.nanmax(np.hypot(A["slope_x"], A["slope_y"])[mr])))) if mr.any() else None
+            o["U_rel"] = o["U_del"] / o["U_des"] - 1
+            o["uh_rel"] = o["uh_del"] / o["uh_des"] - 1
+            out_s.append(o)
+        else:
+            if not any(x["cls"] in FLOWING for x in meta["strokes"][:s["k"]]):
+                continue
+            Vw_, Vd_ = float(np.sum(Qw[m]) * dt / ML), float(np.sum(Qd[m]) * dt / ML)
+            out_b.append(dict(n=s["n"], cls=s["cls"], t0=s["t0"], t1=s["t1"], dur=s["t1"] - s["t0"], V_des_mL=Vw_,
+                              V_del_mL=Vd_, zero_des_s=float(np.sum(Qw[m] < 1 * ML) * dt),
+                              zero_del_s=float(np.sum(Qd[m] < 1 * ML) * dt),
+                              fed_des_mL=float(np.sum(np.where(Qw[m] >= 1 * ML, Qw[m], 0.0)) * dt / ML),
+                              fed_del_mL=float(np.sum(np.where(Qd[m] >= 1 * ML, Qd[m], 0.0)) * dt / ML)))
+    mT = (t >= 0) & (t <= Tt)
+    pour = mT & (Qw > 0)
+    tot = dict(V_des_mL=float(np.sum(Qw) * dt / ML), V_del_in_T_mL=float(np.sum(Qd[mT]) * dt / ML),
+               V_after_T_mL=float(np.sum(Qd[t > Tt]) * dt / ML), V_preroll_mL=info["V_preroll_mL"],
+               fill_mL=info["fill_mL"], V_end_mL=float(A["V"][-1] / ML), V_end_des_mL=float(W["V_des"][-1]),
+               tilt_range_deg=PC._rng(tilt_d[mT & jon]), tilt_rate_max=float(np.degrees(np.nanmax(np.abs(rate[mT])))),
+               acc_max=float(np.nanmax(acc[mT])), acc_ge_9p9_frac=float(np.mean(acc[pour] >= 9.9)) if pour.any() else None,
+               acc_gt_5_frac=float(np.mean(acc[pour] > 5.0)) if pour.any() else None,
+               acc_gt_2_frac=float(np.mean(acc[pour] > 2.0)) if pour.any() else None,
+               acc20_max=float(np.nanmax(acc_s[mT])),
+               acc20_gt_5_frac=float(np.mean(acc_s[pour] > 5.0)) if pour.any() else None,
+               acc20_gt_2_frac=float(np.mean(acc_s[pour] > 2.0)) if pour.any() else None,
+               acc20_p95=float(np.percentile(acc_s[pour], 95)) if pour.any() else None,
+               rate20_max=float(np.degrees(np.nanmax(np.abs(PC._movavg(rate, int(round(0.02 / dt)))[mT])))),
+               rate_gt_60_frac=float(np.mean(np.degrees(np.abs(rate[pour])) > 60.0)) if pour.any() else None,
+               yaw_rate_max=float(np.degrees(np.nanmax(np.abs(np.gradient(np.nan_to_num(A["yaw"]), dt)[mT])))),
+               lift_max_mm=float(np.nanmax(A["lift"][mT]) * 1e3),
+               lift_violation_s=float(np.sum((A["x_R"] > A["lift"] + 5e-4) & mT) * dt),
+               lift_violation_max_mm=float(np.nanmax(np.where(mT, A["x_R"] - A["lift"], 0.0)) * 1e3),
+               slope_max_deg=float(np.degrees(np.arctan(np.nanmax(np.hypot(A["slope_x"], A["slope_y"])[mT])))),
+               g_eff_range=PC._rng(A["g_eff"][mT]),
+               tip_speed_max=float(np.nanmax(np.hypot(A["vel_x"], np.hypot(A["vel_y"], A["vel_z"]))[mT])),
+               Q_L1=float(np.sum(np.abs(Qd - Qw)[mT]) / max(np.sum(Qw[mT]), 1e-30)),
+               incoherent_frac=float(np.mean(A["h_coh"][hit & mT] < 0.5)) if (hit & mT).any() else None)
+    res = dict(run=name, tag=meta["tag"], pattern=meta["pattern"], info={k: v for k, v in info.items() if k != "ilc"},
+               ilc_last=info["ilc"][-1], total=tot, strokes=out_s, bridges=out_b)
+    with open(os.path.join(out, "runs", name + "_cmp.json"), "w") as f:
+        json.dump(_jsonable(res), f, indent=1, default=float)
+    return res
+
+
+# ----------------------------------------------------------------------- the delivered inlet to the solver
+def pl_table(name, out=PLOUT, rebuild=False):
+    """<out>/tables/<name>.npz in the PC.solve_table format: raw 1 ms delivered ('p_') and design ('w_') inlet
+    quantities: on, x, y [D], Q [D^3/s], U, ux, uy, vfoot [D/s]; p_ record k = arrivals in [k dt, (k+1) dt), w_ row k =
+    the design program at t = k dt."""
+    path = os.path.join(out, "tables", name + ".npz")
+    if os.path.exists(path) and not rebuild:
+        return path
+    W, meta, A, info = PC.load_run(name, out)
+    pt = A["t"]
+    dt = info["dt"]
+    assert abs(pt[0] - dt) < 1e-9 and np.allclose(np.diff(pt), dt, atol=1e-9), "arrival record not on the 1 ms grid"
+    Q = np.nan_to_num(A["Q_hit"])
+    on = (np.nan_to_num(A["h_on"]) > 0) & (Q > 0)
+    T = dict(p_on=on.astype(np.int8), p_x=np.where(on, np.nan_to_num(A["h_xh"]), 0.0) / D,
+             p_y=np.where(on, np.nan_to_num(A["h_yh"]), 0.0) / D, p_Q=np.where(on, Q, 0.0) / PC.D3,
+             p_U=np.where(on, np.nan_to_num(A["h_U"]), 0.0) / D, p_ux=np.where(on, np.nan_to_num(A["h_uhx"]), 0.0) / D,
+             p_uy=np.where(on, np.nan_to_num(A["h_uhy"]), 0.0) / D)
+    T["p_vfoot"] = PC._foot_speed(on, T["p_x"], T["p_y"], dt)
+    kQ = meta["kappa_Q"]
+    wa = np.nan_to_num(W["active"]) > 0.5
+    T["w_on"] = wa.astype(np.int8)
+    T["w_x"], T["w_y"] = np.asarray(W["x"], float), np.asarray(W["y"], float)
+    T["w_Q"] = np.where(wa, np.nan_to_num(W["S_eff"]) / kQ, 0.0)
+    T["w_U"] = np.where(wa, np.nan_to_num(W["U_D"]), 0.0)
+    T["w_ux"] = np.where(wa, np.nan_to_num(W["ux_D"]), 0.0)
+    T["w_uy"] = np.where(wa, np.nan_to_num(W["uy_D"]), 0.0)
+    T["w_vfoot"] = PC._foot_speed(wa, T["w_x"], T["w_y"], dt)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    np.savez_compressed(path, dt=dt, **T, meta=json.dumps(dict(
+        pattern=meta["pattern"], tag=meta["tag"], source_run=os.path.join(out, "runs", name + ".npz"), T=meta["T"],
+        kappa_Q=kQ, units="x, y D; Q D^3/s (1 D^3 = 512 mL); U, ux, uy, vfoot D/s")))
+    return path
+
+
+def pl_program(name, kind="pitcher", N=256, out=PLOUT):
+    """The design program (build_design_program: spec closure, phases, duration = design T) whose inlet comes from the
+    table of run `name`: kind 'pitcher' (delivered; scan bound raised to the delivered foot speed as PC.solve_program) or
+    'wanted' (the design's own 1 ms samples; a path check: records at t_k equal PourF's)."""
+    from .v05_program import Program
+    path = pl_table(name, out)
+    z = np.load(path)
+    tmeta = json.loads(str(z["meta"]))
+    F = _final_setup(tmeta["tag"])
+    prog = build_design_program(F["spec"], F["design"], tmeta["pattern"], kappa_r=F["closure"]["kappa_r"])
+    PourF = pourf_class()
+
+    class LoopProgram(PourF):
+        def __call__(self, t):
+            k = self.phase_index(t)
+            inl0 = Program.__call__(self, t)
+            des = self.kind == "wanted" or ((k + 1) in self.mixw and not self.mixq)
+            tb = self.tabw if des else self.tab
+            c = tb.c
+            i = tb.index(t)
+            if (k + 1) in self.mixw and self.mixq:          # quantity-level mix: these columns from the design table
+                c = {key: (self.tabw.c[key] if key in self.mixq else self.tab.c[key]) for key in self.tab.c}
+            args = (bool(c["on"][i]), (float(c["x"][i]), float(c["y"][i])), float(c["Q"][i]), float(c["U"][i]),
+                    float(c["ux"][i]), float(c["uy"][i]),
+                    inl0.scan_speed if des else max(inl0.scan_speed, min(float(c["vfoot"][i]), self.vcap)))
+            o, Q = PC.drvf_record(self, k, inl0, *args)
+            self.slog.append((t, k, float(args[0]), args[2] * 512.0, (Q or 0.0) * 512.0, args[3] * D_M,
+                              (o.u_in[0] if o.active else 0.0) * D_M, (o.u_in[1] if o.active else 0.0) * D_M,
+                              (math.sqrt(o.r1 * o.r2) if o.active else 0.0) * D_M * 1e3,
+                              (o.d_jet if o.active else 0.0) * D_M * 1e3, o.scan_speed, o.x_hit[0], o.x_hit[1],
+                              float(o.active)))
+            return o
+    prog.__class__ = LoopProgram
+    # kind 'mix:<n,...>' (diagnostic, not pourable as a whole): the phases n (1-based) from the design table, the rest delivered
+    # kind 'mix:<n,...>:<groups>' takes only the column groups xy (x, y, vfoot), QU (Q, U), uh (ux, uy) from the design
+    prog.mixw = tuple(int(v) for v in kind.split(":")[1].split(",")) if kind.startswith("mix:") else ()
+    grp = dict(xy=("x", "y", "vfoot"), QU=("Q", "U"), uh=("ux", "uy"), Q=("Q",), U=("U",))
+    prog.mixq = tuple(c for g in kind.split(":")[2].split(",") for c in grp[g]) if kind.count(":") >= 2 else ()
+    prog.mixtag = kind.split(":")[2].replace(",", "") if kind.count(":") >= 2 else ""
+    kind = "pitcher" if kind.startswith("mix:") else kind
+    prog.kind = kind
+    prog.tab = PC._SolveTable(path, kind)
+    prog.tabw = PC._SolveTable(path, "wanted")
+    prog.slog = []
+    prog.vcap = 0.5 / (N * PC.DT)
+    return prog
+
+
+def pl_check(names, out=PLOUT):
+    """Offline path check: the 'wanted'-table program's records at t_k = k dt are bitwise PourF's (the design program
+    solve_design used) for every run in `names`."""
+    res = {}
+    for nm in names:
+        pw = pl_program(nm, "wanted", out=out)
+        tm = json.loads(str(np.load(pl_table(nm, out))["meta"]))
+        F = _final_setup(tm["tag"])
+        ref = build_design_program(F["spec"], F["design"], tm["pattern"], kappa_r=F["closure"]["kappa_r"])
+        tk = np.arange(pw.tab.n) * pw.tab.dt
+        tk = tk[tk < pw.duration]
+        bad = 0
+        for t in tk:
+            if not PC._inlet_same(pw(t), ref(t)):
+                bad += 1
+        res[nm] = dict(n=len(tk), mismatch=bad, T=pw.duration, T_ref=ref.duration,
+                       params_same=pw.config["parameters"] == ref.config["parameters"])
+        print(nm, res[nm], flush=True)
+    with open(os.path.join(out, "path_check.json"), "w") as f:
+        json.dump(res, f, indent=1)
+    return res
+
+
+def pl_solve(name, kind="pitcher", N=256, out=PLOUT, tag=None):
+    """V0.5 (latte_imex.run.run, unmodified) on the delivered ('pitcher') or design-table ('wanted') inlet of run
+    `name`; writes <out>/runs256/<tag>_<pattern>_N<N>/ like solve_design (c.npz, res.json, trajectory.json, inlet_log.npy)."""
+    import latte_imex.run as RR
+    prog = pl_program(name, kind, N, out)
+    tm = prog.tab.meta
+    var = name.rsplit("_", 1)[1]
+    vs = "" if var == "ideal" else var
+    tag = tag or ("PL" + tm["tag"] + vs if kind == "pitcher" else "PW" + tm["tag"] if kind == "wanted" else
+                  "MX" + tm["tag"] + vs + "p" + "-".join(str(v) for v in prog.mixw) + prog.mixtag)
+    RR.v05_program = lambda nm: prog
+    od = os.path.join(out, "runs256", f"{tag}_{tm['pattern']}_N{N}")
+    os.makedirs(od, exist_ok=True)
+    t0 = time.time()
+    sol, m = RR.run(tm["pattern"], N=N, out=od, video=False, quiet=True, control="v05")
+    wall = time.time() - t0
+    c = sol.concentration()
+    np.savez_compressed(os.path.join(od, "c.npz"), c=c.astype(np.float32), mask=sol.g.mask.copy())
+    np.save(os.path.join(od, "inlet_log.npy"), np.array(prog.slog))
+    for fn in ("snapshots_c.npz", "final_state.npz"):
+        try:
+            os.remove(os.path.join(od, fn))
+        except OSError:
+            pass
+    res = dict(tag=tag, run=name, kind=kind, mix_design_phases=list(prog.mixw), mix_columns=list(prog.mixq),
+               pattern=tm["pattern"], N=N, table=tm,
+               scan_cap=prog.vcap,
+               duration=prog.duration, params=dict(prog.config["parameters"]), wall_s=wall, stats=m["stats"],
+               ledger=m["ledger"], T=m["T"], n_calls=len(prog.slog))
+    with open(os.path.join(od, "res.json"), "w") as fh:
+        json.dump(res, fh, indent=1, default=float)
+    print(json.dumps(dict(tag=tag, pattern=tm["pattern"], N=N, wall_s=round(wall, 1), T=m["T"],
+                          deposited=m["ledger"].get("deposited"))), flush=True)
+    return od
+
+
 # =========================================================================== CLI
 def main(argv=None):
     ap = argparse.ArgumentParser()
@@ -1914,6 +2455,8 @@ def main(argv=None):
     ap.add_argument("--tag", default=None)
     ap.add_argument("--via", default="pourf")
     ap.add_argument("--vmin", default=None)
+    ap.add_argument("--variant", default="ideal")
+    ap.add_argument("--kind", default="pitcher")
     a = ap.parse_args(argv)
     os.makedirs(OUT, exist_ok=True)
     if a.cmd == "build":
@@ -1962,6 +2505,18 @@ def main(argv=None):
         solve_design(a.spec, a.pattern, a.N, a.tag)
     elif a.cmd == "fsrun":                        # fsrun --pattern heart --N 48 --via drvf|pourf [--tag FSr]
         solve_fs(a.pattern, a.N, a.tag or "FSr", a.via)
+    elif a.cmd == "loop_sim":                     # loop_sim --tag S1 --pattern heart [--variant ideal]
+        pl_simulate(a.tag or "S1", a.pattern, a.variant)
+        pl_compare(pl_name(a.tag or "S1", a.pattern, a.variant))
+    elif a.cmd == "loop_cmp":                     # loop_cmp --tag S1 [--variant ideal]
+        for p in PC.PATTERNS:
+            if os.path.exists(os.path.join(PLOUT, "runs", pl_name(a.tag or "S1", p, a.variant) + ".npz")):
+                pl_compare(pl_name(a.tag or "S1", p, a.variant))
+    elif a.cmd == "loop_check":                   # loop_check --tag S1   (offline record check vs PourF)
+        pl_check([pl_name(a.tag or "S1", p, a.variant) for p in PC.PATTERNS
+                  if os.path.exists(os.path.join(PLOUT, "runs", pl_name(a.tag or "S1", p, a.variant) + ".npz"))])
+    elif a.cmd == "loop_solve":                   # loop_solve --tag S1 --pattern heart --N 256 [--kind pitcher|wanted]
+        pl_solve(pl_name(a.tag or "S1", a.pattern, a.variant), a.kind, a.N)
     elif a.cmd == "report":
         closed_form_check()
         jet_tables()
