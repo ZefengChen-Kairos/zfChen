@@ -1,0 +1,6 @@
+{
+ "s1_refs": "review v05pour/design/refs.json (v05_pourable._refs)",
+ "v05_ref_N128": "review v05audit/cf/baseline/<p>_N128.npz (allphys.load_ref, N = 128): c, mask",
+ "v05_ref_N256": "runs/v05_256/<p>/final_state.npz (allphys.load_ref, N = 256): c = m / l, mask",
+ "written": "2026-10-15 01:22:57"
+}
