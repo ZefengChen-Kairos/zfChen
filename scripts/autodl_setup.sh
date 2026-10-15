@@ -21,6 +21,7 @@ print("device:", d.name.decode() if isinstance(d.name, bytes) else d.name, "cc",
       "SMs", d.MULTIPROCESSOR_COUNT)
 PY
 export NUMBA_NUM_THREADS=${NUMBA_NUM_THREADS:-4}
+export NUMBA_CUDA_LOW_OCCUPANCY_WARNINGS=0
 echo "[1/4] CPU vs CUDA solver (heart, N=256, 1 s), batched mode == single runs, FP32 smoke"
 python -m latte_imex.test_cuda --N 256 --T 1.0 2>&1 | tee "$LOG/test_cuda.log"
 echo "[2/4] symmetric viscosity / off-cup switches, CPU and CPU-vs-CUDA"

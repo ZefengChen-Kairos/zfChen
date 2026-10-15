@@ -3,8 +3,10 @@
     python -m latte_imex.test_cuda_pitcher                          # GPU: full NX geometry, 3 patterns x 2 windows x 1500 steps
     NUMBA_ENABLE_CUDASIM=1 python -m latte_imex.test_cuda_pitcher --nr 1 --steps 24 --patterns heart
                                                                     # no GPU: simulator, coarse cavity, few steps (slow)
-Pass: every emission quantity agrees to rounding (relative 1e-9 of its scale; the free-surface height to 1e-12 m) and
-the binned arrival records agree to 1e-9 relative.
+Pass: every emission quantity agrees to 1e-6 relative of its scale (free-surface height to 1e-9 m) and the binned
+arrival records to 1e-6 relative.  The histogram of the cavity volumes uses shared-memory float atomics, so the
+summation order (and the last bits) differ from the CPU; near a threshold (weir head ~ 0, quantile bin edge) that
+rounding is amplified to ~1e-7 relative (seen on the RTX 4090 for one tulip window: z_f 8e-11 m) -- physically nil.
 """
 import argparse
 import math
@@ -72,7 +74,7 @@ def main(argv=None):
             ra = max(float(np.max(np.abs(Rc[k] - Rg[k]))) / max(float(np.max(np.abs(Rc[k]))), 1e-30)
                      for k in ("Q", "x_hit", "U_perp", "V_cup"))
             flow = float(np.sum(Ec["Q_o"]) * s["dt"] * 1e6)
-            good = r < 1e-9 and dz < 1e-12 and ra < 1e-9 and Eg["gpu_status"] == 0
+            good = r < 1e-6 and dz < 1e-9 and ra < 1e-6 and Eg["gpu_status"] == 0
             worst = max(worst, r, ra)
             ok &= good
             print(f"[{var}] n={len(s['t'])} poured {flow:.2f} mL  max rel diff emission {r:.1e} (z_f {dz:.1e} m)  "

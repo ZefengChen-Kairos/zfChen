@@ -26,6 +26,7 @@ GENS=${GENS:-20}; POP=${POP:-12}; N_LO=${N_LO:-128}; N_HI=${N_HI:-256}; TOPK=${T
 ROB=${ROB-R1,R2,R3}; VARS=${VARS:-tilt,z,shift,fill}; CHUNK=${CHUNK:-0}; CLOSURE=${CLOSURE:-calib}; NS=${NS:-256,512}
 VIDEO=${VIDEO:-1}
 export NUMBA_NUM_THREADS=${NUMBA_NUM_THREADS:-4}
+export NUMBA_CUDA_LOW_OCCUPANCY_WARNINGS=0
 mkdir -p "$OUT"
 BK=""
 if [ "${BACKENDS:-}" = "cpu" ]; then BK="--solver-backend cpu --pitcher-backend cpu"; fi

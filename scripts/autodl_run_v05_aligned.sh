@@ -5,6 +5,7 @@
 #   (c) figures (six-pattern montage, robustness grid) and results.json
 #   bash scripts/autodl_run_v05_aligned.sh                 OUT=... NS=256,512 NR=256 CHUNK=0 to override
 set -eo pipefail
+export NUMBA_CUDA_LOW_OCCUPANCY_WARNINGS=0
 cd "$(dirname "$0")/.."
 OUT=${OUT:-results/autodl_v05}
 NS=${NS:-256,512}
