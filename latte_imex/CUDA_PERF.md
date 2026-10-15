@@ -81,7 +81,29 @@ histogram bin with more than 768 points (none on the S1 poses: max 372) flags th
 on the CPU.  Expected: ~30-60 us per step per block, all sequences in parallel: a 10 000-step sequence in < 1 s, the
 whole robustness calibration (30 sequences x ~30 calls) in 1-3 min (the CPU needs 10-16 s per sequence and call).
 
-## 5. Only verifiable on the real GPU
+## 5. Batched design / calibration loops (`gpu_batch.py`, `gpu_design.py`, `gpu_calib.py`)
+
+No new kernels.  What the loops add on the host side, for throughput:
+- **One batch per generation.**  Design: every candidate x (1 + hand-error draws) x pattern of a CMA-ES generation is one
+  `BatchCudaSolver` batch (default 6 x 12 x 4 = 288 members at 128^2 = 4.7 M cells, ~ 72 members at 256^2: enough to fill
+  an A100 / 4090); calibration: 3 inits x 12 candidates x 2 clips = 72 members at 96^2.  `--chunk` splits a generation
+  if memory is short (a member at N needs ~ 45 N^2 doubles: 128^2 -> 5.9 MB, 288 members -> 1.7 GB).
+- **No reallocation, no recompilation.**  `BatchCudaSolver.reset(params)` restarts all members from the initial state
+  and swaps their parameters (`pm` upload) on the existing device buffers; `gpu_batch.BatchEngine` keeps one solver per
+  (N, B) and resets it every generation, so the kernels compile once per process and the device memory is allocated
+  once.  The GPU pitcher object (geometry and law on the device) is cached per `ForwardPitcher` (`s1_forward.run_pitcher`).
+- **Snapshots in one copy.**  `BatchCudaSolver.concentrations_all()`: one launch and one device->host copy for all
+  members (the calibration needs the clip's output frames of every member; members of one clip reach them together).
+- **A failing member does not stop the batch.**  `advance_frames(..., drop_failed=True)` flags it (`failed[b]`), the
+  caller scores it as a failed forward call (calib's +inf / 1e6 rule); default behaviour (raise) unchanged.
+- **Host work that remains per control frame and member**: the program / inlet evaluation (FwdProgram + drvf rules, or
+  PhysInlet.state, ~30-100 us in Python) and the inlet scalars (`_inlet_row`).  At B = 288 this is ~10-30 ms per frame,
+  comparable to the GPU time of a frame at 128^2; the calib metrics (~1 s per clip run) run in a process pool
+  (`gpu_calib --procs`).  These are the first places to look if the GPU utilisation (nvidia-smi) stays low.
+Checked in the simulator (`test_gpu_design`): reset == fresh solver (max rel. difference 0), a tiny design generation
+and a tiny calibration generation give the same objective / loss on the CUDA and the CPU path.
+
+## 6. Only verifiable on the real GPU
 
 Timings; the fast-launch path (falls back by itself on error; the CPU-vs-GPU self-test runs with it on);
 float64 atomics (global max/add, shared-memory add) and the shared-memory budget of the pitcher kernel (~35 KB);

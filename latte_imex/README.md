@@ -84,6 +84,11 @@ python -m latte_imex.bench_cuda --N 768 --video                # six patterns (V
 NUMBA_ENABLE_CUDASIM=1 python -m latte_imex.test_cuda --N 20 --T 0.02 --batchN 16 --frames 2   # no GPU: simulator
 ```
 
+Design / calibration on the GPU: `gpu_calib.py` (closure calibration against the videos, the `v05_calibrate` setup with
+every CMA-ES generation as one batch; pitcher-constant fit hook), `gpu_design.py` (per-pattern action re-design with the
+forward pitcher in the loop, CMA-ES, 128^2 screen / 256^2 confirm, resumable), both on `gpu_batch.BatchEngine`; one-command
+script `scripts/autodl_run_design.sh`, tests `test_gpu_design` (Chinese section below).
+
 Differences from the CPU solver (unchanged from before): componentwise viscosity and mixing are explicit (sub-cycled
 when `nu*dt/h^2` or `D*dt/h^2` exceeds 0.2), the deposited-milk ledger uses the exact kernel normalisation
 (`chi*S*dt`), q^{n+1} uses the gradient of the PCG solution (CPU: of the conservative l^{n+1}; they differ by the
@@ -134,6 +139,101 @@ python -m latte_imex.autodl_v05 figures
 - (a) 六图案：壶 < 1 min；256² 一批 6 个约 2–5 min，512² 约 5–15 min；视频编码（CPU）每个 0.5–1 min。
 - (b) 60 次运行（6 图案 × 10）：壶标定 1–3 min；256² 一批 60 个约 10–25 min。
 - (c) 几秒。
+
+## AutoDL 标定与动作优化（GPU：闭合标定 → 前向壶上重新设计动作 → 手误差稳健性 → 终图/视频）
+
+**为什么要做**：对齐到 V1 之后（对称黏性、出射时刻入口速度 + 杯外记账、前向姿态驱动壶 + 投影堰宽），按旧壶模型设计的 S1
+动作在前向壶上多倒 4–6 mL；大白心 / 推推乐几乎不变（IoU 0.95 / 0.87），千层心、郁金香、树叶、天鹅白区多 20–35%、线变粗。
+所以动作要在前向壶上重新设计，闭合参数也可能要重新标定。顺序固定为：**① 闭合标定 → ② 用标定后的闭合重新设计动作 →
+③ 手误差稳健性检查 → ④ 终图和视频**。
+
+**一行命令**（在仓库根目录，先跑过 `bash scripts/autodl_setup.sh`；中断后原命令重跑即可续算，每一代都存盘）：
+
+```
+bash scripts/autodl_run_design.sh
+```
+
+环境变量（括号内为默认值）：`OUT`（results/autodl_design）、`PATTERNS`（六个）、`STEPS`（selftest,calib,predict,design,robust,final，可只跑其中几步；selftest = `test_gpu_design` 在真 GPU 上，2–4 min）、
+标定 `CAL_GENS`（20）`CAL_POP`（12）`CAL_N`（96）`CAL_INITS`（0,1,2）`PROCS`（4，CPU 上算 calib 指标的进程数）、
+设计 `GENS`（20）`POP`（12）`N_LO`（128，筛选分辨率）`N_HI`（256，复核分辨率）`TOPK`（2）`CONFIRM_EVERY`（2）
+`ROB`（R1,R2,R3；设为空串则不算稳健项，约快一倍）`VARS`（tilt,z,shift,fill）`CHUNK`（0 = 一代一个 GPU 批；显存不够时设 96 之类）、
+`CLOSURE`（calib = 用 ① 的 best.json；s1 = S1 程序自带闭合；或一个 JSON 路径）、`PITCHER_LAW`（壶常数拟合结果，可选）、
+`NS`（256,512）`VIDEO`（1）、`T`（只用于冒烟测试：每个运行截断在 T 秒）、`BACKENDS=cpu`（CPU 参考实现，很慢）。
+
+分步命令：
+
+```
+python -m latte_imex.gpu_calib run     --out results/autodl_design/calib            # ① 标定（可续算）
+python -m latte_imex.gpu_calib predict --out results/autodl_design/calib            #    冻结参数预测其余四个
+python -m latte_imex.gpu_design run    --out results/autodl_design/design --closure results/autodl_design/calib/best.json   # ②
+python -m latte_imex.gpu_design status --out results/autodl_design/design
+python -m latte_imex.gpu_design robust --out results/autodl_design/design --N 256    # ③
+python -m latte_imex.gpu_design final  --out results/autodl_design/design --N 256,512 --video   # ④
+python -m latte_imex.gpu_calib fit_pitcher --scale a.npz,b.npz --out results/pitcher_fit     # 有秤数据时：拟合壶常数
+NUMBA_ENABLE_CUDASIM=1 python -m latte_imex.test_gpu_design --quick                  # 无 GPU 的自检（模拟器 + CPU，约 30 min）
+python -m latte_imex.test_gpu_design                                               # GPU 上的自检（较大网格）
+```
+
+**① 闭合标定**（`gpu_calib.py`，就是 `v05_calibrate` 的预注册设置，只是把前向计算批量放到 GPU 上）：模型 = `V05Model`（咖啡师的
+真实动作，物理入口），求解器用 `Params` 默认值即对齐后的模型；参数 = `v05_adapter.SPACE` 的 8 个闭合参数（B_dep、p_dep、κ_r、
+κ_Q、c_p、β、κ_t、κ_c，物理边界）+ 2 个输入扰动参数（u_exit、Q_scale）；损失 = `calib.loss_of(delay=False)`（⟨1−Dice⟩ + ⟨边界距离⟩/0.05 D
++ 阶段末细线数误差），郁金香 + 树叶等权平均；CMA-ES（N 96、种群 12、σ0 0.25、20 代、3 个起点 FSp2 / FS / 盒中心，种子 1+起点号），
+3 个起点同步推进，一代 3×12×2 = 72 次前向是一个 GPU 批，calib 指标在 CPU 进程池里算。最优 = 所有 CMA 样本里平均损失最低者
+（与 `calib.calibrate` 相同），写 `best.json`（给 ② 用）。`predict`：最优参数和 FSp2 起点在六个视频上 128² 一批跑，
+分开报告“标定拟合”（郁金香、树叶）和“测试预测”（大白心、推推乐、千层心、天鹅），外加过程对照图和 256² 末帧对照。
+
+**② 动作重新设计**（`gpu_design.py`，在前向壶上闭环）：
+- 决策变量（逐出流笔；路径、偏航、侧倾、时间轴保持 S1 不变，与 S1 预注册“不许改路径/时间/摆动”一致）：倾角偏置 tilt_k
+  ∈ [−6, 6]°（前向壶里流量由倾角决定，对应 S1 设计的流量系数 s_k；`s1_forward.tilt_offset` 的剖面）、壶嘴高度偏置 z_k ∈ [−4, 8] mm
+  （对应 S1 的设计高度 z_k，0.11 m/s 高度过渡）、出流时间平移 shift_k ∈ [−80, 80] ms（倾角历程相对路径平移，同 P5/P6 的机制）；
+  每个图案一个起始装奶量 fill ∈ [100, 125] mL。
+- 目标 J = 10·J_S1 + 1·L_shape + 0.5·R + 1·P（权重可改，`--w-*`）：J_S1 = `v05_pourable.finalize` 在实际入口上的 S1 设计目标
+  （逐笔 χ 对 V0.5 目标、相对 V0.5 笔量的流量系数、水平动量对 FS）；L_shape = 2 − IoU(c>0.4) − r_hp，对 V0.5 参考图
+  （`allphys.rank` 的筛选分数）；R = 手误差抽样（默认预注册的 R1–R3，每笔同时有高度 ±3 mm、流量 ×0.8–1.2、±50 ms）相对本候选
+  名义运行的 (1 − IoU(c>0.5)) + |ln 白区面积比|（`autodl_v05.compare_c`），扰动用 autodl_v05 的同一套（姿态上加，流量误差用 GPU 壶
+  批量割线标定倾角偏置）；P = 约束罚：逐笔流量加权倾角在 63–81°、流量加权壶嘴高度在 S1 的范围（low 3–25 mm、cut 12–70 mm）、
+  倒奶时壶嘴 ≥ 3 mm、壶里最后 ≥ 20 mL、理想手的速率/加速度上限（只罚超过 max(上限, S1 原姿态值) 的部分）。关键结构
+  （`design_metrics.STRUCT`，即 ref2/structm 的心形缺口、推纹、千层、郁金香轴线、叶脉、天鹅颈）只报告，不进目标。
+- 优化器：CMA-ES（单位盒，起点 = S1 原动作，σ0 0.2，种群 12，20 代），所有图案同步；一代 = 所有候选 ×（1 + 扰动数）条姿态
+  一次 GPU 壶批量 + 一次 `BatchCudaSolver` 批（默认 6×12×4 = 288 个成员，128²）。多保真：每 2 代把每个图案筛选最好的 2 个
+  在 256² 复核（壶的结果直接复用），最后一代再复核 CMA 均值；报告的设计 = 256² 复核最好的。每代存 `state.pkl`（含随机数状态，
+  续算与不中断结果逐位相同，已测）。S1 原动作作为参照在两种分辨率各算一次。
+
+**壶常数拟合钩子**（暂无数据）：`gpu_calib fit_pitcher` 用秤测的质量曲线拟合 `ForwardLaw` 的 C_d、h_k（可加 C_v，但秤上几乎
+不可辨识）。输入每次倒奶一个 `.npz`：`t`（姿态时间，等步长）、`tip`（n×3 壶嘴尖位置 m，杯坐标、液面 z = 0）、`yaw`、`tilt`、`roll`
+（rad）、`fill_mL`、`alpha_deg`、`m_t`（秤读数时间 s，同一时钟）、`m_g`（读数 g）、`scale_on`（'cup' 杯在秤上 = 到杯量，或
+'pitcher' 壶在秤上）、可选 `rho`（1.03 g/mL）、`tau_scale`（秤的一阶滞后 s）。输出 `pitcher_law.json`，`gpu_design --pitcher-law`
+（或 `PITCHER_LAW=`）直接读。`gpu_calib make_scale` 生成同格式的合成文件（测试里用它验证能找回 C_d = 0.55）。
+
+**输出**（默认 `results/autodl_design/`）
+- `calib/`：`calib.json`（`calib.calibrate` 同格式：每个起点的历史和最优、参照点）、`best.json`、`state.pkl`、`log.txt`、
+  `predict/predict.json`、`predict/process_<图案>.png`、`predict/final_N256.png`
+- `design/`：`design.json`（每个图案：S1 原动作参照、筛选最优、复核最优、解码后的动作、各项目标和约束、每代历史）、`state.pkl`、
+  `log.txt`、`data/`（重新设计的姿态和程序，s1_forward 格式，autodl_v05 `--data` 可直接用）、`robust_check/`（P1–P6、R1–R3 网格、
+  `fig_robust_grid.png`）、`final/`（256²/512² 终图、`movie.mp4`、`fig_aligned_six.png`）、`final_s1/`（S1 原动作同一路径对照）、
+  `fig_design_compare.png` + `design_compare.json`（V0.5 参考 / S1 原动作 / 新设计，IoU、白区、倒奶量）
+
+**预计用时**（**估计值，未在真机上测过**；按每个子步的启动数和带宽、每帧的主机开销推算，以 `bench_cuda --quick` 和日志里每代的
+实际秒数为准）
+
+| 步骤 | A100 | RTX 4090 |
+|---|---|---|
+| ① 标定：20 代 × 72 次 96² 前向 + 参照点 | 20–40 min | 30–60 min |
+| ① predict：12 次 128² + 12 次 256² 末帧 | 3–6 min | 5–10 min |
+| ② 设计：6 图案 × 20 代 × 288 次 128² + 每 2 代 48 次 256² 复核 + 壶（含流量标定割线） | 1.5–3 h（每代 4–9 min） | 3–6 h（每代 8–18 min） |
+| ③ 稳健性：60 次 256² | 10–25 min | 20–40 min |
+| ④ 终图：6+6 次 256²、6 次 512²、视频编码 | 15–30 min | 25–50 min |
+
+省时：`ROB=` （不算稳健项，约一半）、`POP=8`、`GENS=12`、`PATTERNS=layered_heart,tulip,leaf,swan`（变化大的四个）。
+
+**要发回来的**：`results/autodl_design/` 下除 `*/state.pkl`、`final*/**/final_state.npz`、`snapshots_c.npz` 以外的全部（尤其
+`calib/calib.json`、`calib/best.json`、`calib/predict/`、`design/design.json`、`design/log.txt`、`design/data/`、
+`design/fig_design_compare.png`、`design/design_compare.json`、`design/final/results.json`、`design/final/fig_aligned_six.png`、
+`design/robust_check/fig_robust_grid.png`、`design/robust_check/results.json`、所有 `log_*.txt`），视频可选；以及
+`results/autodl_selftest/` 的日志和 `nvidia-smi` 截图（看 GPU 利用率）。
+
+**只有真 GPU 能验证的**：用时和 GPU 利用率（主机端每帧的程序计算可能成为瓶颈）、288 成员批的显存（估计 ~1.8 GB）、
+GPU 壶在完整姿态上与 CPU 壶的一致性（已有 `test_cuda_pitcher`）、优化结果本身（模拟器上只跑了极小网格和截断时间）。
 
 ## Pitcher model (level 0)
 
