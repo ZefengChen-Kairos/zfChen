@@ -932,6 +932,7 @@ class BatchCudaSolver:
         self.visc_tol = max(num.visc_tol, 1e-6) if self.fp32 else num.visc_tol
         self.poll_every = max(1, int(poll_every))
         self.t = np.zeros(B); self.deposited = np.zeros(B); self.spilled = np.zeros(B); self.last_Z = np.ones(B)
+        self.failed = np.zeros(B, bool)
         self.stats = [_stats0() for _ in range(B)]
         self.l_floor = 1e-3
         self.L = _Launcher()
@@ -973,6 +974,34 @@ class BatchCudaSolver:
         except Exception:
             self._cbuf = np.empty((N, N), dt_)
 
+    def reset(self, params=None):
+        """Start every member again from the initial state (l = 1, q = 0, m = 0, t = 0, empty ledger and statistics)
+        without reallocating any device buffer or recompiling; `params` (list of B Params) replaces the members'
+        parameters (same visc / offcup / closure 'chi' / presence of nu > 0, D > 0 as at construction).  A reset member
+        gives the same result as a member of a freshly constructed solver (used by the batched design / calibration
+        loops: one solver object per batch shape, reused every generation)."""
+        if params is not None:
+            params = list(params)
+            if len(params) != self.B:
+                raise ValueError(f"reset: {len(params)} Params for B = {self.B} members")
+            keys = lambda P: (P.visc, P.offcup, P.nu > 0, P.D > 0, P.closure)
+            if any(keys(P) != keys(self.P) for P in params):
+                raise ValueError("reset: members must keep visc, offcup, closure and the presence of nu > 0, D > 0")
+            self.Ps = params
+            self.P = params[0]
+            self.pm.copy_to_device(np.array([[P.cp ** 2, P.beta, P.nu, P.D] for P in self.Ps], np.float64))
+        B, N = self.B, self.g.N
+        z = np.zeros((B, N, N), self.dtype)
+        self.l.copy_to_device(np.ones((B, N, N), self.dtype))
+        for nm in ("qx", "qy", "m", "Kraw", "s", "Lam", "vsx", "vsy"):
+            getattr(self, nm).copy_to_device(z)
+        self.t[:] = 0.0; self.deposited[:] = 0.0; self.spilled[:] = 0.0; self.last_Z[:] = 1.0
+        self.failed[:] = False
+        self.stats = [_stats0() for _ in range(B)]
+        self.ip_h[:] = 0.0
+        self._pred = dict(mass=1, visc=1)
+        self._inlet_sum[:] = 0.0; self._spill_rate[:] = 0.0; self._chi[:] = 0.0
+
     # ------------------------------------------------------------------ data access
     def concentration(self, b=0):
         self.L(k_concentration, self.grid3, TPB, self.m, self.l, self.mask, self.c)
@@ -987,6 +1016,12 @@ class BatchCudaSolver:
             self.c[b].copy_to_host(self._cbuf)
             out[b] = np.where(self.g.mask, np.asarray(self._cbuf, np.float64), np.nan)
         return out
+
+    def concentrations_all(self):
+        """c [B, N, N] (NaN outside the cup) of every member: one launch and one device->host copy (one sync)."""
+        self.L(k_concentration, self.grid3, TPB, self.m, self.l, self.mask, self.c)
+        c = self.c.copy_to_host().astype(np.float64)
+        return np.where(self.g.mask[None], c, np.nan)
 
     def host_state(self, b=0):
         return dict(l=self.l[b].copy_to_host().astype(np.float64), qx=self.qx[b].copy_to_host().astype(np.float64),
@@ -1132,9 +1167,11 @@ class BatchCudaSolver:
             self.m, self.m_t = self.m_t, self.m
 
     # ------------------------------------------------------------------ one control frame for every member
-    def advance_frames(self, inlets, frame_dts=None):
+    def advance_frames(self, inlets, frame_dts=None, drop_failed=False):
         """inlets: list of B (Inlet or None = member idle); frame_dts: list of B (None = num.frame_dt).
-        Returns a list of (chi, nsub) (None for idle members)."""
+        Returns a list of (chi, nsub) (None for idle members).  A member whose frame still fails after the retries
+        raises RuntimeError (default) or, with drop_failed=True, is flagged in self.failed[b] and returned as None (its
+        state is then meaningless; the other members are unaffected)."""
         B, g, num = self.B, self.g, self.num
         L, G3 = self.L, self.grid3
         self._syncs = 0
@@ -1228,7 +1265,11 @@ class BatchCudaSolver:
                 self.stats[b]["retries"] += 1
             run = np.where(failed, run * 2, 0).astype(np.int32)
         else:
-            raise RuntimeError("sub-step failed repeatedly")
+            if not drop_failed:
+                raise RuntimeError("sub-step failed repeatedly")
+            for b in np.nonzero(failed)[0]:
+                self.failed[b] = True
+                part[b] = False
         out = []
         for b in range(B):
             if not part[b]:

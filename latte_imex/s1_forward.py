@@ -234,11 +234,18 @@ def stroke_volumes(E, meta):
     return out
 
 
+_GPU_FP = {}
+
+
 def run_pitcher(seqs, fp, backend="gpu"):
-    """ForwardPitcher.run on a list of pose sequences: batched on the GPU or one by one on the CPU."""
+    """ForwardPitcher.run on a list of pose sequences: batched on the GPU or one by one on the CPU.  The GPU object
+    (geometry and law on the device) is kept per ForwardPitcher, so repeated calls upload only the poses."""
     if backend == "gpu":
         from .cuda_pitcher import GPUForwardPitcher
-        return GPUForwardPitcher(fp).run_batch(seqs)
+        g = _GPU_FP.get(id(fp))
+        if g is None or g.fp is not fp:
+            g = _GPU_FP[id(fp)] = GPUForwardPitcher(fp)
+        return g.run_batch(seqs)
     return [fp.run(s["t"], s["tip"], s["yaw"], s["tilt"], s["roll"], s["V0"], s["dt"]) for s in seqs]
 
 

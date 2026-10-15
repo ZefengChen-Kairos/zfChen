@@ -15,6 +15,8 @@ Outputs under --out (default results/autodl_v05):
   robust/N<N>/<name>/<pattern>/     final.png, c.npz, metrics.json, trajectory.json
   fig_aligned_six.png, fig_robust_grid.png, results.json
 Backends: --pitcher-backend gpu|cpu, --solver-backend cuda|cpu (cpu = the reference implementations, slow).
+--data DIR: another pose / program directory in the s1_forward format (default latte_imex/data/s1_forward; gpu_design
+writes the re-designed actions there).
 """
 from __future__ import annotations
 import argparse
@@ -42,12 +44,12 @@ def _fp(alpha_deg, _cache={}):
     return _cache[alpha_deg]
 
 
-def pitcher_jobs(patterns, names, backend="gpu", tol=0.003):
+def pitcher_jobs(patterns, names, backend="gpu", tol=0.003, data=SF.DATA):
     """Forward pitcher on every (pattern, perturbation): pose perturbation, flow calibration (f != 1), arrivals.
-    Returns {(pattern, name): dict(R, E-summary, info)}."""
+    Returns {(pattern, name): dict(R, E-summary, info)}.  data: the pose / program directory (s1_forward format)."""
     jobs, keys = [], []
     for p in patterns:
-        P, meta = SF.load_poses(p), SF.load_meta(p)
+        P, meta = SF.load_poses(p, data), SF.load_meta(p, data)
         for nm in names:
             jobs.append((P, meta, SF.prereg_pert(nm, p)))
             keys.append((p, nm))
@@ -87,7 +89,7 @@ def _save_pitcher(outdir, key, d):
                         meta=json.dumps(d["info"], default=float))
 
 
-def solve(pdata, N, root, video=False, snaps=False, backend="cuda", chunk=0, T_max=None, label_fn=None):
+def solve(pdata, N, root, video=False, snaps=False, backend="cuda", chunk=0, T_max=None, label_fn=None, data=SF.DATA):
     """Batch solve of every (pattern, name) in pdata at N; returns {(pattern, name): metrics}."""
     from .batch_run import run_batch
     keys = list(pdata)
@@ -97,7 +99,7 @@ def solve(pdata, N, root, video=False, snaps=False, backend="cuda", chunk=0, T_m
         ks = keys[c0:c0 + chunk]
         jobs = []
         for p, nm in ks:
-            prog = SF.FwdProgram(p, pdata[(p, nm)]["R"], N)
+            prog = SF.FwdProgram(p, pdata[(p, nm)]["R"], N, data=data)
             jobs.append(dict(script=SF.ProgScript(prog, p), pattern=p, out=root(p, nm), T_max=T_max,
                              label=label_fn(p, nm) if label_fn else f"{p} {nm} N{N}", extra=pdata[(p, nm)]["info"]))
         t0 = time.time()
@@ -112,14 +114,14 @@ def solve(pdata, N, root, video=False, snaps=False, backend="cuda", chunk=0, T_m
 def cmd_aligned(a):
     pats = a.patterns.split(",")
     _log(f"(a) aligned model, forward pitcher on the S1 poses: {', '.join(pats)}")
-    pdata = pitcher_jobs(pats, ["nominal"], a.pitcher_backend)
+    pdata = pitcher_jobs(pats, ["nominal"], a.pitcher_backend, data=a.data)
     for k, d in pdata.items():
         _save_pitcher(os.path.join(a.out, "pitcher"), k, d)
         _log(f"  {k[0]}: poured {d['info']['poured_mL']:.1f} mL of {d['info']['fill_mL']:.0f}, in the cup by T "
              f"{d['info']['V_cup_in_T_mL']:.1f} mL")
     for N in [int(v) for v in a.N.split(",")]:
         solve(pdata, N, lambda p, nm: os.path.join(a.out, "aligned", f"N{N}", p), video=a.video, snaps=True,
-              backend=a.solver_backend, T_max=a.T, label_fn=lambda p, nm: f"{p} aligned N{N}")
+              backend=a.solver_backend, T_max=a.T, label_fn=lambda p, nm: f"{p} aligned N{N}", data=a.data)
 
 
 def cmd_robust(a):
@@ -128,12 +130,12 @@ def cmd_robust(a):
     if "nominal" not in names:
         names = ["nominal"] + names
     _log(f"(b) hand-error robustness: {len(pats)} patterns x {len(names)} = {len(pats) * len(names)} runs")
-    pdata = pitcher_jobs(pats, names, a.pitcher_backend)
+    pdata = pitcher_jobs(pats, names, a.pitcher_backend, data=a.data)
     for k, d in pdata.items():
         _save_pitcher(os.path.join(a.out, "pitcher"), k, d)
     N = int(a.N.split(",")[0])
     solve(pdata, N, lambda p, nm: os.path.join(a.out, "robust", f"N{N}", nm, p), backend=a.solver_backend, chunk=a.chunk,
-          T_max=a.T, label_fn=lambda p, nm: f"{p} {nm} N{N}")
+          T_max=a.T, label_fn=lambda p, nm: f"{p} {nm} N{N}", data=a.data)
 
 
 # ----------------------------------------------------------------------------- figures and results
@@ -272,6 +274,8 @@ def main(argv=None):
     ap.add_argument("--T", type=float, default=None, help="truncate every run at T [s] (smoke tests)")
     ap.add_argument("--pitcher-backend", default="gpu", choices=["gpu", "cpu"])
     ap.add_argument("--solver-backend", default="cuda", choices=["cuda", "cpu"])
+    ap.add_argument("--data", default=SF.DATA, help="pose / program directory (s1_forward format; default the S1 data, "
+                                                    "gpu_design writes re-designed ones)")
     a = ap.parse_args(argv)
     os.makedirs(a.out, exist_ok=True)
     t0 = time.time()
