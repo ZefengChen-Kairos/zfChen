@@ -1,0 +1,18 @@
+# 拉花缸尺寸，单位 mm（不知道的填 null）
+brand_model: null          # 品牌型号
+nominal_mL: null           # 标称容量
+full_mL: null              # 实测满容量（装水到快溢出的水重 g ≈ mL）
+empty_mass_g: null         # 空壶重
+body:
+  rim_inner_diameter: null     # 杯口内径
+  bottom_inner_diameter: null  # 杯底内径
+  inner_depth: null            # 杯口到内底面的深度
+  bulge_diameter: null         # 中间最宽处内径（无则 null）
+  bulge_height: null           # 最宽处离内底面的高度
+spout:
+  tip_overhang: null           # 嘴尖伸出杯口外缘的水平距离
+  tip_height_vs_rim: null      # 嘴尖比杯口边缘高多少（低则负）
+  root_width: null             # 壶嘴根部宽度
+  tip_notch_width: null        # 嘴尖槽口宽度
+  top_edge_angle_deg: null     # 侧面看壶嘴上沿相对水平面的角度
+notes: ""
