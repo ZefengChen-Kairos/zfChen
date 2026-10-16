@@ -1,0 +1,27 @@
+{
+ "centre_table_xy_m": [
+  -0.0710525458647002,
+  0.14868064496245195
+ ],
+ "rim_height_mm": 60.539242756401435,
+ "rim_outer_radius_mm": 45.75127590092107,
+ "rim_fit_rms_mm": 3.3646251851171485,
+ "npts": 18269,
+ "outer_radius_profile_mm": {
+  "0": 56.6,
+  "5": 52.3,
+  "10": 51.0,
+  "15": 47.0,
+  "20": 50.5,
+  "25": 52.0,
+  "30": 48.7,
+  "35": 48.8,
+  "40": 49.3,
+  "45": 49.3,
+  "50": 50.5,
+  "55": 49.3,
+  "60": 48.1,
+  "65": null
+ },
+ "frame": "table frame: origin = board origin projected on the table plane, z up"
+}
