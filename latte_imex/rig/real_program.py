@@ -178,7 +178,13 @@ _FP = {}
 
 def forward_pitcher():
     if "fp" not in _FP:
-        _FP["fp"] = ForwardPitcher(SF.geometry(ALPHA_DEG), ForwardLaw())
+        gp = os.environ.get("PITCHER_GEOM")             # e.g. latte_imex/pitcher_geom/pitcher_real.json (real pitcher)
+        if gp:
+            from latte_imex.pitcher import GridPitcherGeometry
+            geom = GridPitcherGeometry.load(gp, lip_slope=math.radians(ALPHA_DEG))
+        else:
+            geom = SF.geometry(ALPHA_DEG)
+        _FP["fp"] = ForwardPitcher(geom, ForwardLaw())
     return _FP["fp"]
 
 
