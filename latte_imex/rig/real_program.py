@@ -121,6 +121,9 @@ S_FLIP = np.diag([1.0, -1.0, -1.0])                       # board -> cup frame F
 M_CAD = np.array([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])   # columns: CAD X, Y, Z in the pitcher frame
 
 
+DTILT = {}                                                 # pattern -> extra pitcher rotation about its x axis [deg]
+
+
 def cup_poses(p, dt=DT):
     """Measured poses on a uniform grid in the cup frame F (t = 0 at the first sample that has both a pose and a disc).
     Returns dict t (emission times (k + 1/2) dt), tip (n,3) [m], yaw, tilt, roll [rad] (CAD convention), axis_tilt_deg
@@ -133,6 +136,10 @@ def cup_poses(p, dt=DT):
     n = int(math.floor((t1 - t0) / dt))
     tg = t0 + (np.arange(n) + 0.5) * dt
     rots = Rotation.from_rotvec(P["rotvec"])
+    tip_p = np.asarray(P["tip_p"], float)
+    if DTILT.get(p):                                       # pitcher-axis correction (full_pour.DTILT), tip kept in place
+        rx = Rotation.from_euler("x", DTILT[p], degrees=True)
+        rots = rots * rx; tip_p = rx.inv().apply(tip_p)
     q = Slerp(t_abs, rots)(tg).as_quat()
     q *= np.sign(np.sum(q * q[:1], 1))[:, None]           # one hemisphere (no flips across the series)
     for i in range(1, n):
@@ -142,7 +149,7 @@ def cup_poses(p, dt=DT):
     q /= np.linalg.norm(q, axis=1)[:, None]
     Rb = Rotation.from_quat(q).as_matrix()                 # pitcher -> board
     pos = _smooth(np.stack([np.interp(tg, t_abs, P["pos"][:, k]) for k in range(3)], 1), POSE_SIGMA, dt)
-    tip_b = np.einsum("nij,j->ni", Rb, P["tip_p"]) + pos
+    tip_b = np.einsum("nij,j->ni", Rb, tip_p) + pos
     cx = _smooth(np.interp(tg, P["disc_t"], P["disc_c"][:, 0]), DISC_SIGMA, dt)
     cy = _smooth(np.interp(tg, P["disc_t"], P["disc_c"][:, 1]), DISC_SIGMA, dt)
     cz = _smooth(np.interp(tg, P["disc_t"], P["disc_z"]), DISC_SIGMA, dt)

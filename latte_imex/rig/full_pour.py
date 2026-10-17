@@ -14,6 +14,9 @@ import latte_imex.rig.real_program as RP
 SCR = "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/pours"
 CUT = dict(heart=(10.4, 18.4), push_heart=(12.6, 24.0), leaf=(11.0, 20.0), swan=(10.4, 22.0), tulip=(98.8, 112.2))
 TIP_P = np.array([0.0, 0.053, 0.093])
+# Per-pour pitcher-axis correction [deg, about the pitcher x axis; negative = more towards the spout], chosen so that the
+# whole pour (mixing + pattern) empties 165 g of milk (206 mL at 0.8 g/mL) with ~2-3 mL left when the stream breaks.
+DTILT = dict(heart=-6.5, push_heart=-8.0, leaf=-11.5, swan=-8.5, tulip=-7.5)
 
 
 def poses(p):
@@ -29,8 +32,14 @@ def poses(p):
     return t[good], P[good]
 
 
-def run(p, mass=168.0, rho=0.8, dt=1e-3):
+def run(p, mass=165.0, rho=0.8, dt=1e-3, dtilt=None):
+    """dtilt [deg]: extra rotation of the pitcher about its own x axis (towards the spout), i.e. a correction of the
+    tag-fitted pitcher axis."""
+    dtilt = DTILT.get(p, 0.0) if dtilt is None else dtilt
     t, P = poses(p)
+    if dtilt:
+        P = P.copy(); P[:, :3] = (Rotation.from_rotvec(P[:, :3]) * Rotation.from_euler("x", dtilt, degrees=True)).as_rotvec()
+    tip_p = Rotation.from_euler("x", dtilt, degrees=True).inv().apply(TIP_P)
     n = int((t[-1] - t[0]) / dt); tg = t[0] + (np.arange(n) + 0.5) * dt
     q = Slerp(t, Rotation.from_rotvec(P[:, :3]))(tg).as_quat()
     for i in range(1, n):
@@ -38,7 +47,7 @@ def run(p, mass=168.0, rho=0.8, dt=1e-3):
     q = RP._smooth(q, RP.POSE_SIGMA, dt); q /= np.linalg.norm(q, axis=1)[:, None]
     Rb = Rotation.from_quat(q).as_matrix()
     pos = RP._smooth(np.stack([np.interp(tg, t, P[:, 3 + j]) for j in range(3)], 1), RP.POSE_SIGMA, dt)
-    tip = (np.einsum("nij,j->ni", Rb, TIP_P) + pos) @ RP.S_FLIP.T
+    tip = (np.einsum("nij,j->ni", Rb, tip_p) + pos) @ RP.S_FLIP.T
     Rc = RP.S_FLIP @ Rb @ RP.M_CAD
     eul = Rotation.from_matrix(Rc).as_euler("ZYX")
     axis_tilt = np.degrees(np.arccos(np.clip(-Rb[:, 2, 2], -1, 1)))
@@ -52,13 +61,13 @@ def run(p, mass=168.0, rho=0.8, dt=1e-3):
     before = float(Q[tt < c0].sum() * dt); during = float(Q[(tt >= c0) & (tt <= c1)].sum() * dt)
     V_cut = float(np.interp(c0, tt, V))
     res = dict(pattern=p, V0_mL=V0 * 1e6, first_flow_s=first, poured_before_cut_mL=before, poured_pattern_mL=during,
-               fill_at_cut_mL=V_cut, left_end_mL=float(V[-1]), spill_mL=float(E["Q_spill"].sum() * dt * 1e6),
-               tilt_at_first_flow=float(np.interp(first, tt, axis_tilt)) if first else None, geometry=os.environ["PITCHER_GEOM"])
+               fill_at_cut_mL=V_cut, fill_at_pattern_end_mL=float(np.interp(c1, tt, V)), left_end_mL=float(V[-1]), spill_mL=float(E["Q_spill"].sum() * dt * 1e6),
+               tilt_at_first_flow=float(np.interp(first, tt, axis_tilt)) if first else None, dtilt_deg=dtilt, geometry=os.environ["PITCHER_GEOM"])
     return res, dict(t=tt, Q=Q, V=V, tilt=axis_tilt)
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(); ap.add_argument("patterns", nargs="+"); ap.add_argument("--mass", type=float, default=168.0)
+    ap = argparse.ArgumentParser(); ap.add_argument("patterns", nargs="+"); ap.add_argument("--mass", type=float, default=165.0)
     ap.add_argument("--rho", type=float, default=0.8); ap.add_argument("--out", default=None)
     a = ap.parse_args()
     import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt

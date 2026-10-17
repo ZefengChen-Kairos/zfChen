@@ -1,0 +1,60 @@
+{
+ "pattern": "swan",
+ "flow": "pitcher",
+ "V0_mL": 108.63117599674821,
+ "on_target": null,
+ "T_pour": 11.516,
+ "L_m": 0.08983639426824439,
+ "R_disc_mm": 44.019833191439744,
+ "observed_on_frac": 0.983935394234109,
+ "stream_on_frac_when_obs_on": 0.947047921630924,
+ "stream_on_frac_when_obs_off": 0.0,
+ "poured_mL": 105.419217343396,
+ "spill_pitcher_mL": 0.0,
+ "assumptions": {
+  "pitcher": "NX CAD stand-in (s1_forward.geometry(0)), spout tip anchored at the measured tip",
+  "law": "ForwardLaw() defaults (C_d 0.6, C_v 1, H = max head, projected widths)",
+  "fill": "smallest V0 with Q >= 1 mL/s on >= min(98%, f(500 mL) - 1%) of the observed-on time",
+  "observed_on": "axis tilt >= running max over 1.0 s - 6.0 deg",
+  "scale": "cup radius 0.49 D <-> median disc radius; positions, velocities / L, flows / L^3",
+  "smoothing": "poses sigma 0.04 s, disc sigma 0.15 s",
+  "tail_s": 1.0,
+  "closure": "S1 parameters (latte_imex/data/s1_forward), Params defaults (visc symmetric, offcup account)"
+ },
+ "n_out": 12516,
+ "V_cup_mL": 105.4192173433966,
+ "Q_mean_on_mLs": 9.791494821912657,
+ "Q_max_mLs": 28.426979977063734,
+ "U_exit_mean": 0.3563326706853028,
+ "U_perp_mean": 0.6839508014323046,
+ "tip_z_mm": [
+  10.22019824284467,
+  15.362400019824365,
+  54.396225923804515
+ ],
+ "foot_minus_tip_mm": 1.4694071308881136,
+ "tilt_cad_deg": [
+  63.62735397933699,
+  87.31822147410305
+ ],
+ "roll_cad_deg": [
+  -38.28715902257041,
+  19.030418765123176
+ ],
+ "wall_s": 26.563608646392822,
+ "solver_wall_s": 404.33954310417175,
+ "T": 12.516,
+ "ledger": {
+  "t": 12.517783488795382,
+  "layer": 0.9817031845867643,
+  "milk": 0.2279800400555143,
+  "brown": 0.75372314453125,
+  "deposited": 0.22798004005551564,
+  "reservoir": 0.0,
+  "spilled": 0.015321961652837229,
+  "brown_net": 0.0,
+  "layer_error": -1.3322676295501878e-15,
+  "milk_error": -1.3322676295501878e-15
+ },
+ "N": 256
+}
