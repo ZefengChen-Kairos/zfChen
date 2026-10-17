@@ -1,6 +1,6 @@
 """Display orientation 'as the barista sees it': rotate disc-coordinate images so that the pitcher body (barista's
 side) is at the bottom. Direction = mean horizontal vector from the liquid-disc centre to the pitcher axis point
-(pitcher-frame origin) during the pattern phase, in disc/image coordinates (col = board x, row = board y).
+(pitcher-frame origin) during the pattern phase; the pitcher side is put at the TOP, in disc/image coordinates (col = board x, row = board y).
 Writes view_rotation.json {pattern: angle_deg (cv2.getRotationMatrix2D convention)} and *_barista.png images."""
 import json, os, sys
 import numpy as np, cv2
@@ -17,7 +17,7 @@ for p in ["heart", "push_heart", "leaf", "swan", "tulip"]:
     a_img = np.degrees(np.arctan2(v[1], v[0]))    # angle of v in image coords (x right, y down)
     # rotate so v points down (+90 deg in image coords); cv2 angle is counter-clockwise for positive values in
     # standard display, i.e. it rotates image-coordinate vectors by -angle
-    ang[p] = float(a_img - 90.0)
+    ang[p] = float(a_img + 90.0)          # pitcher side at the top (barista behind the cup, facing the viewer)
     print(p, "pitcher direction (img deg)", round(a_img, 1), "rotate", round(ang[p], 1))
 json.dump(ang, open(f"{REPO}/targets/view_rotation.json", "w"), indent=1)
 def rot(img, a):
