@@ -112,7 +112,7 @@ def main():
     print(f"{len(views)} views ({len(train)} train, {len(test)} test), {len(xyz)} init points, scene scale {scene_scale:.3f} m",
           flush=True)
     N = len(xyz)
-    s = knn_scale(xyz)
+    s = knn_scale(xyz).astype(np.float32)
     K_sh = (a.sh + 1) ** 2
     params = torch.nn.ParameterDict({
         "means": torch.nn.Parameter(torch.tensor(xyz, device=dev)),
