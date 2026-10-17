@@ -23,7 +23,8 @@ Pipeline (no fitted physics; every constant below is an assumption, listed in `A
     velocity, fall to z = 0) is consistent with the measured tip and jet height.
  3. Flow: pitcher.ForwardPitcher (V1 mode B) on these poses with an initial fill V0.  V0 is NOT measured: `calibrate_fill`
     takes the smallest V0 for which the stream is on (Q >= Q_ON = 1 mL/s) during >= ON_FRAC of the time the data say it
-    is on.  'Observed on' = smoothed axis tilt within ON_DTILT of its running max over the last ON_WIN s (a pour holds or
+    is on, or within ON_PLATEAU of the on fraction a 500 mL fill reaches when that is lower (at the very end of a
+    pour the stand-in lip can dry whatever the fill: the pitcher keeps only the volume below its lip at that pose).  'Observed on' = smoothed axis tilt within ON_DTILT of its running max over the last ON_WIN s (a pour holds or
     raises the tilt as the pitcher empties; a stop / reposition shows as a tilt drop of 10-25 deg, and the end of the
     pour as the final tilt-back).  The stream is then switched on/off by the pitcher physics, not by the mask.
     Alternative flow law (flow='weir'): Q = c_w [theta - (theta_env - ON_DTILT)]_+^{3/2} (theta = axis tilt, theta_env its
@@ -72,6 +73,7 @@ DISC_SIGMA = 0.15            # [s] gaussian smoothing of the disc centre / surfa
 ON_WIN = 1.0                 # [s] running-max window of the tilt envelope
 ON_DTILT = 6.0               # [deg] tilt below the envelope that counts as 'stream off'
 ON_FRAC = 0.98               # fraction of the observed-on time the calibrated pitcher must stream
+ON_PLATEAU = 0.01           # ... or within this of what a very full pitcher (500 mL) reaches, if that is less
 Q_ON = 1e-6                  # [m^3/s] stream 'on' threshold (= drvf_record's 1 mL/s floor)
 TAIL = 1.0                   # [s] after the last pose: jets land, short settle
 PHASE_DT = 0.1               # [s] synthetic phase length
@@ -79,7 +81,7 @@ ALPHA_DEG = 0.0              # CAD lip slope (S1 used 0 deg)
 SIM_SUB = "sim_S1"
 ASSUMPTIONS = dict(pitcher="NX CAD stand-in (s1_forward.geometry(0)), spout tip anchored at the measured tip",
                    law="ForwardLaw() defaults (C_d 0.6, C_v 1, H = max head, projected widths)",
-                   fill="smallest V0 with Q >= 1 mL/s on >= 98% of the observed-on time",
+                   fill="smallest V0 with Q >= 1 mL/s on >= min(98%, f(500 mL) - 1%) of the observed-on time",
                    observed_on=f"axis tilt >= running max over {ON_WIN} s - {ON_DTILT} deg",
                    scale="cup radius 0.49 D <-> median disc radius; positions, velocities / L, flows / L^3",
                    smoothing=f"poses sigma {POSE_SIGMA} s, disc sigma {DISC_SIGMA} s", tail_s=TAIL,
@@ -194,20 +196,20 @@ def calibrate_fill(C, on_obs, lo=5e-6, hi=500e-6, tol=0.5e-6, sub=2, log=print):
     """Smallest V0 [m^3] with on_fraction >= ON_FRAC (bisection; the on fraction grows with the fill)."""
     oo = on_obs[::sub]
     f_hi = on_fraction(run_pitcher(C, hi, sub), oo)
+    target = min(ON_FRAC, f_hi - ON_PLATEAU)
     if f_hi < ON_FRAC:
-        log(f"  fill: even {hi * 1e6:.0f} mL streams only {f_hi:.1%} of the observed-on time")
-        return hi, f_hi
+        log(f"  fill: even {hi * 1e6:.0f} mL streams only {f_hi:.1%} of the observed-on time; target {target:.1%}")
     hist = []
     while hi - lo > tol:
         m = 0.5 * (lo + hi)
         f = on_fraction(run_pitcher(C, m, sub), oo)
         hist.append((m * 1e6, f))
-        if f >= ON_FRAC:
+        if f >= target:
             hi = m
         else:
             lo = m
-    log("  fill bisection: " + ", ".join(f"{v:.1f} mL->{f:.2f}" for v, f in hist))
-    return hi, None
+    log("  fill bisection: " + ", ".join(f"{v:.1f} mL->{f:.3f}" for v, f in hist))
+    return hi, target
 
 
 def weir_emission(C, E_ref, on_obs, env, V_target, law=None):
@@ -240,10 +242,11 @@ def build_inlet(p, flow="pitcher", V0=None, log=print):
     t0w = time.time()
     C = cup_poses(p)
     on_obs, env = observed_on(C["axis_tilt_deg"], C["dt"])
+    target = None
     if V0 is None:
-        V0, _ = calibrate_fill(C, on_obs, log=log)
+        V0, target = calibrate_fill(C, on_obs, log=log)
     E = run_pitcher(C, V0)
-    info = dict(pattern=p, flow=flow, V0_mL=V0 * 1e6, T_pour=float(C["t"][-1] + 0.5 * C["dt"]), L_m=C["L"],
+    info = dict(pattern=p, flow=flow, V0_mL=V0 * 1e6, on_target=target, T_pour=float(C["t"][-1] + 0.5 * C["dt"]), L_m=C["L"],
                 R_disc_mm=C["R_disc"] * 1e3, observed_on_frac=float(on_obs.mean()),
                 stream_on_frac_when_obs_on=on_fraction(E, on_obs),
                 stream_on_frac_when_obs_off=float(np.mean(E["Q_o"][~on_obs] >= Q_ON)) if (~on_obs).any() else None,
@@ -355,7 +358,7 @@ def solve(p, N=256, flow="pitcher", video=True, V0=None, log=print):
 
 
 # ----------------------------------------------------------------------------- comparison
-def sim_in_disc(c, n=256, extent=1.15):
+def sim_in_disc(c, n, extent):
     """Simulated field (solver grid, cup radius 0.49) resampled onto the target's disc-coordinate grid (row = +y board)."""
     from scipy.ndimage import map_coordinates
     N = c.shape[0]
@@ -388,10 +391,13 @@ def compare(patterns=PATTERNS, flow="pitcher", N=256, out=None):
     pats = [p for p in patterns if os.path.exists(os.path.join(sim_dir(p, flow, N), "c.npz"))]
     fig, ax = plt.subplots(len(pats), 4, figsize=(12.4, 3.2 * len(pats)), dpi=110, squeeze=False)
     res = {}
-    ex = 1.15
     th = np.linspace(0, 2 * np.pi, 200)
+    from matplotlib.colors import LinearSegmentedColormap
+    cm = LinearSegmentedColormap.from_list("milk", [(0.36, 0.20, 0.09), (0.66, 0.47, 0.30), (1.0, 0.97, 0.92)])
+    cm.set_bad((0.15, 0.15, 0.15))
     for r, p in enumerate(pats):
         M, cs, T = metrics(p, flow, N)
+        ex = float(T["extent"])
         info = json.load(open(os.path.join(sim_dir(p, flow, N), "info.json")))
         I = np.load(os.path.join(sim_dir(p, flow, N), "inlet.npz"))
         res[p] = dict(M, V0_mL=info["V0_mL"], poured_mL=info["poured_mL"], V_cup_mL=info["V_cup_mL"],
@@ -405,7 +411,7 @@ def compare(patterns=PATTERNS, flow="pitcher", N=256, out=None):
         ax[r, 0].imshow(img, **kw)
         ax[r, 0].plot(I["raw_uv"][:, 0], I["raw_uv"][:, 1], ".", ms=2.5, color="tab:orange", label="spout tip (raw)")
         ax[r, 1].imshow(np.where(T["valid"], T["white"].astype(float), np.nan), cmap="gray", vmin=0, vmax=1, **kw)
-        ax[r, 2].imshow(cs, cmap="copper", vmin=0, vmax=1, **kw)
+        ax[r, 2].imshow(cs, cmap=cm, vmin=0, vmax=0.8, **kw)
         ax[r, 2].plot(foot_uv[:, 0], foot_uv[:, 1], "-", lw=0.6, color="tab:cyan", label="stream foot (sim)")
         ov = np.zeros(cs.shape + (3,))
         m = T["valid"] & np.isfinite(cs)

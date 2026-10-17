@@ -17,3 +17,14 @@ downhill azimuth, shape in the pitcher frame) -> `TIP=x,y,z tip_track.py` (spout
 (liquid surface below the tip from fused depth). Paths inside the scripts point at the session scratch; adjust.
 
 Results of the first takes are in `raw_data/rig/results/`.
+
+Forward simulation of the measured pours (step B, no fitting): `real_program.py` turns the measured pitcher poses +
+liquid-disc track into a `latte_imex.run.run` program (control 'v05', S1 closure): poses slerped/smoothed to 1 ms in
+the cup frame (disc centre on the liquid surface), the NX CAD pitcher anchored at the measured spout tip with the
+measured attitude, `pitcher.ForwardPitcher` for flow / exit velocity / ballistic landing, fill V0 calibrated so the
+stream is on while the data show it on, cup radius 0.49 D <-> measured disc radius.  Poses are in
+`raw_data/rig/results/<p>/pitcher_pose.npz`; outputs in `raw_data/rig/results/<p>/sim_S1/` and
+`raw_data/rig/results/sim_vs_real.{png,json}` (IoU of c > 0.5 against the target white mask).
+
+    python3 -m latte_imex.rig.real_program run --pattern heart --N 256     # or all patterns without --pattern
+    python3 -m latte_imex.rig.real_program compare
