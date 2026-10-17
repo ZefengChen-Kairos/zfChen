@@ -1,0 +1,15 @@
+{
+ "take": "heart",
+ "r_mm": 46.61997265154514,
+ "wall_top_mm": 99.0,
+ "wall_bottom_mm": -37.0,
+ "height_mm": 136.0,
+ "spout_az_from_shape_deg": 92.73014543783802,
+ "n_protrusion_vox": 3807,
+ "downhill_az_when_tilt_gt30_deg": 90.02833617297719,
+ "tilt_deg_range": [
+  68.5642471807264,
+  79.48363735498425,
+  142.79003370805023
+ ]
+}

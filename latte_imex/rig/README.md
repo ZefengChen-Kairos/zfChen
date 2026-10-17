@@ -11,4 +11,9 @@ read with a restricted unpickler, `safepkl.py`).
     python -I cylmerge.py   <out> <w1_cloud.npz> <w2_cloud.npz> ...  # merge a turned pitcher: axis fit, unwrap, yaw by correlation
     python -I pitcher_view.py <merged.npz> <out>                 # views + body radius profile + protrusions (handle / spout)
 
+Pours (trimmed data on branch `pours-trimmed`): `run_ba.py <take>` (AprilTag 36h11 on the pitcher, tag edge 18.2 mm
+estimated from depth; joint fit of tag layout on the wall + pitcher pose per sample) -> `pitcher_model.py` (tilt,
+downhill azimuth, shape in the pitcher frame) -> `TIP=x,y,z tip_track.py` (spout tip trajectory, overlay) -> `cup_track.py`
+(liquid surface below the tip from fused depth). Paths inside the scripts point at the session scratch; adjust.
+
 Results of the first takes are in `raw_data/rig/results/`.
