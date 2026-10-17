@@ -1,0 +1,22 @@
+{
+ "heart": {
+  "sim_S1": 0.558,
+  "sim_realpitcher": 0.75
+ },
+ "push_heart": {
+  "sim_S1": 0.396,
+  "sim_realpitcher": 0.371
+ },
+ "leaf": {
+  "sim_S1": 0.171,
+  "sim_realpitcher": 0.502
+ },
+ "swan": {
+  "sim_S1": 0.205,
+  "sim_realpitcher": 0.469
+ },
+ "tulip": {
+  "sim_S1": 0.342,
+  "sim_realpitcher": 0.325
+ }
+}
