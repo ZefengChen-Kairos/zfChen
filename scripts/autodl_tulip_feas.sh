@@ -16,7 +16,8 @@ set -eo pipefail
 [ -f /etc/network_turbo ] && source /etc/network_turbo || true
 export NUMBA_NUM_THREADS=${NUMBA_NUM_THREADS:-4}
 export NUMBA_CUDA_LOW_OCCUPANCY_WARNINGS=0
-python -c "import cv2" 2>/dev/null || python -m pip install -q opencv-python-headless
+# opencv >= 4.11 wheels pull numpy 2, which breaks the image's matplotlib (built for numpy 1): pin both
+python -c "import cv2, matplotlib.pyplot" 2>/dev/null || python -m pip install -q "numpy<2" "opencv-python-headless==4.10.0.84"
 python - <<'PY'
 from numba import cuda
 assert cuda.is_available(), "no CUDA device visible to numba: run bash scripts/autodl_setup.sh first"
