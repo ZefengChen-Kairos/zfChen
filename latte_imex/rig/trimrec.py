@@ -22,7 +22,8 @@ class Take:
         self.T = self.ts[0] - self.t0
 
     def color(self, c, k):
-        return cv2.imread(f"{self.d}/color/{c}/{k}.webp")
+        im = cv2.imread(f"{self.d}/color/{c}/{k}.webp")
+        return im if im is not None else cv2.imread(f"{self.d}/color/{c}/{k}.png")
 
     def depth(self, c, k):
         return cv2.imread(f"{self.d}/depth/{c}/{k}.png", cv2.IMREAD_UNCHANGED)
