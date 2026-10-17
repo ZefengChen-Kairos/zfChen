@@ -25,6 +25,7 @@ for i in range(len(tk.T)):
         h = (P - tip) @ UP                                  # height relative to the tip (negative = below)
         d = np.hypot(P[:, 0] - tip[0], P[:, 1] - tip[1])
         m = (h < -0.01) & (h > -0.15) & (d < 0.07)
+        if m.sum() == 0: continue
         hsv = cv2.cvtColor(C[m][None].astype(np.uint8), cv2.COLOR_RGB2HSV)[0]
         liquid = hsv[:, 2] > 90                            # not the black cup
         pts.append(np.c_[P[m][liquid], h[m][liquid], np.full(liquid.sum(), c)])

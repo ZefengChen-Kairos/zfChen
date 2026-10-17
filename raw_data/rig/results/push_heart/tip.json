@@ -1,0 +1,16 @@
+{
+ "take": "push_heart",
+ "tip_in_pitcher_mm": [
+  0.0,
+  53.0,
+  93.0
+ ],
+ "spout_radius_mm": 88.9,
+ "n_samples": 265,
+ "n_good": 248,
+ "tilt_good_deg": [
+  50.3,
+  76.9,
+  80.7
+ ]
+}

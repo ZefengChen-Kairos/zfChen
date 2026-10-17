@@ -18,12 +18,16 @@ def detect(tk, c, k):
         q = cc.reshape(4, 2).astype(np.float64)
         cv2.cornerSubPix(g, q.reshape(-1, 1, 2).astype(np.float32), (3, 3), (-1, -1),
                          (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.01))
-        ok, rv, tv = cv2.solvePnP(OBJ, q, tk.K[c], None, flags=cv2.SOLVEPNP_IPPE_SQUARE)
-        if not ok: continue
+        n_, rvs, tvs, _ = cv2.solvePnPGeneric(OBJ, q, tk.K[c], None, flags=cv2.SOLVEPNP_IPPE_SQUARE)
+        if not n_: continue
+        alts = []
+        for rv_, tv_ in zip(rvs, tvs):
+            Ta = np.eye(4); Ta[:3, :3] = cv2.Rodrigues(rv_)[0]; Ta[:3, 3] = tv_.ravel(); alts.append(tk.c2w[c] @ Ta)
+        rv, tv = rvs[0], tvs[0]
         R = cv2.Rodrigues(rv)[0]
         rep = cv2.projectPoints(OBJ, rv, tv, tk.K[c], None)[0].reshape(-1, 2)
         T = np.eye(4); T[:3, :3] = R; T[:3, 3] = tv.ravel()
-        out[int(i)] = dict(T_cam=T, T_board=tk.c2w[c] @ T, err=float(np.abs(rep - q).max()), px=float(cv2.contourArea(q.astype(np.float32))))
+        out[int(i)] = dict(T_cam=T, T_board=tk.c2w[c] @ T, T_board_alts=alts, err=float(np.abs(rep - q).max()), px=float(cv2.contourArea(q.astype(np.float32))))
     return out
 
 

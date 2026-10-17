@@ -1,0 +1,15 @@
+{
+ "take": "swan",
+ "r_mm": 46.556317552400685,
+ "wall_top_mm": 99.0,
+ "wall_bottom_mm": -31.0,
+ "height_mm": 130.0,
+ "spout_az_from_shape_deg": 98.13150603967011,
+ "n_protrusion_vox": 3258,
+ "downhill_az_when_tilt_gt30_deg": 89.71526024862514,
+ "tilt_deg_range": [
+  50.986952625498425,
+  76.24819364785188,
+  135.35927630574645
+ ]
+}

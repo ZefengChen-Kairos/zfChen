@@ -1,0 +1,72 @@
+{
+ "爱心": {
+  "dur_s": 7.9,
+  "jet_mm_median": 16.5,
+  "jet_mm_p90": 44.7,
+  "tilt_med": 79.0,
+  "tilt_range": [
+   70.2,
+   81.1
+  ],
+  "wiggle_peak_hz": 5.1,
+  "wiggle_peak_power": 0.1,
+  "wiggle_amp_mm": 2.7,
+  "R_mm": 42.7
+ },
+ "推推乐": {
+  "dur_s": 11.3,
+  "jet_mm_median": 29.8,
+  "jet_mm_p90": 63.6,
+  "tilt_med": 76.5,
+  "tilt_range": [
+   58.5,
+   78.9
+  ],
+  "wiggle_peak_hz": 0.5,
+  "wiggle_peak_power": 0.09,
+  "wiggle_amp_mm": 4.2,
+  "R_mm": 42.0
+ },
+ "树叶": {
+  "dur_s": 8.9,
+  "jet_mm_median": 19.4,
+  "jet_mm_p90": 57.8,
+  "tilt_med": 74.2,
+  "tilt_range": [
+   69.8,
+   78.3
+  ],
+  "wiggle_peak_hz": 0.7,
+  "wiggle_peak_power": 0.08,
+  "wiggle_amp_mm": 7.2,
+  "R_mm": 39.7
+ },
+ "天鹅": {
+  "dur_s": 11.5,
+  "jet_mm_median": 15.4,
+  "jet_mm_p90": 33.9,
+  "tilt_med": 75.2,
+  "tilt_range": [
+   70.2,
+   77.8
+  ],
+  "wiggle_peak_hz": 0.5,
+  "wiggle_peak_power": 0.09,
+  "wiggle_amp_mm": 10.3,
+  "R_mm": 43.9
+ },
+ "郁金香": {
+  "dur_s": 13.3,
+  "jet_mm_median": 36.8,
+  "jet_mm_p90": 53.9,
+  "tilt_med": 75.7,
+  "tilt_range": [
+   59.6,
+   79.8
+  ],
+  "wiggle_peak_hz": 0.7,
+  "wiggle_peak_power": 0.09,
+  "wiggle_amp_mm": 4.8,
+  "R_mm": 40.2
+ }
+}

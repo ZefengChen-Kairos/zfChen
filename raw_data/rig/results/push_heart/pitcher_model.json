@@ -1,0 +1,15 @@
+{
+ "take": "push_heart",
+ "r_mm": 47.31596613236846,
+ "wall_top_mm": 97.52000000000044,
+ "wall_bottom_mm": -31.0,
+ "height_mm": 128.52000000000044,
+ "spout_az_from_shape_deg": 90.75367929309934,
+ "n_protrusion_vox": 3229,
+ "downhill_az_when_tilt_gt30_deg": 90.7585762472884,
+ "tilt_deg_range": [
+  48.632364084657226,
+  77.06310176929573,
+  131.64101087209244
+ ]
+}

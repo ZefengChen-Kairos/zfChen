@@ -69,11 +69,25 @@ def solve(tk, rows, init_layout):
     for d in rows:
         first.setdefault((d["cam"], d["step"]), d)
     poses = []
+    W2C_ = [np.linalg.inv(T) for T in tk.c2w]
+    def sample_err(T, cand):
+        e = []
+        for dd in cand:
+            Xp = tag_corners(lay["r"], *lay[dd["tag"]]); Xb = Xp @ T[:3, :3].T + T[:3, 3]
+            Xc = Xb @ W2C_[dd["cam"]][:3, :3].T + W2C_[dd["cam"]][:3, 3]; K = tk.K[dd["cam"]]
+            if (Xc[:, 2] <= 0).any(): return 1e9
+            uv = Xc[:, :2] / Xc[:, 2:3] * [K[0, 0], K[1, 1]] + [K[0, 2], K[1, 2]]
+            e.append(np.abs(uv - dd["q"]).max())
+        return max(e)
     for g in samples:
-        d = first[g[0]] if g[0] in first else None
         cand = [dd for dd in rows if (dd["cam"], dd["step"]) in g]
-        d = max(cand, key=lambda q: q["px"])
-        T = d["T_board"] @ np.linalg.inv(T_pt(lay["r"], *lay[d["tag"]]))
+        best = None
+        for d in cand:
+            for Tb in d.get("T_board_alts", [d["T_board"]]):
+                T = Tb @ np.linalg.inv(T_pt(lay["r"], *lay[d["tag"]]))
+                e = sample_err(T, cand)
+                if best is None or e < best[0]: best = (e, T)
+        T = best[1]
         poses += list(Rot.from_matrix(T[:3, :3]).as_rotvec()) + list(T[:3, 3])
     x0 = np.array(x0 + poses)
     nl = 2 + 3 * len(others)
@@ -111,7 +125,8 @@ def solve(tk, rows, init_layout):
     for n_, si in enumerate(oi):
         J[n_ * 8:(n_ + 1) * 8, :nl] = 1
         J[n_ * 8:(n_ + 1) * 8, nl + 6 * si: nl + 6 * si + 6] = 1
-    res = least_squares(resid, x0, loss="huber", f_scale=1.0, x_scale="jac", max_nfev=100, jac_sparsity=J, method="trf")
+    res = least_squares(resid, x0, loss="huber", f_scale=1.0, x_scale="jac", max_nfev=400, jac_sparsity=J, method="trf", ftol=1e-12, xtol=1e-12, gtol=1e-12)
+    f0 = resid(x0); print('BA: init rms', float(np.sqrt(np.nanmean(f0 ** 2))), 'nonfinite', int((~np.isfinite(f0)).sum()), 'status', res.status, res.message, 'nfev', res.nfev, flush=True)
     r, L, P = unpack(res.x)
     rr = res.fun.reshape(-1, 8)
     return dict(r=r, layout=L, poses=P, t=t_s, samples=samples, rms_px=float(np.sqrt(np.mean(rr ** 2))),

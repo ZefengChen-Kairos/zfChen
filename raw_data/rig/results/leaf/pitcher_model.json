@@ -1,0 +1,15 @@
+{
+ "take": "leaf",
+ "r_mm": 47.02583242261678,
+ "wall_top_mm": 99.0,
+ "wall_bottom_mm": -37.87,
+ "height_mm": 136.87,
+ "spout_az_from_shape_deg": 96.64303791165696,
+ "n_protrusion_vox": 2506,
+ "downhill_az_when_tilt_gt30_deg": 98.42175061582854,
+ "tilt_deg_range": [
+  65.62805375172036,
+  74.081434966336,
+  80.59873213439296
+ ]
+}

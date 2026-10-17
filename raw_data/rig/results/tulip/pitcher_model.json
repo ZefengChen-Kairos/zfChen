@@ -1,0 +1,15 @@
+{
+ "take": "tulip",
+ "r_mm": 46.98319372774769,
+ "wall_top_mm": 99.0,
+ "wall_bottom_mm": -29.0,
+ "height_mm": 128.0,
+ "spout_az_from_shape_deg": 91.53569898100106,
+ "n_protrusion_vox": 3130,
+ "downhill_az_when_tilt_gt30_deg": 92.88529639480166,
+ "tilt_deg_range": [
+  50.87097357552489,
+  75.74355193457751,
+  141.0630378451406
+ ]
+}

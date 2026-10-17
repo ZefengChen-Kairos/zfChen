@@ -1,0 +1,16 @@
+{
+ "take": "swan",
+ "tip_in_pitcher_mm": [
+  0.0,
+  53.0,
+  93.0
+ ],
+ "spout_radius_mm": 87.0,
+ "n_samples": 310,
+ "n_good": 303,
+ "tilt_good_deg": [
+  51.0,
+  76.2,
+  80.3
+ ]
+}
