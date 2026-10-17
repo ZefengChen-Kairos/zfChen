@@ -95,6 +95,9 @@ def main():
     ap.add_argument("--w-alpha", type=float, default=0.3)
     ap.add_argument("--w-depth", type=float, default=0.5)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--volume", default=None, help="rmax,zmin,zmax [m] of the object frame: Gaussians outside are removed "
+                    "every 500 steps and before export (floaters on the table, background)")
+    ap.add_argument("--grow-grad2d", type=float, default=0.0004)
     a = ap.parse_args()
     from gsplat import rasterization
     from gsplat.strategy import DefaultStrategy
@@ -129,7 +132,7 @@ def main():
     cc_opt = torch.optim.Adam([cc], lr=1e-3)
     vid = {v["name"]: i for i, v in enumerate(views)}
     strategy = DefaultStrategy(refine_start_iter=500, refine_stop_iter=int(a.iters * 0.7), reset_every=3000,
-                               refine_every=100, prune_opa=0.005, grow_grad2d=0.0002, grow_scale3d=0.01,
+                               refine_every=100, prune_opa=0.005, grow_grad2d=a.grow_grad2d, grow_scale3d=0.01,
                                prune_scale3d=0.1, verbose=False)
     strategy.check_sanity(params, optimizers)
     state = strategy.initialize_state(scene_scale=scene_scale)
@@ -141,6 +144,21 @@ def main():
             viewmats=v["viewmat"][None], Ks=v["K"][None], width=v["W"], height=v["H"], sh_degree=sh_deg,
             near_plane=0.01, far_plane=5.0, render_mode="RGB+ED", packed=False)
         return out[0, ..., :3], out[0, ..., 3], alpha[0, ..., 0], info
+
+    vol = [float(x) for x in a.volume.split(",")] if a.volume else None
+
+    def outside():
+        m = params["means"].detach()
+        return (torch.hypot(m[:, 0], m[:, 1]) > vol[0]) | (m[:, 2] < vol[1]) | (m[:, 2] > vol[2])
+
+    def prune_outside(st):
+        try:
+            from gsplat.strategy.ops import remove
+            mk = outside()
+            if mk.any():
+                remove(params=params, optimizers=optimizers, state=st, mask=mk)
+        except Exception as e:                            # older / newer gsplat: export-time filtering still applies
+            print("  (in-training pruning skipped:", e, ")", flush=True)
 
     t0 = time.time()
     rng = np.random.default_rng(a.seed)
@@ -167,11 +185,18 @@ def main():
         cc_opt.step(); cc_opt.zero_grad(set_to_none=True)
         sched.step()
         strategy.step_post_backward(params, optimizers, state, step, info, packed=False)
+        if vol is not None and step % 500 == 499 and step < a.iters - 1:
+            prune_outside(state)
         if step % 500 == 0 or step == a.iters - 1:
             print(f"step {step:6d}  loss {loss.item():.4f}  l1 {l1.item():.4f}  alpha {float(la):.4f}  depth {float(ld):.3f}  "
                   f"gaussians {len(params['means'])}  {time.time() - t0:.0f} s", flush=True)
 
     # ---------------------------------------------------------------- outputs
+    if vol is not None:
+        with torch.no_grad():
+            keep = ~outside()
+            for k in list(params.keys()):
+                params[k] = torch.nn.Parameter(params[k][keep])
     save_ply(os.path.join(a.out, "point_cloud.ply"), params)
     res = dict(n_gaussians=len(params["means"]), iters=a.iters, wall_s=time.time() - t0, views=len(views))
     rows, ps = [], []

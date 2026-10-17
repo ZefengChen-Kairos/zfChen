@@ -31,8 +31,13 @@ for obj in coffee_cup milk_cup pitcher_pours; do
   [ -d "data/$obj" ] || continue
   if [ -f "out/$obj/metrics.json" ]; then echo "$obj done, skipping"; continue; fi
   IT=15000; [ "$obj" = pitcher_pours ] && IT=30000
+  case $obj in                                             # object volume rmax,zmin,zmax [m] in the object frame
+    coffee_cup) VOL=0.075,0.002,0.075 ;;
+    milk_cup) VOL=0.090,0.002,0.135 ;;
+    pitcher_pours) VOL=0.090,-0.036,0.098 ;;               # pitcher tag frame: bottom -33 mm, rim +93 mm
+  esac
   echo "===== $(date '+%F %T') $obj ($IT iterations) ====="
-  python gs_train.py --data "data/$obj" --out "out/$obj" --iters $IT
+  python gs_train.py --data "data/$obj" --out "out/$obj" --iters $IT --volume $VOL
 done
 tar -czf gs_results.tar.gz out
 ls -lh gs_results.tar.gz
