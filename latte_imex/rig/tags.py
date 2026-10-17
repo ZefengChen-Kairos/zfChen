@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np, cv2
 from trimrec import Take
 
-TAG = 0.0182   # edge of the black square [m], estimated from depth (to be confirmed)
+TAG = 0.0190   # edge of the black square [m]: measured 19 mm (tape); depth estimate was 18.2 mm
 _det = cv2.aruco.ArucoDetector(cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_36h11), cv2.aruco.DetectorParameters())
 OBJ = np.array([[-1, 1, 0], [1, 1, 0], [1, -1, 0], [-1, -1, 0]], float) * TAG / 2   # aruco corner order: TL, TR, BR, BL
 
