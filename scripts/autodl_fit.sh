@@ -2,7 +2,7 @@
 # Full pipeline on the AutoDL GPU (runs in the background; re-running resumes finished stages):
 #   bash scripts/autodl_fit.sh                 -> prints the log path and returns
 #   tail -f results/fit.log                    -> progress
-#   CAL=tulip,heart (default) | tulip,heart,leaf ...   calibration patterns (the others are predictions)
+#   CAL=tulip,leaf (default, V1 plan 5.1) | tulip,heart,leaf ...   calibration patterns (the others are predictions)
 # 1. fit   : V0.5 closure fitted to the real pours driven by the measured hand actions (Kona 700 mL pitcher CAD,
 #            165 g poured), Sobol 512 + 3 refinement rounds at N=128 on the GPU, best 4 + S1 on all patterns at N=256
 # 2. render: every pattern with the fitted closure at N=256 (CPU, one process per pattern) + movies
@@ -31,7 +31,7 @@ assert cuda.is_available(), "no CUDA device visible to numba: run bash scripts/a
 print("GPU:", cuda.get_current_device().name)
 PY
 OUT=${OUT:-results/fit}
-CAL=${CAL:-tulip,heart}
+CAL=${CAL:-tulip,leaf}
 echo "===== $(date '+%F %T') fit: calibration $CAL ====="
 python -m latte_imex.rig.fit_pipeline fit --out "$OUT" --cal "$CAL" --backend cuda "$@"
 echo "===== $(date '+%F %T') render ====="

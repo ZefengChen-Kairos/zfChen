@@ -1,9 +1,11 @@
 """Gradient-based calibration of the V0.5 closure with the differentiable Warp solver.
 
 Parameters: v05_adapter.SPACE (8 closure parameters) in the unit box (log-scaled where SPACE says 'log'); nu and D
-fixed; plus (default, --no-foot to switch off) a landing-point correction shared by all pours, foot_a / foot_b [cup
-diameters] along / across the jet's horizontal direction (schedule.foot_shift): the measured pours start their white
-about 0.3 R ahead of where the modelled jet lands, a bias no closure parameter can absorb.  Objective (--loss video, default): whole-video supervision, run.DiffPour -- every observed frame of each
+fixed.  Diagnostic option --foot: also fit a landing-point correction shared by all pours, foot_a / foot_b [cup
+diameters] along / across the jet's horizontal direction (schedule.foot_shift) -- off by default (the inlet is not
+corrected from the target pattern; see the V1 plan, 4.1 and E0).
+After the fit, the frozen parameters are run on every other pattern (frozen-parameter test): test.json, with the same
+whole-video metrics.  Objective (--loss video, default): whole-video supervision, run.DiffPour -- every observed frame of each
 calibration pour compared with the continuous simulation on its visible surface, normalised per frame, averaged over
 physical time; calibration sequences weighted equally.  Each iteration runs every calibration pattern forward and
 backward (exact adjoint, run.DiffPour.loss_grad), averages the losses and their gradients and takes an Adam step in
@@ -15,7 +17,7 @@ global Sobol search), default the S1 closure.  A failed forward (non-finite stat
 
 Outputs in --out: records.jsonl (one line per iteration), best_closure.json (fit_pipeline render reads it),
 progress.png, sheet.png (target | start | best), fields/<p>_{start,best}.npy.
-    python -m latte_imex.diff.fit --out results/diff_fit [--cal tulip,heart --N 128 --iters 60 --init ...]
+    python -m latte_imex.diff.fit --out results/diff_fit [--cal tulip,leaf --N 128 --iters 60 --init ...]
     python -m latte_imex.rig.fit_pipeline render --out results/diff_fit          # movies with the result
 """
 from __future__ import annotations
@@ -78,6 +80,18 @@ def _step(D, P, tau):
     return dict(L=L, g=g, M=M, c=c, strip=D.strip, vmetrics=D.vmetrics, timing=D.timing)
 
 
+def _eval(D, P):
+    """Forward only with frozen parameters: whole-video loss, per-frame IoU, final-frame metrics."""
+    L, final, _ = D.loss(P)
+    snaps = D.sol.snaps
+    n = D.S["n"]
+    after = lambda k: snaps[k]
+    vm = D.video_metrics(after) if D.obs else []
+    M, c = score(D, final)
+    M["viou"] = float(np.mean([v for _, v in vm])) if vm else float("nan")
+    return dict(L=L, M=M, c=c, vmetrics=vm)
+
+
 def _worker(conn, p, kw):
     import traceback
     from .run import DiffPour
@@ -92,7 +106,7 @@ def _worker(conn, p, kw):
         if msg is None:
             return
         try:
-            conn.send(("ok", _step(D, *msg)))
+            conn.send(("ok", _eval(D, msg[1]) if msg[0] == "eval" else _step(D, *msg)))
         except Exception as e:
             conn.send(("err", f"{type(e).__name__}: {e}"))
 
@@ -124,6 +138,15 @@ class Pour:
         else:
             try:
                 self._res = ("ok", _step(self.D, P, tau))
+            except RuntimeError as e:
+                self._res = ("err", str(e))
+
+    def send_eval(self, P):
+        if self.process:
+            self.conn.send(("eval", P))
+        else:
+            try:
+                self._res = ("ok", _eval(self.D, P))
             except RuntimeError as e:
                 self._res = ("err", str(e))
 
@@ -238,7 +261,8 @@ def progress(out, recs):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="results/diff_fit")
-    ap.add_argument("--cal", default="tulip,heart")
+    ap.add_argument("--cal", default="tulip,leaf", help="calibration pours (V1 plan 5.1: A = tulip, A+B = tulip,leaf); "
+                    "the other patterns are frozen-parameter tests")
     ap.add_argument("--N", type=int, default=128)
     ap.add_argument("--iters", type=int, default=60)
     ap.add_argument("--lr", type=float, default=0.04, help="Adam step in the unit box")
@@ -250,8 +274,11 @@ def main(argv=None):
     ap.add_argument("--init", default=None, help="closure json to start from (default: S1)")
     ap.add_argument("--device", default=None)
     ap.add_argument("--T", type=float, default=None, help="simulate only the first T seconds (tests)")
-    ap.add_argument("--no-foot", dest="foot", action="store_false",
-                    help="do not fit the shared landing-point correction (foot_a, foot_b)")
+    ap.add_argument("--foot", action="store_true",
+                    help="DIAGNOSTIC ONLY: also fit a shared landing-point correction (foot_a, foot_b) from the pattern "
+                    "loss.  Off by default: the V1 plan does not correct the inlet from the target pattern (4.1, E0); "
+                    "a landing bias is to be measured from the stream itself in the input replay")
+    ap.add_argument("--no-test", dest="no_test", action="store_true", help="skip the frozen-parameter test")
     ap.add_argument("--workers", type=int, default=-1, help="-1: one process per pour on CUDA, in-process on the CPU; "
                     "0: in-process; >0: worker processes")
     a = ap.parse_args(argv)
@@ -339,6 +366,29 @@ def main(argv=None):
     for po in pours.values():
         po.close()
     sheet(a.out, cal, log)
+    # frozen-parameter test on the other patterns (and the calibration pours again, for the same table)
+    from ..rig.real_program import PATTERNS
+    Pbest = {**base, **json.load(open(os.path.join(a.out, "best_closure.json")))}
+    tests = [p for p in PATTERNS if p not in cal]
+    if tests and not a.no_test:
+        log(f"frozen-parameter test on {tests} ...")
+        tp = {p: Pour(p, dict(kw, tau=a.tau1), process=workers > 0) for p in tests}
+        for po in tp.values():
+            po.send_eval(Pbest)
+        out = {}
+        for p, po in tp.items():
+            try:
+                r = po.recv()
+                out[p] = dict(loss=r["L"], viou=r["M"]["viou"], iou=r["M"]["iou"], gap_iou=r["M"]["gap_iou"],
+                              J=r["M"]["J"], video_iou=r["vmetrics"])
+                log(f"  test {p:10s} video loss {r['L']:.4f}  video IoU {r['M']['viou']:.3f}  final IoU {r['M']['iou']:.3f} "
+                    f"gap {r['M']['gap_iou']:.3f}")
+            except RuntimeError as e:
+                out[p] = dict(error=str(e))
+                log(f"  test {p}: failed ({e})")
+            po.close()
+        json.dump(dict(cal=cal, params=Pbest, calibration=best["per"], test=out), open(os.path.join(a.out, "test.json"), "w"),
+                  indent=1, default=float)
     video_strip(a.out, cal)
     log(f"best: iteration {best['it']}, loss {best['loss']:.4f} (start {recs[0]['loss']:.4f}), video IoU "
         f"{best['viou']:.3f} (start {recs[0]['viou']:.3f}), final J {best['J']:.3f} (start {recs[0]['J']:.3f}); "

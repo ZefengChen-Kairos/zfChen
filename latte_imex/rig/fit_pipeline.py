@@ -6,7 +6,7 @@ Inlet (per pattern, built once): measured pitcher poses (tip path, tilt, yaw, ro
 (pitcher_kona700.json, spout tip TIP_KONA), fill solved so that the whole pour delivers the 165 g that reached the cup
 (full_pour_kona_poured165.json) -- the same inlet as tulip_feas.Pour.
 Objective (per pattern, tulip_feas.Target.score): J = white IoU + gap IoU; the fit maximises the mean J over the
-calibration patterns (--cal, default tulip,heart); the others are predictions.
+calibration patterns (--cal, default tulip,leaf: V1 plan 5.1); the others are predictions.
 Stages (resumable; records appended to OUT/records.jsonl, fields to OUT/fields/):
   A  scrambled Sobol sample of v05_adapter.SPACE (--n) + the S1 closure, every calibration pattern, at --N
   B  --rounds rounds of local refinement: --per gaussian samples around each of the --top best closures,
@@ -14,7 +14,7 @@ Stages (resumable; records appended to OUT/records.jsonl, fields to OUT/fields/)
   C  the --confirm best closures and S1 on ALL patterns at --N-fig (calibration and prediction scores)
   R  render: latte_imex.run with video for every pattern with the best closure (CPU, one process per pattern),
      then OUT/render/<p>.mp4 (real | sim | action) and OUT/summary.png
-    python -m latte_imex.rig.fit_pipeline fit    --out results/fit [--cal tulip,heart --n 512 --N 128]
+    python -m latte_imex.rig.fit_pipeline fit    --out results/fit [--cal tulip,leaf --n 512 --N 128]
     python -m latte_imex.rig.fit_pipeline render --out results/fit [--jobs 5]
     python -m latte_imex.rig.fit_pipeline report --out results/fit
 """
@@ -363,7 +363,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["fit", "report", "render"])
     ap.add_argument("--out", default="results/fit")
-    ap.add_argument("--cal", default="tulip,heart", help="calibration patterns (the rest are predictions)")
+    ap.add_argument("--cal", default="tulip,leaf", help="calibration patterns (the rest are predictions)")
     ap.add_argument("--backend", default="cuda", choices=["cuda", "cpu"])
     ap.add_argument("--N", type=int, default=128)
     ap.add_argument("--N-fig", dest="N_fig", type=int, default=256)

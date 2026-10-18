@@ -2,7 +2,7 @@
 # Differentiable solver (NVIDIA Warp) on the AutoDL GPU: self-tests, then the gradient fit of the V0.5 closure,
 # then the movies with the result (runs in the background; log results/diff.log).
 #   bash scripts/autodl_diff.sh                 -> prints the log path and returns
-#   CAL=tulip,heart N=128 ITERS=60 INIT=results/fit/best_closure.json (default if it exists, else the S1 closure)
+#   FITS="A:tulip AB:tulip,leaf" (default, V1 plan 5.1)  N=128  ITERS=60  INIT=<closure json> (default: S1)
 # Send back: results/diff_results.tar.gz
 # If the CUDA-graph capture fails on this driver: LATTE_NO_GRAPHS=1 bash scripts/autodl_diff.sh
 cd "$(dirname "$0")/.."
@@ -27,21 +27,25 @@ wp.init()
 print("warp", wp.__version__, "devices", wp.get_devices())
 assert wp.is_cuda_available(), "warp sees no CUDA device"
 PY
-OUT=${OUT:-results/diff_fit}
-CAL=${CAL:-tulip,heart}
+# V1 plan 5.1: calibration A = tulip (embossed tulip), A+B = tulip + leaf; frozen-parameter tests on the others.
+# Start from the S1 closure (INIT=... to override; not from a fit that used a test pattern).
 INIT=${INIT:-}
-[ -z "$INIT" ] && [ -f results/fit/best_closure.json ] && INIT=results/fit/best_closure.json
+FITS=${FITS:-"A:tulip AB:tulip,leaf"}
 echo "===== $(date '+%F %T') self-test 1/2: forward parity with the numpy solver (GPU, N=128, 300 frames, CUDA graphs + device-side PCG) ====="
 python -m latte_imex.diff.test_parity --N 128 --frames 300 --device cuda:0
 echo "===== $(date '+%F %T') self-test 2/2: adjoint vs finite differences (GPU, N=64, first 2 s) ====="
 python -m latte_imex.diff.test_grad --N 64 --T 2.0 --device cuda:0 --sched 1
 echo "===== $(date '+%F %T') benchmark: whole tulip pour, N=${N:-128} ====="
 python -m latte_imex.diff.bench --pattern tulip --N ${N:-128} --device cuda:0
-echo "===== $(date '+%F %T') gradient fit: $CAL, N=${N:-128}, ${ITERS:-60} iterations, start ${INIT:-S1} ====="
-python -m latte_imex.diff.fit --out "$OUT" --cal "$CAL" --N ${N:-128} --iters ${ITERS:-60} ${INIT:+--init "$INIT"} --device cuda:0
-echo "===== $(date '+%F %T') render with the fitted closure (N=256) ====="
-python -m latte_imex.rig.fit_pipeline render --out "$OUT" --jobs ${JOBS:-5}
-tar -czf results/diff_results.tar.gz "$OUT/records.jsonl" "$OUT/best_closure.json" "$OUT/progress.png" "$OUT/sheet.png" \
-    "$OUT/fields" "$OUT/render" "$LOG"
+TARS=""
+for f in $FITS; do
+  tag=${f%%:*}; cal=${f#*:}; OUT=results/diff_fit_$tag
+  echo "===== $(date '+%F %T') gradient fit $tag: calibration $cal, N=${N:-128}, ${ITERS:-60} iterations, start ${INIT:-S1} ====="
+  python -m latte_imex.diff.fit --out "$OUT" --cal "$cal" --N ${N:-128} --iters ${ITERS:-60} ${INIT:+--init "$INIT"} --device cuda:0
+  echo "===== $(date '+%F %T') render $tag with the fitted closure (N=256) ====="
+  python -m latte_imex.rig.fit_pipeline render --out "$OUT" --jobs ${JOBS:-5}
+  TARS="$TARS $OUT/records.jsonl $OUT/best_closure.json $OUT/test.json $OUT/progress.png $OUT/sheet.png $OUT/video_strip.png $OUT/fields $OUT/render"
+done
+tar -czf results/diff_results.tar.gz $TARS "$LOG"
 ls -lh results/diff_results.tar.gz
 echo "===== $(date '+%F %T') DONE ====="
