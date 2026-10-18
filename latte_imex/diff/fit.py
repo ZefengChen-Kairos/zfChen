@@ -170,7 +170,8 @@ def main(argv=None):
         with open(fn, "a") as f:
             f.write(json.dumps(rec) + "\n")
         log(f"it {it:3d}  loss {L:.4f}  J {J:.3f}  " + "  ".join(f"{p} {r[2]['iou']:.2f}/{r[2]['gap_iou']:.2f}" for p, r in res.items())
-            + f"  |g| {np.linalg.norm(gu):.2e}  {rec['wall_s']:.0f} s")
+            + f"  |g| {np.linalg.norm(gu):.2e}  {rec['wall_s']:.0f} s ("
+            + ", ".join(f"{p} fwd {D.timing['forward_s']:.0f} + bwd {D.timing['backward_s']:.0f} s" for p, D in Ds.items()) + ")")
         if it == 0:
             for p, r in res.items():
                 np.save(os.path.join(a.out, "fields", f"{p}_start.npy"), r[3].astype(np.float32))

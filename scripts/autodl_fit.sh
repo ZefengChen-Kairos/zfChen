@@ -18,6 +18,7 @@ if [ "${_LATTE_BG:-}" != "1" ]; then
   exit 0
 fi
 set -eo pipefail
+export PYTHONUNBUFFERED=1
 [ -f /etc/network_turbo ] && source /etc/network_turbo || true
 export NUMBA_NUM_THREADS=${NUMBA_NUM_THREADS:-4}
 export NUMBA_CUDA_LOW_OCCUPANCY_WARNINGS=0

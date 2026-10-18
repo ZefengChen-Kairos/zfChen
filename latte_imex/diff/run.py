@@ -57,7 +57,7 @@ def target_on_grid(p, geo):
 
 
 class DiffPour:
-    def __init__(self, p, N=128, device=None, T_max=None, w_gap=2.0, tau=0.05, check_every=None, log=print):
+    def __init__(self, p, N=128, device=None, T_max=None, w_gap=2.0, tau=0.05, check_every=None, graphs=True, log=print):
         self.p, self.N, self.log = p, N, log
         wp.init()
         script, pour = SC.pour_script(p, N)
@@ -66,7 +66,7 @@ class DiffPour:
         self.geo = W.Geo(N, device=device)
         if check_every is None:                     # PCG convergence read back every 4 iterations on the GPU
             check_every = 4 if self.geo.dev.is_cuda else 1
-        self.sol = W.WSolver(self.geo, v05=self.S["return_law"] == "v05", check_every=check_every)
+        self.sol = W.WSolver(self.geo, v05=self.S["return_law"] == "v05", check_every=check_every, graphs=graphs)
         dev = self.geo.dev
         self.Sw = {k: wp.array(self.S[k], dtype=F, device=dev, requires_grad=True) for k in W.SCHED}
         tw, valid, gaps, self.T = target_on_grid(p, self.geo)
@@ -83,42 +83,33 @@ class DiffPour:
         return Pnp, wp.array(Pnp, dtype=F, device=self.geo.dev, requires_grad=rec)
 
     def forward(self, P, keep=True, nsub=None):
-        """Final state (numpy) + per-frame checkpoints (numpy) + sub-step counts."""
-        sol, S = self.sol, self.S
+        """Final state + per-frame checkpoints (device arrays, fast path with CUDA graphs) + sub-step counts."""
+        sol = self.sol
         sol.rec, sol.tape = False, None
         Pnp, Pw = self._P(P, False)
-        st = sol.initial_state()
-        ck, ns = [], []
-        for k in range(S["n"]):
-            if keep:
-                ck.append(sol.to_numpy(st))
-            st, n_ = sol.frame(st, Pw, Pnp, self.Sw, k, float(S["fdt"][k]), int(S["q"][k]), bool(S["active"][k]),
-                               nsub=None if nsub is None else nsub[k])
-            ns.append(n_)
-        return sol.to_numpy(st), ck, ns
+        return sol.fast_forward(Pw, Pnp, self.Sw, self.S, keep=keep, nsub=nsub)
 
     def loss_state(self, st, rec=False):
-        """Loss of a final state (numpy dict); with rec also dL/dstate."""
+        """Loss of a final state (dict of device arrays); with rec also dL/dstate (device arrays)."""
         g = self.geo
-        S = self.sol.state_from_numpy(**st, requires_grad=rec)
+        S = self.sol.clone_state(st, requires_grad=rec)
         sums = wp.zeros(2, dtype=F, device=g.dev, requires_grad=rec)
         out = wp.zeros(1, dtype=F, device=g.dev, requires_grad=rec)
-        tape = wp.Tape() if rec else None
+        launch = lambda: (wp.launch(k_softiou, dim=(g.N, g.N), inputs=[S["l"], S["m"], self.tw, self.ww, g.mask,
+                                                                       F(self.tau), sums], device=g.dev),
+                          wp.launch(k_loss, dim=1, inputs=[sums, out], device=g.dev))
         if rec:
+            tape = wp.Tape()
             with tape:
-                wp.launch(k_softiou, dim=(g.N, g.N), inputs=[S["l"], S["m"], self.tw, self.ww, g.mask, F(self.tau), sums],
-                          device=g.dev)
-                wp.launch(k_loss, dim=1, inputs=[sums, out], device=g.dev)
+                launch()
             tape.backward(loss=out)
-            return float(out.numpy()[0]), {k: S[k].grad.numpy().copy() for k in ("l", "qx", "qy", "m")}
-        wp.launch(k_softiou, dim=(g.N, g.N), inputs=[S["l"], S["m"], self.tw, self.ww, g.mask, F(self.tau), sums],
-                  device=g.dev)
-        wp.launch(k_loss, dim=1, inputs=[sums, out], device=g.dev)
+            return float(out.numpy()[0]), {k: S[k].grad for k in ("l", "qx", "qy", "m")}
+        launch()
         return float(out.numpy()[0]), None
 
     def loss(self, P, nsub=None):
         st, _, ns = self.forward(P, keep=False, nsub=nsub)
-        return self.loss_state(st)[0], st, ns
+        return self.loss_state(st)[0], self.sol.to_numpy(st), ns
 
     # ------------------------------------------------------------------ gradient
     def loss_grad(self, P, nsub=None):
@@ -134,17 +125,18 @@ class DiffPour:
             a.grad.zero_()
         sol.rec = True
         for k in range(S["n"] - 1, -1, -1):
-            st = sol.state_from_numpy(**ck[k], requires_grad=True)
+            st = sol.clone_state(ck[k], requires_grad=True)
             tape = wp.Tape()
             sol.tape = tape
             with tape:
                 out, _ = sol.frame(st, Pw, Pnp, self.Sw, k, float(S["fdt"][k]), int(S["q"][k]), bool(S["active"][k]),
                                    nsub=ns[k])
-            tape.backward(grads={out[c]: wp.array(gs[c], dtype=F, device=self.geo.dev) for c in ("l", "qx", "qy", "m")})
-            gs = {c: st[c].grad.numpy().copy() for c in ("l", "qx", "qy", "m")}
+            tape.backward(grads={out[c]: gs[c] for c in ("l", "qx", "qy", "m")})
+            gs = {c: st[c].grad for c in ("l", "qx", "qy", "m")}
+            ck[k] = None                           # free the checkpoint
             del tape                               # (Tape.reset() would also zero the accumulated dL/dP)
         sol.rec, sol.tape = False, None
         gP = Pw.grad.numpy()
         self.sched_grad = {k: v.grad.numpy().copy() for k, v in self.Sw.items()}
         self.timing = dict(forward_s=t1 - t0, backward_s=time.time() - t1)
-        return L, {k: float(gP[i]) for i, k in enumerate(W.PARAMS)}, final
+        return L, {k: float(gP[i]) for i, k in enumerate(W.PARAMS)}, self.sol.to_numpy(final)

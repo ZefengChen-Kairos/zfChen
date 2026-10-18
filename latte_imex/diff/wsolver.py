@@ -52,10 +52,12 @@ def vl(r: F):
 
 # ============================================================================ inlet fields
 @wp.kernel
-def k_kernel_raw(xc: A2, yc: A2, mask: I2, S: A1, Sy: A1, Sr1: A1, Sr2: A1, Sphi: A1, k: int, q: int, h: F,
+def k_kernel_raw(xc: A2, yc: A2, mask: I2, S: A1, Sy: A1, Sr1: A1, Sr2: A1, Sphi: A1, kq: wp.array(dtype=wp.int32), h: F,
                  Kraw: A2, sums: A1):
     """Unnormalised footprint kernel (1 - a^2 - b^2)_+^2, q x q sub-cell quadrature; sums = [inside cup, all cells]."""
     j, i = wp.tid()
+    k = kq[0]
+    q = kq[1]
     r1 = wp.max(Sr1[k], F(1.5) * h)
     r2 = wp.max(Sr2[k], F(1.5) * h)
     cph = wp.cos(Sphi[k])
@@ -77,10 +79,11 @@ def k_kernel_raw(xc: A2, yc: A2, mask: I2, S: A1, Sy: A1, Sr1: A1, Sr2: A1, Sphi
 
 @wp.kernel
 def k_fields(Kraw: A2, sums: A1, mask: I2, xc: A2, yc: A2, P: A1, Sx: A1, Sy: A1, SQ: A1, Sux: A1, Suy: A1, SU: A1,
-             Sd: A1, Sr1: A1, Sr2: A1, k: int, area: F, v05: int,
+             Sd: A1, Sr1: A1, Sr2: A1, kq: wp.array(dtype=wp.int32), area: F, v05: int,
              s: A2, Lam: A2, vsx: A2, vsy: A2):
     """Solver.inlet_fields (closure 'chi', offcup 'account'): s = chi S Z K, Lam = kappa_c (1 - chi) S Z K, target v*."""
     j, i = wp.tid()
+    k = kq[0]
     tot = sums[1]
     ins = sums[0]
     s[j, i] = F(0.0)
@@ -156,10 +159,11 @@ def k_rusanov(qx: A2, qy: A2, ux: A2, uy: A2, fx: I2, fy: I2, Fxqx: A2, Fxqy: A2
 
 @wp.kernel
 def k_stepA_B(qx: A2, qy: A2, Fxqx: A2, Fxqy: A2, Fyqx: A2, Fyqy: A2, s: A2, Lam: A2, vsx: A2, vsy: A2, ls: A2,
-              P: A1, dt: F, inv_h: F, N: int, ax: A2, ay: A2, coef: A2):
+              P: A1, dta: A1, inv_h: F, N: int, ax: A2, ay: A2, coef: A2):
     """q* = q - dt div(F) (step A), then stepB_prepare: theta = 1 + dt (beta + Lam/l), a = (q* + dt (s+Lam) v*)/theta,
     coef = cp^2 l / theta."""
     j, i = wp.tid()
+    dt = dta[0]
     qxs = qx[j, i] - dt * divF(Fxqx, Fyqx, j, i, N, inv_h)
     qys = qy[j, i] - dt * divF(Fxqy, Fyqy, j, i, N, inv_h)
     L = ls[j, i]
@@ -184,8 +188,9 @@ def k_massflux(ax: A2, ay: A2, l: A2, ls: A2, fx: I2, fy: I2, Gex: A2, Gey: A2):
 
 
 @wp.kernel
-def k_facecoef(coef: A2, fx: I2, fy: I2, dt: F, kx: A2, ky: A2):
+def k_facecoef(coef: A2, fx: I2, fy: I2, dta: A1, kx: A2, ky: A2):
     j, i = wp.tid()
+    dt = dta[0]
     kx[j, i] = F(0.0)
     ky[j, i] = F(0.0)
     if fx[j, i] != 0:
@@ -195,8 +200,9 @@ def k_facecoef(coef: A2, fx: I2, fy: I2, dt: F, kx: A2, ky: A2):
 
 
 @wp.kernel
-def k_massdiag(kx: A2, ky: A2, dt: F, inv_h2: F, N: int, diag: A2):
+def k_massdiag(kx: A2, ky: A2, dta: A1, inv_h2: F, N: int, diag: A2):
     j, i = wp.tid()
+    dt = dta[0]
     v = F(0.0)
     if i < N - 1:
         v += kx[j, i]
@@ -210,15 +216,17 @@ def k_massdiag(kx: A2, ky: A2, dt: F, inv_h2: F, N: int, diag: A2):
 
 
 @wp.kernel
-def k_rhs(l: A2, s: A2, Gex: A2, Gey: A2, dt: F, inv_h: F, N: int, rhs: A2):
+def k_rhs(l: A2, s: A2, Gex: A2, Gey: A2, dta: A1, inv_h: F, N: int, rhs: A2):
     j, i = wp.tid()
+    dt = dta[0]
     rhs[j, i] = l[j, i] + dt * s[j, i] - dt * divF(Gex, Gey, j, i, N, inv_h)
 
 
 @wp.kernel
-def k_mass_apply(phi: A2, kx: A2, ky: A2, fx: I2, fy: I2, dt: F, inv_h2: F, N: int, out: A2):
+def k_mass_apply(phi: A2, kx: A2, ky: A2, fx: I2, fy: I2, dta: A1, inv_h2: F, N: int, out: A2):
     """phi - dt div(k grad phi) (kernels.apply_diffusion with a = 1, b = dt)."""
     j, i = wp.tid()
+    dt = dta[0]
     p = phi[j, i]
     v = F(0.0)
     if i < N - 1:
@@ -248,18 +256,20 @@ def k_finishB(Gex: A2, Gey: A2, kx: A2, ky: A2, ln: A2, fx: I2, fy: I2, inv_h: F
 
 
 @wp.kernel
-def k_lcons_q(l: A2, s: A2, Gx: A2, Gy: A2, ax: A2, ay: A2, coef: A2, fx: I2, fy: I2, nfx: A2, nfy: A2, dt: F,
+def k_lcons_q(l: A2, s: A2, Gx: A2, Gy: A2, ax: A2, ay: A2, coef: A2, fx: I2, fy: I2, nfx: A2, nfy: A2, dta: A1,
               inv_h: F, N: int, l2: A2):
     """Conservative layer update with the final flux."""
     j, i = wp.tid()
+    dt = dta[0]
     l2[j, i] = l[j, i] + dt * s[j, i] - dt * divF(Gx, Gy, j, i, N, inv_h)
 
 
 @wp.kernel
-def k_qgrad(ax: A2, ay: A2, coef: A2, l2: A2, fx: I2, fy: I2, nfx: A2, nfy: A2, dt: F, inv_h: F, N: int,
+def k_qgrad(ax: A2, ay: A2, coef: A2, l2: A2, fx: I2, fy: I2, nfx: A2, nfy: A2, dta: A1, inv_h: F, N: int,
             qxn: A2, qyn: A2):
     """q = a - dt coef cell_grad(l2) (average of the active face gradients)."""
     j, i = wp.tid()
+    dt = dta[0]
     gx = F(0.0)
     gy = F(0.0)
     if i < N - 1:
@@ -337,10 +347,11 @@ def k_limit(c: A2, Gx: A2, Gy: A2, fx: I2, fy: I2, N: int, cfx: A2, cfy: A2):
 
 
 @wp.kernel
-def k_milk(m: A2, s: A2, Gx: A2, Gy: A2, cfx: A2, cfy: A2, l2: A2, qxn: A2, qyn: A2, mask: I2, dt: F, inv_h: F, N: int,
+def k_milk(m: A2, s: A2, Gx: A2, Gy: A2, cfx: A2, cfy: A2, l2: A2, qxn: A2, qyn: A2, mask: I2, dta: A1, inv_h: F, N: int,
            l3: A2, qx3: A2, qy3: A2, m3: A2):
     """Step C (milk with the same face flux, clipped to [0, l]) and the outside-cup reference state."""
     j, i = wp.tid()
+    dt = dta[0]
     v = F(0.0)
     if i < N - 1:
         v += Gx[j, i] * cfx[j, i]
@@ -411,9 +422,10 @@ def k_sym_T(ux: A2, uy: A2, wc: A2, inv_h: F, N: int, T: A2):
 
 
 @wp.kernel
-def k_sym_apply(ux: A2, uy: A2, l3: A2, wx: A2, wy: A2, T: A2, ww: A2, nbx: A2, nby: A2, mask: I2, dt: F, inv_h: F,
+def k_sym_apply(ux: A2, uy: A2, l3: A2, wx: A2, wy: A2, T: A2, ww: A2, nbx: A2, nby: A2, mask: I2, dta: A1, inv_h: F,
                 N: int, ox: A2, oy: A2):
     j, i = wp.tid()
+    dt = dta[0]
     u = ux[j, i]
     v = uy[j, i]
     if mask[j, i] == 0:
@@ -460,9 +472,10 @@ def k_sym_apply(ux: A2, uy: A2, l3: A2, wx: A2, wy: A2, T: A2, ww: A2, nbx: A2, 
 
 
 @wp.kernel
-def k_visc_diag(l3: A2, wx: A2, wy: A2, wc: A2, ww: A2, nbx: A2, nby: A2, mask: I2, dt: F, inv_h: F, N: int,
+def k_visc_diag(l3: A2, wx: A2, wy: A2, wc: A2, ww: A2, nbx: A2, nby: A2, mask: I2, dta: A1, inv_h: F, N: int,
                 dx: A2, dy: A2):
     j, i = wp.tid()
+    dt = dta[0]
     if mask[j, i] == 0:
         dx[j, i] = F(1.0)
         dy[j, i] = F(1.0)
@@ -503,9 +516,10 @@ def k_visc_out(Xx: A2, Xy: A2, l3: A2, mask: I2, qx: A2, qy: A2):
 
 
 @wp.kernel
-def k_mix(m3: A2, l3: A2, fx: I2, fy: I2, mask: I2, P: A1, dt: F, inv_h2: F, N: int, m4: A2):
+def k_mix(m3: A2, l3: A2, fx: I2, fy: I2, mask: I2, P: A1, dta: A1, inv_h2: F, N: int, m4: A2):
     """Explicit mixing m += dt div(D l_f grad c), clipped to [0, l] (the D dt/h^2 < explicit_mixing_limit branch)."""
     j, i = wp.tid()
+    dt = dta[0]
     if mask[j, i] == 0:
         m4[j, i] = F(0.0)
         return
@@ -602,8 +616,63 @@ def k_alpha(sc: A1):
 
 @wp.kernel
 def k_beta(sc: A1):
-    sc[4] = sc[3] / sc[0]
+    if sc[0] != F(0.0):
+        sc[4] = sc[3] / sc[0]
+    else:
+        sc[4] = F(0.0)
     sc[0] = sc[3]
+
+
+@wp.kernel
+def k_zero1(a: A1):
+    a[wp.tid()] = F(0.0)
+
+
+@wp.kernel
+def k_rowmax_speed(qx: A2, qy: A2, l: A2, s: A2, Lam: A2, vsx: A2, vsy: A2, mask: I2, N: int, active: int, rows: A1):
+    """CFL speed per row: max |q| / l_safe, and the inlet target speed where s + Lam > 0 (Solver.advance_frame)."""
+    j = wp.tid()
+    acc = F(0.0)
+    for i in range(N):
+        ls = F(1.0)
+        if mask[j, i] != 0:
+            ls = l[j, i]
+        acc = wp.max(acc, wp.sqrt(qx[j, i] * qx[j, i] + qy[j, i] * qy[j, i]) / ls)
+        if active != 0:
+            if s[j, i] + Lam[j, i] > F(0.0):
+                acc = wp.max(acc, wp.sqrt(vsx[j, i] * vsx[j, i] + vsy[j, i] * vsy[j, i]))
+    rows[j] = acc
+
+
+@wp.kernel
+def k_rowcheck(l: A2, qx: A2, qy: A2, m: A2, mask: I2, N: int, rows: A1, rows2: A1):
+    """Per row: min l over the cup, number of non-finite values (frame acceptance test)."""
+    j = wp.tid()
+    mn = F(1e300)
+    bad = F(0.0)
+    for i in range(N):
+        if mask[j, i] != 0:
+            mn = wp.min(mn, l[j, i])
+        v = l[j, i] + qx[j, i] + qy[j, i] + m[j, i]
+        if not wp.isfinite(v):
+            bad += F(1.0)
+    rows[j] = mn
+    rows2[j] = bad
+
+
+@wp.kernel
+def k_rowreduce3(rows: A1, rows2: A1, N: int, sc: A1):
+    """sc[0] = max(rows) (speed) ; or with rows2: sc[1] = min(rows), sc[2] = sum(rows2)."""
+    mx = F(-1e300)
+    mn = F(1e300)
+    sm = F(0.0)
+    for j in range(N):
+        mx = wp.max(mx, rows[j])
+        mn = wp.min(mn, rows[j])
+        sm += rows2[j]
+    sc[0] = mx
+    sc[1] = mn
+    sc[2] = sm
 
 
 @wp.kernel
@@ -648,27 +717,151 @@ class Geo:
         self.nfx, self.nfy, self.geo, self.nbx, self.nby, self.xc, self.yc = D(nfx), D(nfy), D(geo), D(nbx), D(nby), D(x), D(y)
 
 
+# ============================================================================ CUDA graphs
+@wp.kernel
+def k_set0(a: A2):
+    j, i = wp.tid()
+    a[j, i] = F(0.0)
+
+
+@wp.kernel
+def k_init_state(l: A2, qx: A2, qy: A2, m: A2):
+    j, i = wp.tid()
+    l[j, i] = F(1.0)
+    qx[j, i] = F(0.0)
+    qy[j, i] = F(0.0)
+    m[j, i] = F(0.0)
+
+
+class Runner:
+    """Runs a fixed launch sequence: on CUDA captured once per key into a CUDA graph and replayed (one launch instead
+    of tens); elsewhere executed directly.  The sequences only launch kernels on persistent buffers; everything that
+    changes between replays (dt, frame index, quadrature) is read by the kernels from device arrays."""
+
+    def __init__(self, dev, use_graphs=True):
+        self.dev = dev
+        self.use = bool(use_graphs and dev.is_cuda)
+        self.graphs = {}
+        self.stats = dict(captures=0, replays=0)
+
+    def __call__(self, key, fn):
+        if not self.use:
+            fn()
+            return
+        g = self.graphs.get(key)
+        if g is None:
+            with wp.ScopedCapture(device=self.dev, force_module_load=True) as cap:
+                fn()
+            g = self.graphs[key] = cap.graph
+            self.stats["captures"] += 1
+        wp.capture_launch(g)
+        self.stats["replays"] += 1
+
+
+class CGOp:
+    """Jacobi-PCG on persistent buffers (x, b, d and the operator coefficients c[...]), scalars on the device.  The
+    iterations run in chunks of K (one graph per chunk on CUDA); convergence |r| <= tol |b| is read back after each
+    chunk, so a solve may do up to K - 1 more iterations than needed (it only gets more accurate)."""
+
+    def __init__(self, sol, name, n, coef_names, apply):
+        g = sol.g
+        z = lambda: wp.zeros((g.N, g.N), dtype=F, device=g.dev)
+        self.sol, self.name, self.n = sol, name, n
+        self.x, self.b, self.d = [z() for _ in range(n)], [z() for _ in range(n)], [z() for _ in range(n)]
+        self.r, self.p, self.Ap, self.z = [z() for _ in range(n)], [z() for _ in range(n)], [z() for _ in range(n)], [z() for _ in range(n)]
+        self.c = {k: z() for k in coef_names}
+        self.T = z()
+        self.rows = wp.zeros(g.N, dtype=F, device=g.dev)
+        self.sc = wp.zeros(8, dtype=F, device=g.dev)       # rz, pAp, alpha, rz_new, beta, rr, bb
+        self.apply = apply                                  # apply(op, src list, dst list)
+
+    def _L(self, kernel, inputs, dim=None):
+        g = self.sol.g
+        wp.launch(kernel, dim=dim or (g.N, g.N), inputs=inputs, device=g.dev, record_tape=False)
+
+    def _dot(self, A, B, slot):
+        N = self.sol.g.N
+        for c in range(self.n):
+            self._L(k_rowdot, [A[c], B[c], N, int(c > 0), self.rows], dim=N)
+        self._L(k_rowsum, [self.rows, N, self.sc, slot], dim=1)
+
+    def _init(self):
+        self.apply(self, self.x, self.Ap)
+        for c in range(self.n):
+            self._L(k_cg_init, [self.b[c], self.Ap[c], self.d[c], self.r[c], self.p[c]])
+        self._dot(self.r, self.p, 0)
+        self._dot(self.b, self.b, 6)
+
+    def _chunk(self, K):
+        for _ in range(K):
+            self.apply(self, self.p, self.Ap)
+            self._dot(self.p, self.Ap, 1)
+            self._L(k_alpha, [self.sc], dim=1)
+            for c in range(self.n):
+                self._L(k_cg_step, [self.sc, 2, self.p[c], self.Ap[c], self.x[c], self.r[c]])
+                self._L(k_rdiv, [self.r[c], self.d[c], self.z[c]])
+            self._dot(self.r, self.z, 3)
+            self._L(k_beta, [self.sc], dim=1)
+            for c in range(self.n):
+                self._L(k_cg_dir_dev, [self.r[c], self.d[c], self.sc, self.p[c]])
+        self._dot(self.r, self.r, 5)
+
+    def run(self, tol, maxiter):
+        R, K = self.sol.runner, self.sol.check_every
+        R(self.name + "_init", self._init)
+        bnorm = math.sqrt(max(float(self.sc.numpy()[6]), 0.0)) + 1e-300
+        it = 0
+        while it < maxiter:
+            R(f"{self.name}_chunk{K}", lambda: self._chunk(K))
+            it += K
+            if math.sqrt(max(float(self.sc.numpy()[5]), 0.0)) <= tol * bnorm:
+                break
+        return it
+
+
+def _apply_mass(op, src, dst):
+    g, s = op.sol.g, op.sol
+    op._L(k_mass_apply, [src[0], op.c["kx"], op.c["ky"], g.fx, g.fy, s.dta, F(1.0 / (g.h * g.h)), g.N, dst[0]])
+
+
+def _apply_visc(op, src, dst):
+    g, s = op.sol.g, op.sol
+    ih = F(1.0 / g.h)
+    op._L(k_sym_T, [src[0], src[1], op.c["wc"], ih, g.N, op.T])
+    op._L(k_sym_apply, [src[0], src[1], op.c["l3"], op.c["wx"], op.c["wy"], op.T, op.c["ww"], g.nbx, g.nby, g.mask,
+                        s.dta, ih, g.N, dst[0], dst[1]])
+
+
 # ============================================================================ solver
 class WSolver:
-    """state = dict(l, qx, qy, m) of wp arrays.  rec: allocate gradients and record the adjoints of the PCG solves on
-    `tape` (set by the caller)."""
+    """Two paths over the same kernels:
+      fast_* : no gradients; every buffer persistent, each piece of a sub-step a CUDA graph (forward passes)
+      frame  : arrays allocated per launch so that wp.Tape can record them (the per-frame replay of the backward
+               pass, and the CPU tests); its PCG solves run on the same graph-captured CGOp as the fast path.
+    rec: allocate gradients and register the adjoints of the PCG solves on `tape` (set by the caller)."""
 
     def __init__(self, geo, cfl=0.5, max_substeps=64, cg_tol=1e-10, visc_tol=1e-8, cg_maxiter=500,
-                 kernel_quadrature=3, explicit_mixing_limit=0.05, l_floor=1e-3, v05=True, check_every=1):
+                 kernel_quadrature=3, explicit_mixing_limit=0.05, l_floor=1e-3, v05=True, check_every=1, graphs=True):
         self.g = geo
         self.cfl, self.max_substeps = cfl, max_substeps
         self.cg_tol, self.visc_tol, self.cg_maxiter = cg_tol, visc_tol, cg_maxiter
-        self.kq, self.mix_lim, self.l_floor, self.v05 = kernel_quadrature, explicit_mixing_limit, l_floor, int(v05)
+        self.kq_default, self.mix_lim, self.l_floor, self.v05 = kernel_quadrature, explicit_mixing_limit, l_floor, int(v05)
+        self.check_every = check_every
         self.tape = None
         self.rec = False
         self.stats = dict(cg_mass=0, cg_visc=0, cg_adj=0, substeps=0, frames=0)
-        N = geo.N
-        self._buf = {k: wp.zeros((N, N), dtype=F, device=geo.dev) for k in ("r", "p", "Ap", "r2", "p2", "Ap2", "tmp", "tmp2")}
-        self._rows = wp.zeros(N, dtype=F, device=geo.dev)
-        self._sc = wp.zeros(8, dtype=F, device=geo.dev)       # rz, pAp, alpha, rz_new, beta, rr, bb
-        self.check_every = check_every
+        dev = geo.dev
+        self.dta = wp.zeros(1, dtype=F, device=dev)
+        self.kq = wp.zeros(2, dtype=wp.int32, device=dev)
+        self._dt = None
+        self._kq = None
+        import os
+        self.runner = Runner(dev, graphs and os.environ.get("LATTE_NO_GRAPHS", "0") != "1")
+        self.opM = CGOp(self, "mass", 1, ("kx", "ky"), _apply_mass)
+        self.opV = CGOp(self, "visc", 2, ("l3", "wx", "wy", "wc", "ww"), _apply_visc)
+        self.fb = None
 
-    # ------------------------------------------------------------------ arrays
+    # ------------------------------------------------------------------ small helpers
     def new(self):
         return wp.zeros((self.g.N, self.g.N), dtype=F, device=self.g.dev, requires_grad=self.rec)
 
@@ -676,9 +869,30 @@ class WSolver:
         wp.launch(kernel, dim=(self.g.N, self.g.N), inputs=list(inputs) + list(outputs), device=self.g.dev,
                   record_tape=record)
 
+    def cp(self, a, b):
+        wp.launch(k_copy, dim=(self.g.N, self.g.N), inputs=[a, b], device=self.g.dev, record_tape=False)
+
+    def set_dt(self, dt):
+        if self._dt != dt:
+            self.dta.assign(np.array([dt], np.float64))
+            self._dt = dt
+
+    def set_kq(self, k, q):
+        if self._kq != (k, q):
+            self.kq.assign(np.array([k, q], np.int32))
+            self._kq = (k, q)
+
     def state_from_numpy(self, l, qx, qy, m, requires_grad=False):
         mk = lambda a: wp.array(np.ascontiguousarray(a, np.float64), dtype=F, device=self.g.dev, requires_grad=requires_grad)
         return dict(l=mk(l), qx=mk(qx), qy=mk(qy), m=mk(m))
+
+    def clone_state(self, st, requires_grad=False):
+        out = {}
+        for k, a in st.items():
+            b = wp.empty_like(a, requires_grad=requires_grad)
+            self.cp(a, b)
+            out[k] = b
+        return out
 
     def initial_state(self, requires_grad=False):
         N = self.g.N
@@ -688,104 +902,75 @@ class WSolver:
     def to_numpy(st):
         return {k: v.numpy().copy() for k, v in st.items()}
 
-    # ------------------------------------------------------------------ PCG (not taped) and its adjoint
-    def _dotdev(self, pairs, slot):
-        """sc[slot] = sum over the pairs of a . b, on the device (no host sync)."""
-        N = self.g.N
-        for c, (a, b) in enumerate(pairs):
-            wp.launch(k_rowdot, dim=N, inputs=[a, b, N, int(c > 0), self._rows], device=self.g.dev, record_tape=False)
-        wp.launch(k_rowsum, dim=1, inputs=[self._rows, N, self._sc, slot], device=self.g.dev, record_tape=False)
+    def mix_on(self, Pnp, dt):
+        h = self.g.h
+        return bool(Pnp[DM] > 0 and Pnp[DM] * dt / (h * h) < self.mix_lim)
 
-    def pcg(self, apply, b, diag, x0, tol):
-        """Jacobi-preconditioned CG, scalars on the device; convergence (|r| <= tol |b|) read back every
-        self.check_every iterations.  apply(xs, outs, record) writes outs; b, diag, x0: lists of 1 or 2 arrays."""
-        n = len(b)
-        names = (("r", "p", "Ap"), ("r2", "p2", "Ap2"))[:n]
+    # ------------------------------------------------------------------ implicit solve with exact adjoint
+    def solve(self, op, coefs, apply_eager, b, diag, x0, tol, key):
+        """x = A^{-1} b, A = op's operator with the coefficient arrays `coefs` (name -> array); on a recording pass
+        the adjoint is registered on self.tape (module docstring)."""
+        for name, a in coefs.items():
+            self.cp(a, op.c[name])
+        for c in range(op.n):
+            self.cp(b[c], op.b[c])
+            self.cp(diag[c], op.d[c])
+            self.cp(x0[c], op.x[c])
+        self.stats[key] += op.run(tol, self.cg_maxiter)
         x = []
-        for a in x0:                       # initial guess copied OFF the tape (wp.clone would record x0 -> x)
-            xa = wp.empty_like(a, requires_grad=self.rec)
-            self.L(k_copy, [a, xa], record=False)
+        for c in range(op.n):
+            xa = wp.empty_like(b[c], requires_grad=self.rec)
+            self.cp(op.x[c], xa)
             x.append(xa)
-        r = [self._buf[nm[0]] for nm in names]
-        p = [self._buf[nm[1]] for nm in names]
-        Ap = [self._buf[nm[2]] for nm in names]
-        z = [self._buf["tmp"], self._buf["tmp2"]][:n]
-        sc = self._sc
-        apply(x, Ap, False)
-        for c in range(n):
-            self.L(k_cg_init, [b[c], Ap[c], diag[c], r[c], p[c]], record=False)
-        self._dotdev(list(zip(r, p)), 0)                     # rz
-        self._dotdev(list(zip(b, b)), 6)
-        bnorm = math.sqrt(float(sc.numpy()[6])) + 1e-300
-        it = 0
-        for it in range(1, self.cg_maxiter + 1):
-            apply(p, Ap, False)
-            self._dotdev(list(zip(p, Ap)), 1)
-            wp.launch(k_alpha, dim=1, inputs=[sc], device=self.g.dev, record_tape=False)
-            for c in range(n):
-                self.L(k_cg_step, [sc, 2, p[c], Ap[c], x[c], r[c]], record=False)
-            if it % self.check_every == 0 or it == self.cg_maxiter:
-                self._dotdev(list(zip(r, r)), 5)
-                if math.sqrt(max(float(sc.numpy()[5]), 0.0)) <= tol * bnorm:
-                    break
-            for c in range(n):
-                self.L(k_rdiv, [r[c], diag[c], z[c]], record=False)
-            self._dotdev(list(zip(r, z)), 3)                 # rz_new
-            wp.launch(k_beta, dim=1, inputs=[sc], device=self.g.dev, record_tape=False)
-            for c in range(n):
-                self.L(k_cg_dir_dev, [r[c], diag[c], sc, p[c]], record=False)
-        return x, it
-
-    def solve(self, apply, coefs, b, diag, x0, tol, key):
-        """x = A^{-1} b with A = apply (linear in x, depending on the arrays `coefs`).  On a recording pass the adjoint
-        is registered on self.tape (see the module docstring)."""
-        x, it = self.pcg(apply, b, diag, x0, tol)
-        self.stats[key] += it
         if self.rec and self.tape is not None:
+            dt_now = self._dt
+
             def backward():
-                gx = [a.grad for a in x]
-                if all(not np.any(g.numpy()) for g in gx):
-                    return
-                lam, it2 = self.pcg(apply, gx, diag, [wp.zeros_like(g) for g in gx], tol)
-                self.stats["cg_adj"] += it2
-                for c in range(len(b)):
-                    self.L(k_add, [lam[c], b[c].grad], record=False)
-                xs = []
-                for a in x:
-                    xa = wp.empty_like(a, requires_grad=False)
-                    self.L(k_copy, [a, xa], record=False)
-                    xs.append(xa)
-                outs = [wp.zeros_like(a, requires_grad=True) for a in x]
+                self.set_dt(dt_now)
+                for name, a in coefs.items():
+                    self.cp(a, op.c[name])
+                for c in range(op.n):
+                    self.cp(x[c].grad, op.b[c])
+                    self.cp(diag[c], op.d[c])
+                    wp.launch(k_set0, dim=(self.g.N, self.g.N), inputs=[op.x[c]], device=self.g.dev, record_tape=False)
+                self.stats["cg_adj"] += op.run(tol, self.cg_maxiter)
+                lam_neg, xs, outs = [], [], []
+                for c in range(op.n):
+                    self.L(k_add, [op.x[c], b[c].grad], record=False)
+                    ln = wp.empty_like(b[c])
+                    self.L(k_neg, [op.x[c], ln], record=False)
+                    lam_neg.append(ln)
+                    xc = wp.empty_like(b[c])
+                    self.cp(x[c], xc)
+                    xs.append(xc)
+                    outs.append(wp.zeros_like(b[c], requires_grad=True))
                 sub = wp.Tape()
                 with sub:
-                    apply(xs, outs, True)
-                neg = [wp.zeros_like(a) for a in lam]
-                for c in range(len(lam)):
-                    self.L(k_neg, [lam[c], neg[c]], record=False)
-                sub.backward(grads={o: g for o, g in zip(outs, neg)})
-            self.tape.record_func(backward, arrays=list(x) + list(b) + list(coefs))
+                    apply_eager(xs, outs)
+                sub.backward(grads={o: g for o, g in zip(outs, lam_neg)})
+            self.tape.record_func(backward, arrays=list(x) + list(b) + list(coefs.values()))
         return x
 
-    # ------------------------------------------------------------------ inlet fields of one frame
+    # ------------------------------------------------------------------ recorded path: inlet fields, sub-step, frame
     def fields(self, P, S, k, q, active):
         g = self.g
         out = [self.new() for _ in range(4)]
         if not active:
             return out
+        self.set_kq(k, q)
         Kraw = self.new()
         sums = wp.zeros(2, dtype=F, device=g.dev, requires_grad=self.rec)
-        self.L(k_kernel_raw, [g.xc, g.yc, g.mask, S["x"], S["y"], S["r1"], S["r2"], S["phi"], k, q, F(g.h)],
+        self.L(k_kernel_raw, [g.xc, g.yc, g.mask, S["x"], S["y"], S["r1"], S["r2"], S["phi"], self.kq, F(g.h)],
                [Kraw, sums])
         self.L(k_fields, [Kraw, sums, g.mask, g.xc, g.yc, P, S["x"], S["y"], S["Q"], S["ux"], S["uy"], S["U"], S["d"],
-                          S["r1"], S["r2"], k, F(g.h * g.h), self.v05], out)
+                          S["r1"], S["r2"], self.kq, F(g.h * g.h), self.v05], out)
         return out
 
-    # ------------------------------------------------------------------ one sub-step (solver.substep, chi path)
-    def substep(self, st, dt, fl, P, nu_on, mix_on):
+    def substep(self, st, fl, P, nu_on, mix_on):
         g = self.g
         N, h = g.N, g.h
         ih, ih2 = F(1.0 / h), F(1.0 / (h * h))
-        dt = F(dt)
+        dt = self.dta
         s, Lam, vsx, vsy = fl
         ls, ux, uy, c = self.new(), self.new(), self.new(), self.new()
         self.L(k_prim, [st["l"], st["qx"], st["qy"], st["m"], g.mask], [ls, ux, uy, c])
@@ -801,10 +986,10 @@ class WSolver:
         rhs = self.new()
         self.L(k_rhs, [st["l"], s, Gex, Gey, dt, ih, N], [rhs])
 
-        def A_mass(xs, outs, record):
-            self.L(k_mass_apply, [xs[0], kx, ky, g.fx, g.fy, dt, ih2, N], [outs[0]], record=record)
+        def A_mass(xs, outs):
+            self.L(k_mass_apply, [xs[0], kx, ky, g.fx, g.fy, dt, ih2, N], [outs[0]])
 
-        (ln,) = self.solve(A_mass, [kx, ky], [rhs], [diag], [st["l"]], self.cg_tol, "cg_mass")
+        (ln,) = self.solve(self.opM, dict(kx=kx, ky=ky), A_mass, [rhs], [diag], [st["l"]], self.cg_tol, "cg_mass")
         Gx, Gy = self.new(), self.new()
         self.L(k_finishB, [Gex, Gey, kx, ky, ln, g.fx, g.fy, ih], [Gx, Gy])
         l2 = self.new()
@@ -824,13 +1009,13 @@ class WSolver:
             dx, dy = self.new(), self.new()
             self.L(k_visc_diag, [l3, wx, wy, wc, ww, g.nbx, g.nby, g.mask, dt, ih, N], [dx, dy])
 
-            def A_visc(xs, outs, record):
-                T = wp.zeros((N, N), dtype=F, device=g.dev, requires_grad=record)
-                self.L(k_sym_T, [xs[0], xs[1], wc, ih, N], [T], record=record)
-                self.L(k_sym_apply, [xs[0], xs[1], l3, wx, wy, T, ww, g.nbx, g.nby, g.mask, dt, ih, N], [outs[0], outs[1]],
-                       record=record)
+            def A_visc(xs, outs):
+                T = wp.zeros((N, N), dtype=F, device=g.dev, requires_grad=True)
+                self.L(k_sym_T, [xs[0], xs[1], wc, ih, N], [T])
+                self.L(k_sym_apply, [xs[0], xs[1], l3, wx, wy, T, ww, g.nbx, g.nby, g.mask, dt, ih, N], [outs[0], outs[1]])
 
-            Xx, Xy = self.solve(A_visc, [l3, wx, wy, wc, ww], [bx, by], [dx, dy], [X0x, X0y], self.visc_tol, "cg_visc")
+            Xx, Xy = self.solve(self.opV, dict(l3=l3, wx=wx, wy=wy, wc=wc, ww=ww), A_visc, [bx, by], [dx, dy], [X0x, X0y],
+                                self.visc_tol, "cg_visc")
             qx4, qy4 = self.new(), self.new()
             self.L(k_visc_out, [Xx, Xy, l3, g.mask], [qx4, qy4])
         m4 = m3
@@ -840,31 +1025,31 @@ class WSolver:
         self.stats["substeps"] += 1
         return dict(l=l3, qx=qx4, qy=qy4, m=m4)
 
-    # ------------------------------------------------------------------ one control frame
-    def n_substeps(self, st, fl, fdt, active):
-        """solver.advance_frame CFL count (host, not differentiated)."""
+    def n_substeps_host(self, st, fl, fdt, active):
         g = self.g
         msk = g.mask_np
-        l = st["l"].numpy()
-        ls = np.where(msk, l, 1.0)
+        ls = np.where(msk, st["l"].numpy(), 1.0)
         umax = float(np.max(np.hypot(st["qx"].numpy(), st["qy"].numpy()) / ls))
         if active:
             s, Lam, vx, vy = (a.numpy() for a in fl)
             umax = max(umax, float(np.max(np.hypot(vx, vy) * (s + Lam > 0))))
-        dt_cfl = self.cfl * g.h / (2.0 * max(umax, 1e-9))
+        return self._nsub(umax, fdt)
+
+    def _nsub(self, umax, fdt):
+        dt_cfl = self.cfl * self.g.h / (2.0 * max(umax, 1e-9))
         return max(1, min(int(math.ceil(fdt / dt_cfl)), self.max_substeps))
 
     def frame(self, st, P, Pnp, S, k, fdt, q, active, nsub=None):
-        """Advance one frame; nsub None: CFL count + retries (forward pass); given: replay with that count."""
+        """Recorded-path frame; nsub None: CFL count + retries; given: replay with that count."""
         fl = self.fields(P, S, k, q, active)
-        h = self.g.h
         nu_on = Pnp[NU] > 0
         if nsub is None:
-            nsub = self.n_substeps(st, fl, fdt, active)
+            nsub = self.n_substeps_host(st, fl, fdt, active)
             for _ in range(8):
+                self.set_dt(fdt / nsub)
                 out = st
                 for _ in range(nsub):
-                    out = self.substep(out, fdt / nsub, fl, P, nu_on, Pnp[DM] > 0 and Pnp[DM] * fdt / nsub / (h * h) < self.mix_lim)
+                    out = self.substep(out, fl, P, nu_on, self.mix_on(Pnp, fdt / nsub))
                 l = out["l"].numpy()
                 if np.isfinite(l).all() and l[self.g.mask_np].min() > self.l_floor and all(
                         np.isfinite(out[c].numpy()).all() for c in ("qx", "qy", "m")):
@@ -873,8 +1058,169 @@ class WSolver:
             else:
                 raise RuntimeError(f"frame {k} failed after retries")
         else:
+            self.set_dt(fdt / nsub)
             out = st
             for _ in range(nsub):
-                out = self.substep(out, fdt / nsub, fl, P, nu_on, Pnp[DM] > 0 and Pnp[DM] * fdt / nsub / (h * h) < self.mix_lim)
+                out = self.substep(out, fl, P, nu_on, self.mix_on(Pnp, fdt / nsub))
         self.stats["frames"] += 1
         return out, nsub
+
+    # ------------------------------------------------------------------ fast path (persistent buffers, graphs)
+    def _fast_setup(self, P, S):
+        """Persistent copies of the parameters and of the schedule (graphs hold pointers) + work buffers."""
+        g = self.g
+        if self.fb is None:
+            z = lambda: wp.zeros((g.N, g.N), dtype=F, device=g.dev)
+            names = ("l qx qy m l0 qx0 qy0 m0 Kraw s Lam vsx vsy ls ux uy c Fxqx Fxqy Fyqx Fyqy ax ay coef Gex Gey "
+                     "Gx Gy l2 qxn qyn cfx cfy qx3 qy3 m3 qx4 qy4 m4").split()
+            self.fb = {k: z() for k in names}
+            self.fb["sums"] = wp.zeros(2, dtype=F, device=g.dev)
+            self.fb["rows"] = wp.zeros(g.N, dtype=F, device=g.dev)
+            self.fb["rows2"] = wp.zeros(g.N, dtype=F, device=g.dev)
+            self.fb["red"] = wp.zeros(8, dtype=F, device=g.dev)
+            self.fb["P"] = wp.zeros(len(PARAMS), dtype=F, device=g.dev)
+            self.fb["S"] = {}
+        fb = self.fb
+        wp.copy(fb["P"], P)
+        n = S["x"].shape[0]
+        if not fb["S"] or fb["S"]["x"].shape[0] != n:
+            fb["S"] = {k: wp.zeros(n, dtype=F, device=g.dev) for k in SCHED}
+            self.runner.graphs.clear()                       # graphs held the old schedule arrays
+        for k in SCHED:
+            wp.copy(fb["S"][k], S[k])
+
+    def _g_fields(self):
+        g, fb = self.g, self.fb
+        S, P = fb["S"], fb["P"]
+        wp.launch(k_zero1, dim=2, inputs=[fb["sums"]], device=g.dev, record_tape=False)
+        self.L(k_kernel_raw, [g.xc, g.yc, g.mask, S["x"], S["y"], S["r1"], S["r2"], S["phi"], self.kq, F(g.h)],
+               [fb["Kraw"], fb["sums"]], record=False)
+        self.L(k_fields, [fb["Kraw"], fb["sums"], g.mask, g.xc, g.yc, P, S["x"], S["y"], S["Q"], S["ux"], S["uy"], S["U"],
+                          S["d"], S["r1"], S["r2"], self.kq, F(g.h * g.h), self.v05],
+               [fb["s"], fb["Lam"], fb["vsx"], fb["vsy"]], record=False)
+
+    def _g_zero_fields(self):
+        for k in ("s", "Lam", "vsx", "vsy"):
+            self.L(k_set0, [self.fb[k]], record=False)
+
+    def _g_speed(self, active):
+        g, fb = self.g, self.fb
+        wp.launch(k_rowmax_speed, dim=g.N, inputs=[fb["qx"], fb["qy"], fb["l"], fb["s"], fb["Lam"], fb["vsx"], fb["vsy"],
+                                                   g.mask, g.N, int(active), fb["rows"]], device=g.dev, record_tape=False)
+        wp.launch(k_rowreduce3, dim=1, inputs=[fb["rows"], fb["rows2"], g.N, fb["red"]], device=g.dev, record_tape=False)
+
+    def _g_check(self):
+        g, fb = self.g, self.fb
+        wp.launch(k_rowcheck, dim=g.N, inputs=[fb["l"], fb["qx"], fb["qy"], fb["m"], g.mask, g.N, fb["rows"], fb["rows2"]],
+                  device=g.dev, record_tape=False)
+        wp.launch(k_rowreduce3, dim=1, inputs=[fb["rows"], fb["rows2"], g.N, fb["red"]], device=g.dev, record_tape=False)
+
+    def _g_save(self, back=False):
+        fb = self.fb
+        for a in ("l", "qx", "qy", "m"):
+            if back:
+                self.cp(fb[a + "0"], fb[a])
+            else:
+                self.cp(fb[a], fb[a + "0"])
+
+    def _g_pre(self):
+        g, fb, M = self.g, self.fb, self.opM
+        N, h = g.N, g.h
+        ih, ih2, dt, P = F(1.0 / h), F(1.0 / (h * h)), self.dta, fb["P"]
+        R = lambda kern, ins, outs: self.L(kern, ins, outs, record=False)
+        R(k_prim, [fb["l"], fb["qx"], fb["qy"], fb["m"], g.mask], [fb["ls"], fb["ux"], fb["uy"], fb["c"]])
+        R(k_rusanov, [fb["qx"], fb["qy"], fb["ux"], fb["uy"], g.fx, g.fy], [fb["Fxqx"], fb["Fxqy"], fb["Fyqx"], fb["Fyqy"]])
+        R(k_stepA_B, [fb["qx"], fb["qy"], fb["Fxqx"], fb["Fxqy"], fb["Fyqx"], fb["Fyqy"], fb["s"], fb["Lam"], fb["vsx"],
+                      fb["vsy"], fb["ls"], P, dt, ih, N], [fb["ax"], fb["ay"], fb["coef"]])
+        R(k_massflux, [fb["ax"], fb["ay"], fb["l"], fb["ls"], g.fx, g.fy], [fb["Gex"], fb["Gey"]])
+        R(k_facecoef, [fb["coef"], g.fx, g.fy, dt], [M.c["kx"], M.c["ky"]])
+        R(k_massdiag, [M.c["kx"], M.c["ky"], dt, ih2, N], [M.d[0]])
+        R(k_rhs, [fb["l"], fb["s"], fb["Gex"], fb["Gey"], dt, ih, N], [M.b[0]])
+        self.cp(fb["l"], M.x[0])
+
+    def _g_mid(self, nu_on):
+        g, fb, M, V = self.g, self.fb, self.opM, self.opV
+        N, h = g.N, g.h
+        ih, dt, P = F(1.0 / h), self.dta, fb["P"]
+        R = lambda kern, ins, outs: self.L(kern, ins, outs, record=False)
+        R(k_finishB, [fb["Gex"], fb["Gey"], M.c["kx"], M.c["ky"], M.x[0], g.fx, g.fy, ih], [fb["Gx"], fb["Gy"]])
+        R(k_lcons_q, [fb["l"], fb["s"], fb["Gx"], fb["Gy"], fb["ax"], fb["ay"], fb["coef"], g.fx, g.fy, g.nfx, g.nfy, dt, ih,
+                      N], [fb["l2"]])
+        R(k_qgrad, [fb["ax"], fb["ay"], fb["coef"], fb["l2"], g.fx, g.fy, g.nfx, g.nfy, dt, ih, N], [fb["qxn"], fb["qyn"]])
+        R(k_limit, [fb["c"], fb["Gx"], fb["Gy"], g.fx, g.fy, N], [fb["cfx"], fb["cfy"]])
+        R(k_milk, [fb["m"], fb["s"], fb["Gx"], fb["Gy"], fb["cfx"], fb["cfy"], fb["l2"], fb["qxn"], fb["qyn"], g.mask, dt, ih, N],
+          [V.c["l3"], fb["qx3"], fb["qy3"], fb["m3"]])
+        if nu_on:
+            R(k_visc_coefs, [V.c["l3"], g.fx, g.fy, g.cm, g.geo, P, N], [V.c["wx"], V.c["wy"], V.c["wc"], V.c["ww"]])
+            R(k_visc_rhs, [fb["qx3"], fb["qy3"], V.c["l3"], g.mask], [V.x[0], V.x[1], V.b[0], V.b[1]])
+            R(k_visc_diag, [V.c["l3"], V.c["wx"], V.c["wy"], V.c["wc"], V.c["ww"], g.nbx, g.nby, g.mask, dt, ih, N],
+              [V.d[0], V.d[1]])
+
+    def _g_post(self, nu_on, mix_on):
+        g, fb, V = self.g, self.fb, self.opV
+        N, h = g.N, g.h
+        R = lambda kern, ins, outs: self.L(kern, ins, outs, record=False)
+        if nu_on:
+            R(k_visc_out, [V.x[0], V.x[1], V.c["l3"], g.mask], [fb["qx"], fb["qy"]])
+        else:
+            self.cp(fb["qx3"], fb["qx"])
+            self.cp(fb["qy3"], fb["qy"])
+        if mix_on:
+            R(k_mix, [fb["m3"], V.c["l3"], g.fx, g.fy, g.mask, fb["P"], self.dta, F(1.0 / (h * h)), N], [fb["m"]])
+        else:
+            self.cp(fb["m3"], fb["m"])
+        self.cp(V.c["l3"], fb["l"])
+
+    def fast_substep(self, nu_on, mix_on):
+        R = self.runner
+        R("pre", self._g_pre)
+        self.stats["cg_mass"] += self.opM.run(self.cg_tol, self.cg_maxiter)
+        R(f"mid{int(nu_on)}", lambda: self._g_mid(nu_on))
+        if nu_on:
+            self.stats["cg_visc"] += self.opV.run(self.visc_tol, self.cg_maxiter)
+        R(f"post{int(nu_on)}{int(mix_on)}", lambda: self._g_post(nu_on, mix_on))
+        self.stats["substeps"] += 1
+
+    def fast_forward(self, P, Pnp, S, sched, keep=True, nsub=None, frames=None):
+        """Whole pour on persistent buffers.  P, S: device arrays (copied in); sched: host schedule (fdt, q, active).
+        Returns final state (device arrays, copies), checkpoints (device arrays, state at each frame start) and the
+        sub-step counts."""
+        self._fast_setup(P, S)
+        R, fb = self.runner, self.fb
+        R("init", lambda: self.L(k_init_state, [], [fb["l"], fb["qx"], fb["qy"], fb["m"]], record=False))
+        nu_on = Pnp[NU] > 0
+        ck, ns = [], []
+        n = sched["n"] if frames is None else min(frames, sched["n"])
+        for k in range(n):
+            if keep:
+                ck.append(self.clone_state({a: fb[a] for a in ("l", "qx", "qy", "m")}))
+            fdt, q, active = float(sched["fdt"][k]), int(sched["q"][k]), bool(sched["active"][k])
+            self.set_kq(k, q)
+            if active:
+                R("fields", self._g_fields)
+            else:
+                R("zero_fields", self._g_zero_fields)
+            if nsub is not None:
+                n_ = nsub[k]
+                self.set_dt(fdt / n_)
+                for _ in range(n_):
+                    self.fast_substep(nu_on, self.mix_on(Pnp, fdt / n_))
+            else:
+                R(f"speed{int(active)}", lambda: self._g_speed(active))
+                n_ = self._nsub(float(self.fb["red"].numpy()[0]), fdt)
+                R("save", self._g_save)
+                for _ in range(8):
+                    self.set_dt(fdt / n_)
+                    for _ in range(n_):
+                        self.fast_substep(nu_on, self.mix_on(Pnp, fdt / n_))
+                    R("check", self._g_check)
+                    red = self.fb["red"].numpy()
+                    if red[2] == 0 and red[1] > self.l_floor:
+                        break
+                    R("restore", lambda: self._g_save(back=True))
+                    n_ *= 2
+                else:
+                    raise RuntimeError(f"frame {k} failed after retries")
+            ns.append(n_)
+            self.stats["frames"] += 1
+        return self.clone_state({a: fb[a] for a in ("l", "qx", "qy", "m")}), ck, ns

@@ -4,6 +4,7 @@
 #   bash scripts/autodl_diff.sh                 -> prints the log path and returns
 #   CAL=tulip,heart N=128 ITERS=60 INIT=results/fit/best_closure.json (default if it exists, else the S1 closure)
 # Send back: results/diff_results.tar.gz
+# If the CUDA-graph capture fails on this driver: LATTE_NO_GRAPHS=1 bash scripts/autodl_diff.sh
 cd "$(dirname "$0")/.."
 LOG=results/diff.log
 mkdir -p results
@@ -14,6 +15,7 @@ if [ "${_LATTE_BG:-}" != "1" ]; then
   exit 0
 fi
 set -eo pipefail
+export PYTHONUNBUFFERED=1
 [ -f /etc/network_turbo ] && source /etc/network_turbo || true
 export PYTHONWARNINGS=ignore
 python -c "import warp" 2>/dev/null || python -m pip install -q warp-lang
@@ -29,8 +31,9 @@ OUT=${OUT:-results/diff_fit}
 CAL=${CAL:-tulip,heart}
 INIT=${INIT:-}
 [ -z "$INIT" ] && [ -f results/fit/best_closure.json ] && INIT=results/fit/best_closure.json
-echo "===== $(date '+%F %T') self-test 1/2: forward parity with the numpy solver (GPU, N=128, 300 frames) ====="
-python -m latte_imex.diff.test_parity --N 128 --frames 300 --device cuda:0
+echo "===== $(date '+%F %T') self-test 1/2: forward parity with the numpy solver (GPU, N=128, 300 frames; exact, then chunked CG + CUDA graphs) ====="
+python -m latte_imex.diff.test_parity --N 128 --frames 300 --device cuda:0 --check-every 1
+python -m latte_imex.diff.test_parity --N 128 --frames 300 --device cuda:0 --check-every 4
 echo "===== $(date '+%F %T') self-test 2/2: adjoint vs finite differences (GPU, N=64, first 2 s) ====="
 python -m latte_imex.diff.test_grad --N 64 --T 2.0 --device cuda:0 --sched 1
 echo "===== $(date '+%F %T') gradient fit: $CAL, N=${N:-128}, ${ITERS:-60} iterations, start ${INIT:-S1} ====="
