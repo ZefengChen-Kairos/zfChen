@@ -61,27 +61,63 @@ def foot_shift(x, y, ux, uy, a, b):
 
 
 def shift_program(prog, a, b):
-    """Make prog(t) return inlets with the landing point shifted (foot_shift), for runs outside the Warp solver."""
-    if not a and not b:
+    """Make prog(t) return inlets with the landing point shifted (foot_shift); a, b numbers or functions of t."""
+    if not callable(a) and not callable(b) and not a and not b:
         return prog
     base = type(prog)
+    fa = a if callable(a) else (lambda t, v=float(a): v)
+    fb = b if callable(b) else (lambda t, v=float(b): v)
 
     class Shifted(base):
         def __call__(self, t):
             inl = base.__call__(self, t)
             if inl.active:
-                x, y = foot_shift(inl.x_hit[0], inl.x_hit[1], inl.u_in[0], inl.u_in[1], a, b)
+                x, y = foot_shift(inl.x_hit[0], inl.x_hit[1], inl.u_in[0], inl.u_in[1], fa(t), fb(t))
                 inl.x_hit = (float(x), float(y))
             return inl
     prog.__class__ = Shifted
     return prog
 
 
-def pour_script(p, N):
+E0_WIN = 0.5             # [s] half window of the running median of the measured offsets
+
+
+def e0_offsets(p):
+    """E0 input replay: the measured landing-point offset of pour p (rig/stream_foot.py: the stream foot seen by the
+    three cameras minus the model's landing point, along / across the jet), as functions of the sim time: running
+    median of the trusted frames over +-E0_WIN s, the pour median where no trusted frame is near.  A measurement of
+    the input, not a fit to the pattern (V1 plan 4.1).  None if the pour has no stream_foot.json."""
+    import json
+    import os
+    from ..rig.real_program import RES
+    fn = os.path.join(RES, p, "stream_foot.json")
+    if not os.path.exists(fn):
+        return None
+    F = [r for r in json.load(open(fn))["frames"] if r.get("trusted") and "along" in r]
+    if len(F) < 5:
+        return None
+    t = np.array([r["t"] for r in F])
+    A = np.array([[r["along"], r["across"]] for r in F])
+    med = np.median(A, 0)
+    tg = np.arange(t.min() - 1.0, t.max() + 1.0, 0.05)
+    G = np.empty((len(tg), 2))
+    for i, tt in enumerate(tg):
+        near = np.abs(t - tt) <= E0_WIN
+        G[i] = np.median(A[near], 0) if near.sum() >= 3 else med
+    return (lambda tt: float(np.interp(tt, tg, G[:, 0], left=med[0], right=med[0])),
+            lambda tt: float(np.interp(tt, tg, G[:, 1], left=med[1], right=med[1])))
+
+
+def pour_script(p, N, e0=False):
     """ProgScript of pattern p's measured pour through the Kona 700 mL pitcher (tulip_feas.Pour inlet) and the S1
-    closure as starting parameters."""
+    closure as starting parameters; e0: landing point corrected by the measured stream foot (e0_offsets)."""
     from ..rig.tulip_feas import Pour
     from .. import s1_forward as SF
     pour = Pour(p)
     prog = SF.FwdProgram(p, pour.R, N, meta=pour.meta)
+    if e0:
+        off = e0_offsets(p)
+        if off is None:
+            raise FileNotFoundError(f"{p}: no E0 stream-foot measurement (python3 -m latte_imex.rig.stream_foot {p})")
+        shift_program(prog, *off)
     return SF.ProgScript(prog, p), pour

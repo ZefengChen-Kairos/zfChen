@@ -1,7 +1,8 @@
 """Gradient-based calibration of the V0.5 closure with the differentiable Warp solver.
 
 Parameters: v05_adapter.SPACE (8 closure parameters) in the unit box (log-scaled where SPACE says 'log'); nu and D
-fixed.  Diagnostic option --foot: also fit a landing-point correction shared by all pours, foot_a / foot_b [cup
+fixed.  Inlet: the measured pour with the landing point corrected by the measured stream foot (E0 input replay,
+schedule.e0_offsets; --no-e0: pitcher model alone).  Diagnostic option --foot: also fit a landing-point correction shared by all pours, foot_a / foot_b [cup
 diameters] along / across the jet's horizontal direction (schedule.foot_shift) -- off by default (the inlet is not
 corrected from the target pattern; see the V1 plan, 4.1 and E0).
 After the fit, the frozen parameters are run on every other pattern (frozen-parameter test): test.json, with the same
@@ -272,6 +273,9 @@ def main(argv=None):
     ap.add_argument("--loss", default="video", choices=["video", "final"])
     ap.add_argument("--scales", default="0.3,0.15,0",
                     help="video loss scales [cup radii] (run.py): blurred residual terms, 0 = per pixel; '0' = pixel term only")
+    ap.add_argument("--no-e0", dest="e0", action="store_false",
+                    help="landing point from the pitcher model alone (default: E0, corrected by the measured stream foot, "
+                         "rig/stream_foot.py)")
     ap.add_argument("--w-final", dest="w_final", type=float, default=0.0, help="extra final-frame soft-IoU term (video loss)")
     ap.add_argument("--init", default=None, help="closure json to start from (default: S1)")
     ap.add_argument("--device", default=None)
@@ -289,11 +293,13 @@ def main(argv=None):
     use_foot(a.foot)
     cal = a.cal.split(",")
     kw = dict(N=a.N, device=a.device, w_gap=a.w_gap, tau=a.tau0, T_max=a.T, loss=a.loss, w_final=a.w_final,
-              scales=tuple(float(x) for x in a.scales.split(",")))
+              scales=tuple(float(x) for x in a.scales.split(",")), e0=a.e0)
     workers = a.workers if a.workers >= 0 else (len(cal) if (a.device or "cuda").startswith("cuda") else 0)
     pours = {p: Pour(p, kw, process=workers > 0) for p in cal}
     log(f"{len(cal)} calibration pours, {'one worker process each' if workers > 0 else 'in-process'}")
     base = dict(pours[cal[0]].s1, **({"foot_a": 0.0, "foot_b": 0.0} if a.foot else {}))
+    if a.e0:
+        base["e0"] = 1.0                                  # carried into best_closure.json -> the render uses E0 too
     if a.init:
         base.update({k: float(v) for k, v in json.load(open(a.init)).items() if k in base})
         log(f"start: {a.init}")

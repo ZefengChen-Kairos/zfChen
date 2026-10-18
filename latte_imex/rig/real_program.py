@@ -330,13 +330,17 @@ def real_program(p, N=256, flow="pitcher", V0=None, log=print, closure=None):
     C, E, R, info = build_inlet(p, flow, V0, log)
     T = info["T_pour"] + TAIL
     meta = phases_meta(p, C, R, T)
-    foot = (0.0, 0.0)
+    foot, e0 = (0.0, 0.0), False
     if closure:
         closure = dict(closure)
         foot = (float(closure.pop("foot_a", 0.0)), float(closure.pop("foot_b", 0.0)))
+        e0 = bool(closure.pop("e0", 0))
         meta["config"]["parameters"].update(closure)
         meta["kQ"] = float(closure.get("kappa_Q", meta["kQ"]))
     prog = SF.FwdProgram(p, scaled_record(R, C["L"]), N, meta=meta)
+    if e0:                                             # E0: measured stream foot (rig/stream_foot.py)
+        from ..diff.schedule import e0_offsets, shift_program
+        shift_program(prog, *e0_offsets(p))
     if any(foot):                                      # landing-point correction of the differentiable fit
         from ..diff.schedule import shift_program
         shift_program(prog, *foot)

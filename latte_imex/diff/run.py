@@ -193,11 +193,11 @@ def target_on_grid(p, geo):
 
 class DiffPour:
     def __init__(self, p, N=128, device=None, T_max=None, w_gap=2.0, tau=0.05, check_every=None, graphs=True,
-                 loss="video", w_final=0.0, scales=(0.0,), log=print):
+                 loss="video", w_final=0.0, scales=(0.0,), e0=False, log=print):
         self.p, self.N, self.log = p, N, log
         wp.init()
-        script, pour = SC.pour_script(p, N)
-        self.script, self.pour = script, pour
+        script, pour = SC.pour_script(p, N, e0=e0)
+        self.script, self.pour, self.e0 = script, pour, e0
         self.S = SC.build(script, N, T_max=T_max)
         self.geo = W.Geo(N, device=device)
         if check_every is None:                     # PCG convergence read back every 4 iterations on the GPU
@@ -248,6 +248,7 @@ class DiffPour:
                     t += m["coef"] * float((m["Bw"].numpy() ** 2 * m["iBv"].numpy()).sum())
                 self.L_brown += ob["wt"] * t
         log(f"{p}: {self.S['n']} frames, T {self.S['T']:.2f} s, N {N}, device {dev}, loss {loss}"
+            + (", landing point: E0 measured stream foot" if e0 else "")
             + (f" ({len(self.obs)} observed frames, scales {self.scales} R; no-white reference loss "
                f"{self.L_brown:.4f})" if self.obs else ""))
 
