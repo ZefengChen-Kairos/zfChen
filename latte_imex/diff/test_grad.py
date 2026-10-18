@@ -24,7 +24,7 @@ def main():
     L, g, _ = D.loss_grad(P)
     ns = D.nsub
     print(f"loss {L:.6f}; forward {D.timing['forward_s']:.1f} s, backward {D.timing['backward_s']:.1f} s; "
-          f"adjoint CG iterations {D.sol.stats['cg_adj']}")
+          f"PCG iterations (forward + adjoint) {D.sol.cg_iterations()}")
     worst = 0.0
     for k in a.keys.split(","):
         h = a.eps * max(abs(P[k]), 1e-8)

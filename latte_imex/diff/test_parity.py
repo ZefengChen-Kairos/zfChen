@@ -52,7 +52,7 @@ def main():
                 nw.append(ns)
         else:
             sol.fast_forward(Pw, Pnp, Sw, S, keep=False, frames=n)              # warm-up: graph capture
-            sol.stats.update(cg_mass=0, cg_visc=0)
+            sol.reset_cg_iterations()
             t0 = time.time()
             st, _, nw = sol.fast_forward(Pw, Pnp, Sw, S, keep=False, frames=n)
         wp.synchronize()
@@ -66,8 +66,10 @@ def main():
             sc = np.abs(rv[msk]).max() + 1e-300
             print(f"  {key}: max |warp - numpy| {d:.3e} (relative {d / sc:.2e})")
             ok &= d / sc < tol
-        print(f"  substeps equal: {nw == nref} (warp {sum(nw)}, numpy {sum(nref)}); cg mass {sol.stats['cg_mass']} vs "
-              f"{ref.stats['cg_mass']}, visc {sol.stats['cg_visc']} vs {ref.stats['cg_visc']}")
+        it = sol.cg_iterations()
+        print(f"  substeps equal: {nw == nref} (warp {sum(nw)}, numpy {sum(nref)}); cg mass {it['mass']} vs "
+              f"{ref.stats['cg_mass']}, visc {it['visc']} vs {ref.stats['cg_visc']}; PCG modes {sol.opM.mode}/"
+              f"{sol.opV.mode}, fused sub-step graph {sol.fused}")
         ok &= nw == nref
     print("PASS" if ok else "FAIL")
 

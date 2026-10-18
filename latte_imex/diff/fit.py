@@ -58,6 +58,76 @@ def dtheta_du(P):
     return np.array(out)
 
 
+# ----------------------------------------------------------------------------- one pour, in-process or in a worker process
+def _step(D, P, tau):
+    D.tau = tau
+    L, g, final = D.loss_grad(P)
+    M, c = score(D, final)
+    M["viou"] = float(np.mean([v for _, v in D.vmetrics])) if D.vmetrics else float("nan")
+    return dict(L=L, g=g, M=M, c=c, strip=D.strip, vmetrics=D.vmetrics, timing=D.timing)
+
+
+def _worker(conn, p, kw):
+    import traceback
+    from .run import DiffPour
+    try:
+        D = DiffPour(p, log=lambda *x: print(*x, flush=True), **kw)
+        conn.send(("ok", dict(s1=D.s1)))
+    except Exception:
+        conn.send(("err", traceback.format_exc()))
+        return
+    while True:
+        msg = conn.recv()
+        if msg is None:
+            return
+        try:
+            conn.send(("ok", _step(D, *msg)))
+        except Exception as e:
+            conn.send(("err", f"{type(e).__name__}: {e}"))
+
+
+class Pour:
+    """A calibration pour: in a worker process (parallel: own CUDA context, own Python interpreter -- the backward
+    replay is launch/Python-bound, so separate processes keep the GPU busy) or in-process."""
+
+    def __init__(self, p, kw, process):
+        self.p, self.process = p, process
+        if process:
+            import multiprocessing as mp
+            ctx = mp.get_context("spawn")
+            self.conn, child = ctx.Pipe()
+            self.proc = ctx.Process(target=_worker, args=(child, p, kw), daemon=True)
+            self.proc.start()
+            st, info = self.conn.recv()
+            if st != "ok":
+                raise RuntimeError(f"{p} worker failed to start:\n{info}")
+            self.s1 = info["s1"]
+        else:
+            from .run import DiffPour
+            self.D = DiffPour(p, log=lambda *x: print(*x, flush=True), **kw)
+            self.s1 = self.D.s1
+
+    def send(self, P, tau):
+        if self.process:
+            self.conn.send((P, tau))
+        else:
+            try:
+                self._res = ("ok", _step(self.D, P, tau))
+            except RuntimeError as e:
+                self._res = ("err", str(e))
+
+    def recv(self):
+        st, r = self.conn.recv() if self.process else self._res
+        if st != "ok":
+            raise RuntimeError(f"{self.p}: {r}")
+        return r
+
+    def close(self):
+        if self.process:
+            self.conn.send(None)
+            self.proc.join(timeout=30)
+
+
 def score(D, final):
     msk = D.geo.mask_np
     c = np.where(msk, final["m"] / np.where(msk, final["l"], 1.0), np.nan)
@@ -65,7 +135,7 @@ def score(D, final):
     return M, c
 
 
-def sheet(out, Ds, cal, log):
+def sheet(out, cal, log):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -75,7 +145,8 @@ def sheet(out, Ds, cal, log):
     cm.set_bad((0.12, 0.12, 0.12))
     fig, ax = plt.subplots(3, len(cal), figsize=(3.3 * len(cal), 10.2), dpi=100, squeeze=False)
     for j, p in enumerate(cal):
-        T = Ds[p].T
+        from ..rig.tulip_feas import Target
+        T = Target(p)
         ax[0, j].imshow(_rot(T.img[..., ::-1].copy(), T.rot))
         ax[0, j].contour(_rot(T.G.astype(np.float32), T.rot), [0.5], colors="cyan", linewidths=0.7)
         ax[0, j].set_title(f"{p} target", fontsize=9)
@@ -168,14 +239,17 @@ def main(argv=None):
     ap.add_argument("--init", default=None, help="closure json to start from (default: S1)")
     ap.add_argument("--device", default=None)
     ap.add_argument("--T", type=float, default=None, help="simulate only the first T seconds (tests)")
+    ap.add_argument("--workers", type=int, default=-1, help="-1: one process per pour on CUDA, in-process on the CPU; "
+                    "0: in-process; >0: worker processes")
     a = ap.parse_args(argv)
     os.makedirs(os.path.join(a.out, "fields"), exist_ok=True)
     log = lambda *x: print(*x, flush=True)
-    from .run import DiffPour
     cal = a.cal.split(",")
-    Ds = {p: DiffPour(p, N=a.N, device=a.device, w_gap=a.w_gap, tau=a.tau0, T_max=a.T, loss=a.loss,
-                       w_final=a.w_final, log=log) for p in cal}
-    base = dict(Ds[cal[0]].s1)
+    kw = dict(N=a.N, device=a.device, w_gap=a.w_gap, tau=a.tau0, T_max=a.T, loss=a.loss, w_final=a.w_final)
+    workers = a.workers if a.workers >= 0 else (len(cal) if (a.device or "cuda").startswith("cuda") else 0)
+    pours = {p: Pour(p, kw, process=workers > 0) for p in cal}
+    log(f"{len(cal)} calibration pours, {'one worker process each' if workers > 0 else 'in-process'}")
+    base = dict(pours[cal[0]].s1)
     if a.init:
         base.update({k: float(v) for k, v in json.load(open(a.init)).items() if k in base})
         log(f"start: {a.init}")
@@ -192,13 +266,19 @@ def main(argv=None):
         P = from_unit(u, base)
         t0 = time.time()
         try:
-            res = {}
-            for p, D in Ds.items():
-                D.tau = tau
-                L, g, final = D.loss_grad(P)
-                M, c = score(D, final)
-                M["viou"] = float(np.mean([v for _, v in D.vmetrics])) if D.vmetrics else float("nan")
-                res[p] = (L, g, M, c, D.strip, D.vmetrics)
+            for po in pours.values():                     # all pours run concurrently in their workers
+                po.send(P, tau)
+            res, timing, errs = {}, {}, []
+            for p, po in pours.items():                   # collect every answer (keeps the pipes in step)
+                try:
+                    r = po.recv()
+                except RuntimeError as e:
+                    errs.append(str(e))
+                    continue
+                res[p] = (r["L"], r["g"], r["M"], r["c"], r["strip"], r["vmetrics"])
+                timing[p] = r["timing"]
+            if errs:
+                raise RuntimeError("; ".join(errs))
         except RuntimeError as e:                       # non-finite state: back off
             log(f"it {it}: forward failed ({e}); halving the step")
             lr *= 0.5
@@ -219,7 +299,7 @@ def main(argv=None):
         log(f"it {it:3d}  loss {L:.4f}  vIoU {vI:.3f}  final J {J:.3f}  "
             + "  ".join(f"{p} v{r[2]['viou']:.2f} f{r[2]['iou']:.2f}/{r[2]['gap_iou']:.2f}" for p, r in res.items())
             + f"  |g| {np.linalg.norm(gu):.2e}  {rec['wall_s']:.0f} s ("
-            + ", ".join(f"{p} fwd {D.timing['forward_s']:.0f} + bwd {D.timing['backward_s']:.0f} s" for p, D in Ds.items()) + ")")
+            + ", ".join(f"{p} fwd {t['forward_s']:.0f} + bwd {t['backward_s']:.0f} s" for p, t in timing.items()) + ")")
         def save(tag):
             for p, r in res.items():
                 np.save(os.path.join(a.out, "fields", f"{p}_{tag}.npy"), r[3].astype(np.float32))
@@ -242,7 +322,9 @@ def main(argv=None):
         u = np.clip(u - lr * mh / (np.sqrt(vh) + eps), 0.0, 1.0)
         it += 1
         progress(a.out, recs)
-    sheet(a.out, Ds, cal, log)
+    for po in pours.values():
+        po.close()
+    sheet(a.out, cal, log)
     video_strip(a.out, cal)
     log(f"best: iteration {best['it']}, loss {best['loss']:.4f} (start {recs[0]['loss']:.4f}), video IoU "
         f"{best['viou']:.3f} (start {recs[0]['viou']:.3f}), final J {best['J']:.3f} (start {recs[0]['J']:.3f}); "

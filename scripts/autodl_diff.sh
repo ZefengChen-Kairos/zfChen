@@ -31,11 +31,12 @@ OUT=${OUT:-results/diff_fit}
 CAL=${CAL:-tulip,heart}
 INIT=${INIT:-}
 [ -z "$INIT" ] && [ -f results/fit/best_closure.json ] && INIT=results/fit/best_closure.json
-echo "===== $(date '+%F %T') self-test 1/2: forward parity with the numpy solver (GPU, N=128, 300 frames; exact, then chunked CG + CUDA graphs) ====="
-python -m latte_imex.diff.test_parity --N 128 --frames 300 --device cuda:0 --check-every 1
-python -m latte_imex.diff.test_parity --N 128 --frames 300 --device cuda:0 --check-every 4
+echo "===== $(date '+%F %T') self-test 1/2: forward parity with the numpy solver (GPU, N=128, 300 frames, CUDA graphs + device-side PCG) ====="
+python -m latte_imex.diff.test_parity --N 128 --frames 300 --device cuda:0
 echo "===== $(date '+%F %T') self-test 2/2: adjoint vs finite differences (GPU, N=64, first 2 s) ====="
 python -m latte_imex.diff.test_grad --N 64 --T 2.0 --device cuda:0 --sched 1
+echo "===== $(date '+%F %T') benchmark: whole tulip pour, N=${N:-128} ====="
+python -m latte_imex.diff.bench --pattern tulip --N ${N:-128} --device cuda:0
 echo "===== $(date '+%F %T') gradient fit: $CAL, N=${N:-128}, ${ITERS:-60} iterations, start ${INIT:-S1} ====="
 python -m latte_imex.diff.fit --out "$OUT" --cal "$CAL" --N ${N:-128} --iters ${ITERS:-60} ${INIT:+--init "$INIT"} --device cuda:0
 echo "===== $(date '+%F %T') render with the fitted closure (N=256) ====="

@@ -717,6 +717,215 @@ class Geo:
         self.nfx, self.nfy, self.geo, self.nbx, self.nby, self.xc, self.yc = D(nfx), D(nfy), D(geo), D(nbx), D(nby), D(x), D(y)
 
 
+# ============================================================================ fused PCG kernels (device-resident loop)
+# Scalars of one solve live in a small device array sc (slots below); the loop runs on the device under wp.capture_while
+# (a CUDA conditional graph node when captured): no host synchronisation inside a solve.  Dot products: block-level
+# tile reductions (one atomic add per block of TB cells) fused into the kernels that produce their operands.
+TB = 128
+TBc = wp.constant(TB)
+S_RZ, S_PAP, S_RZN, S_RR, S_BB, S_BETA, S_IT, S_ITT = range(8)
+
+
+@wp.func
+def cell_of(blk: int, e: int, N: int):
+    idx = blk * TBc + e
+    j = idx // N
+    return j, idx - j * N, idx < N * N
+
+
+@wp.kernel
+def kc_zero(sc: A1):
+    sc[S_RZ] = F(0.0)
+    sc[S_BB] = F(0.0)
+    sc[S_PAP] = F(0.0)
+    sc[S_RZN] = F(0.0)
+    sc[S_RR] = F(0.0)
+    sc[S_IT] = F(0.0)
+
+
+@wp.kernel
+def kc_init(b1: A2, Ap1: A2, d1: A2, r1: A2, p1: A2, b2: A2, Ap2: A2, d2: A2, r2: A2, p2: A2, n: int, N: int, sc: A1):
+    """r = b - A x0, p = z = r / d; rz = r . z and bb = b . b (tile sums)."""
+    blk, lane = wp.tid()
+    rz = F(0.0)
+    bb = F(0.0)
+    for e in range(lane, TBc, wp.block_dim()):
+        j, i, ok = cell_of(blk, e, N)
+        if ok:
+            rr = b1[j, i] - Ap1[j, i]
+            z = rr / d1[j, i]
+            r1[j, i] = rr
+            p1[j, i] = z
+            rz += rr * z
+            bb += b1[j, i] * b1[j, i]
+            if n > 1:
+                rr2 = b2[j, i] - Ap2[j, i]
+                z2 = rr2 / d2[j, i]
+                r2[j, i] = rr2
+                p2[j, i] = z2
+                rz += rr2 * z2
+                bb += b2[j, i] * b2[j, i]
+    wp.tile_atomic_add(sc, wp.tile_sum(wp.tile(rz)), offset=S_RZ)
+    wp.tile_atomic_add(sc, wp.tile_sum(wp.tile(bb)), offset=S_BB)
+
+
+@wp.kernel
+def kc_prep(sc: A1, cond: wp.array(dtype=wp.int32)):
+    sc[S_PAP] = F(0.0)
+    sc[S_RZN] = F(0.0)
+    sc[S_RR] = F(0.0)
+    sc[S_IT] = F(0.0)
+    cond[0] = 1
+
+
+@wp.func
+def mass_apply_at(phi: A2, kx: A2, ky: A2, fx: I2, fy: I2, dt: F, inv_h2: F, N: int, j: int, i: int):
+    p = phi[j, i]
+    v = F(0.0)
+    if i < N - 1:
+        if fx[j, i] != 0:
+            v += kx[j, i] * (phi[j, i + 1] - p)
+    if i > 0:
+        if fx[j, i - 1] != 0:
+            v += kx[j, i - 1] * (phi[j, i - 1] - p)
+    if j < N - 1:
+        if fy[j, i] != 0:
+            v += ky[j, i] * (phi[j + 1, i] - p)
+    if j > 0:
+        if fy[j - 1, i] != 0:
+            v += ky[j - 1, i] * (phi[j - 1, i] - p)
+    return p - dt * v * inv_h2
+
+
+@wp.kernel
+def km_apply_dot(p: A2, kx: A2, ky: A2, fx: I2, fy: I2, dta: A1, inv_h2: F, N: int, Ap: A2, sc: A1):
+    """Ap = A p (layer mass operator) and pAp (tile sum)."""
+    blk, lane = wp.tid()
+    dt = dta[0]
+    acc = F(0.0)
+    for e in range(lane, TBc, wp.block_dim()):
+        j, i, ok = cell_of(blk, e, N)
+        if ok:
+            v = mass_apply_at(p, kx, ky, fx, fy, dt, inv_h2, N, j, i)
+            Ap[j, i] = v
+            acc += p[j, i] * v
+    wp.tile_atomic_add(sc, wp.tile_sum(wp.tile(acc)), offset=S_PAP)
+
+
+@wp.func
+def sym_apply_at(ux: A2, uy: A2, l3: A2, wx: A2, wy: A2, T: A2, ww: A2, nbx: A2, nby: A2, mask: I2, dt: F, inv_h: F,
+                 N: int, j: int, i: int):
+    u = ux[j, i]
+    v = uy[j, i]
+    if mask[j, i] == 0:
+        return wp.vec2d(u, v)
+    inv_h2 = inv_h * inv_h
+    ku = F(0.0)
+    kv = F(0.0)
+    if i < N - 1:
+        ku -= wx[j, i] * (ux[j, i + 1] - u)
+    if i > 0:
+        ku -= wx[j, i - 1] * (ux[j, i - 1] - u)
+    if j < N - 1:
+        kv -= wy[j, i] * (uy[j + 1, i] - v)
+    if j > 0:
+        kv -= wy[j - 1, i] * (uy[j - 1, i] - v)
+    ku *= inv_h2
+    kv *= inv_h2
+    c = F(0.0)
+    d = F(0.0)
+    if j < N - 1 and i < N - 1:
+        c -= T[j, i]
+        d -= T[j, i]
+    if j < N - 1 and i > 0:
+        c -= T[j, i - 1]
+        d += T[j, i - 1]
+    if j > 0 and i < N - 1:
+        c += T[j - 1, i]
+        d -= T[j - 1, i]
+    if j > 0 and i > 0:
+        c += T[j - 1, i - 1]
+        d += T[j - 1, i - 1]
+    ku += F(0.5) * inv_h * c
+    kv += F(0.5) * inv_h * d
+    w = ww[j, i]
+    if w != F(0.0):
+        un = w * (u * nbx[j, i] + v * nby[j, i])
+        ku += un * nbx[j, i]
+        kv += un * nby[j, i]
+    L = l3[j, i]
+    return wp.vec2d(L * u + dt * ku, L * v + dt * kv)
+
+
+@wp.kernel
+def kv_apply_dot(px: A2, py: A2, l3: A2, wx: A2, wy: A2, T: A2, ww: A2, nbx: A2, nby: A2, mask: I2, dta: A1, inv_h: F,
+                 N: int, Apx: A2, Apy: A2, sc: A1):
+    """[Apx, Apy] = (L + dt K) p (symmetric viscosity, T from k_sym_T) and pAp (tile sum)."""
+    blk, lane = wp.tid()
+    dt = dta[0]
+    acc = F(0.0)
+    for e in range(lane, TBc, wp.block_dim()):
+        j, i, ok = cell_of(blk, e, N)
+        if ok:
+            o = sym_apply_at(px, py, l3, wx, wy, T, ww, nbx, nby, mask, dt, inv_h, N, j, i)
+            Apx[j, i] = o[0]
+            Apy[j, i] = o[1]
+            acc += px[j, i] * o[0] + py[j, i] * o[1]
+    wp.tile_atomic_add(sc, wp.tile_sum(wp.tile(acc)), offset=S_PAP)
+
+
+@wp.kernel
+def kc_update(sc: A1, x1: A2, r1: A2, p1: A2, Ap1: A2, d1: A2, x2: A2, r2: A2, p2: A2, Ap2: A2, d2: A2, n: int, N: int):
+    """alpha = rz / pAp; x += alpha p; r -= alpha Ap; rz_new = r . (r / d), rr = r . r (tile sums)."""
+    blk, lane = wp.tid()
+    alpha = sc[S_RZ] / (sc[S_PAP] + F(1e-300))
+    rzn = F(0.0)
+    rr = F(0.0)
+    for e in range(lane, TBc, wp.block_dim()):
+        j, i, ok = cell_of(blk, e, N)
+        if ok:
+            x1[j, i] = x1[j, i] + alpha * p1[j, i]
+            r = r1[j, i] - alpha * Ap1[j, i]
+            r1[j, i] = r
+            rzn += r * r / d1[j, i]
+            rr += r * r
+            if n > 1:
+                x2[j, i] = x2[j, i] + alpha * p2[j, i]
+                r2_ = r2[j, i] - alpha * Ap2[j, i]
+                r2[j, i] = r2_
+                rzn += r2_ * r2_ / d2[j, i]
+                rr += r2_ * r2_
+    wp.tile_atomic_add(sc, wp.tile_sum(wp.tile(rzn)), offset=S_RZN)
+    wp.tile_atomic_add(sc, wp.tile_sum(wp.tile(rr)), offset=S_RR)
+
+
+@wp.kernel
+def kc_scalar(sc: A1, cond: wp.array(dtype=wp.int32), tol: F, maxiter: int):
+    """Convergence (|r| <= tol |b|, as solver.pcg), iteration counters, beta; reset the accumulators."""
+    it = sc[S_IT] + F(1.0)
+    sc[S_IT] = it
+    sc[S_ITT] = sc[S_ITT] + F(1.0)
+    if wp.sqrt(wp.max(sc[S_RR], F(0.0))) <= tol * (wp.sqrt(wp.max(sc[S_BB], F(0.0))) + F(1e-300)) or it >= F(maxiter):
+        cond[0] = 0
+    if sc[S_RZ] != F(0.0):
+        sc[S_BETA] = sc[S_RZN] / sc[S_RZ]
+    else:
+        sc[S_BETA] = F(0.0)
+    sc[S_RZ] = sc[S_RZN]
+    sc[S_RZN] = F(0.0)
+    sc[S_RR] = F(0.0)
+    sc[S_PAP] = F(0.0)
+
+
+@wp.kernel
+def kc_dir(sc: A1, r1: A2, d1: A2, p1: A2, r2: A2, d2: A2, p2: A2, n: int):
+    j, i = wp.tid()
+    beta = sc[S_BETA]
+    p1[j, i] = r1[j, i] / d1[j, i] + beta * p1[j, i]
+    if n > 1:
+        p2[j, i] = r2[j, i] / d2[j, i] + beta * p2[j, i]
+
+
 # ============================================================================ CUDA graphs
 @wp.kernel
 def k_set0(a: A2):
@@ -759,11 +968,14 @@ class Runner:
 
 
 class CGOp:
-    """Jacobi-PCG on persistent buffers (x, b, d and the operator coefficients c[...]), scalars on the device.  The
-    iterations run in chunks of K (one graph per chunk on CUDA); convergence |r| <= tol |b| is read back after each
-    chunk, so a solve may do up to K - 1 more iterations than needed (it only gets more accurate)."""
+    """Jacobi-PCG on persistent buffers (x, b, d and the operator coefficients c[...]).
+    mode 'device' (default): fused kernels (operator + dot, update + dots, scalars, direction), block tile
+      reductions, the whole loop on the device under wp.capture_while -- no host synchronisation; on CUDA the solve
+      is one graph with a conditional node (or part of the sub-step graph).
+    mode 'chunk' (fallback when conditional nodes are unavailable): iterations in graph-captured chunks of K,
+      convergence read back after each chunk."""
 
-    def __init__(self, sol, name, n, coef_names, apply):
+    def __init__(self, sol, name, n, coef_names, apply, apply_dot):
         g = sol.g
         z = lambda: wp.zeros((g.N, g.N), dtype=F, device=g.dev)
         self.sol, self.name, self.n = sol, name, n
@@ -772,18 +984,55 @@ class CGOp:
         self.c = {k: z() for k in coef_names}
         self.T = z()
         self.rows = wp.zeros(g.N, dtype=F, device=g.dev)
-        self.sc = wp.zeros(8, dtype=F, device=g.dev)       # rz, pAp, alpha, rz_new, beta, rr, bb
-        self.apply = apply                                  # apply(op, src list, dst list)
+        self.sc = wp.zeros(8, dtype=F, device=g.dev)       # device mode scalars (S_* slots)
+        self.scc = wp.zeros(8, dtype=F, device=g.dev)      # chunk mode: rz, pAp, alpha, rz_new, beta, rr, bb
+        self.cond = wp.zeros(1, dtype=wp.int32, device=g.dev)
+        self.apply = apply                                  # apply(op, src list, dst list)          (chunk mode)
+        self.apply_dot = apply_dot                          # apply_dot(op, src list) -> op.Ap, pAp     (device mode)
+        self.nb = (g.N * g.N + TB - 1) // TB
+        self.mode = "device"
+        self.chunk_iters = 0
 
     def _L(self, kernel, inputs, dim=None):
         g = self.sol.g
         wp.launch(kernel, dim=dim or (g.N, g.N), inputs=inputs, device=g.dev, record_tape=False)
 
+    def _T(self, kernel, inputs):
+        wp.launch_tiled(kernel, dim=[self.nb], inputs=inputs, block_dim=TB, device=self.sol.g.dev, record_tape=False)
+
+    def _two(self, lst):
+        return (lst[0], lst[1]) if self.n > 1 else (lst[0], lst[0])
+
+    # ---------------------------------------------------------------- device mode
+    def _dev_init(self):
+        N = self.sol.g.N
+        self._L(kc_zero, [self.sc], dim=1)
+        self.apply_dot(self, self.x)
+        b1, b2 = self._two(self.b); A1_, A2_ = self._two(self.Ap); d1, d2 = self._two(self.d)
+        r1, r2 = self._two(self.r); p1, p2 = self._two(self.p)
+        self._T(kc_init, [b1, A1_, d1, r1, p1, b2, A2_, d2, r2, p2, self.n, N, self.sc])
+        self._L(kc_prep, [self.sc, self.cond], dim=1)
+
+    def _dev_iter(self, tol, maxiter):
+        N = self.sol.g.N
+        self.apply_dot(self, self.p)
+        x1, x2 = self._two(self.x); r1, r2 = self._two(self.r); p1, p2 = self._two(self.p)
+        A1_, A2_ = self._two(self.Ap); d1, d2 = self._two(self.d)
+        self._T(kc_update, [self.sc, x1, r1, p1, A1_, d1, x2, r2, p2, A2_, d2, self.n, N])
+        self._L(kc_scalar, [self.sc, self.cond, F(tol), int(maxiter)], dim=1)
+        self._L(kc_dir, [self.sc, r1, d1, p1, r2, d2, p2, self.n])
+
+    def launch_solve(self, tol, maxiter):
+        """Raw launches of one whole solve (to be run directly or inside a bigger graph capture)."""
+        self._dev_init()
+        wp.capture_while(self.cond, lambda: self._dev_iter(tol, maxiter))
+
+    # ---------------------------------------------------------------- chunk mode (fallback)
     def _dot(self, A, B, slot):
         N = self.sol.g.N
         for c in range(self.n):
             self._L(k_rowdot, [A[c], B[c], N, int(c > 0), self.rows], dim=N)
-        self._L(k_rowsum, [self.rows, N, self.sc, slot], dim=1)
+        self._L(k_rowsum, [self.rows, N, self.scc, slot], dim=1)
 
     def _init(self):
         self.apply(self, self.x, self.Ap)
@@ -796,27 +1045,63 @@ class CGOp:
         for _ in range(K):
             self.apply(self, self.p, self.Ap)
             self._dot(self.p, self.Ap, 1)
-            self._L(k_alpha, [self.sc], dim=1)
+            self._L(k_alpha, [self.scc], dim=1)
             for c in range(self.n):
-                self._L(k_cg_step, [self.sc, 2, self.p[c], self.Ap[c], self.x[c], self.r[c]])
+                self._L(k_cg_step, [self.scc, 2, self.p[c], self.Ap[c], self.x[c], self.r[c]])
                 self._L(k_rdiv, [self.r[c], self.d[c], self.z[c]])
             self._dot(self.r, self.z, 3)
-            self._L(k_beta, [self.sc], dim=1)
+            self._L(k_beta, [self.scc], dim=1)
             for c in range(self.n):
-                self._L(k_cg_dir_dev, [self.r[c], self.d[c], self.sc, self.p[c]])
+                self._L(k_cg_dir_dev, [self.r[c], self.d[c], self.scc, self.p[c]])
         self._dot(self.r, self.r, 5)
 
-    def run(self, tol, maxiter):
+    def _run_chunks(self, tol, maxiter):
         R, K = self.sol.runner, self.sol.check_every
         R(self.name + "_init", self._init)
-        bnorm = math.sqrt(max(float(self.sc.numpy()[6]), 0.0)) + 1e-300
+        bnorm = math.sqrt(max(float(self.scc.numpy()[6]), 0.0)) + 1e-300
         it = 0
         while it < maxiter:
             R(f"{self.name}_chunk{K}", lambda: self._chunk(K))
             it += K
-            if math.sqrt(max(float(self.sc.numpy()[5]), 0.0)) <= tol * bnorm:
+            if math.sqrt(max(float(self.scc.numpy()[5]), 0.0)) <= tol * bnorm:
                 break
-        return it
+        self.chunk_iters += it
+
+    # ---------------------------------------------------------------- entry points
+    def run(self, tol, maxiter):
+        if self.mode == "device":
+            try:
+                self.sol.runner(self.name + "_solve", lambda: self.launch_solve(tol, maxiter))
+                return
+            except Exception as e:                       # e.g. no conditional graph nodes on this driver
+                if not self.sol.runner.use:
+                    raise
+                print(f"[wsolver] device-side PCG loop unavailable ({type(e).__name__}: {e}); chunked fallback", flush=True)
+                self.sol.runner.graphs.pop(self.name + "_solve", None)
+                self.mode = "chunk"
+                self.sol.fused = False
+        self._run_chunks(tol, maxiter)
+
+    def iterations(self):
+        """Total PCG iterations so far (device counter + chunk-mode counter); synchronises."""
+        return int(round(float(self.sc.numpy()[S_ITT]))) + self.chunk_iters
+
+    def reset_iterations(self):
+        self.sc.zero_()
+        self.chunk_iters = 0
+
+
+def _apply_dot_mass(op, src):
+    g, s = op.sol.g, op.sol
+    op._T(km_apply_dot, [src[0], op.c["kx"], op.c["ky"], g.fx, g.fy, s.dta, F(1.0 / (g.h * g.h)), g.N, op.Ap[0], op.sc])
+
+
+def _apply_dot_visc(op, src):
+    g, s = op.sol.g, op.sol
+    ih = F(1.0 / g.h)
+    op._L(k_sym_T, [src[0], src[1], op.c["wc"], ih, g.N, op.T])
+    op._T(kv_apply_dot, [src[0], src[1], op.c["l3"], op.c["wx"], op.c["wy"], op.T, op.c["ww"], g.nbx, g.nby, g.mask,
+                         s.dta, ih, g.N, op.Ap[0], op.Ap[1], op.sc])
 
 
 def _apply_mass(op, src, dst):
@@ -857,12 +1142,15 @@ class WSolver:
         self._kq = None
         import os
         self.runner = Runner(dev, graphs and os.environ.get("LATTE_NO_GRAPHS", "0") != "1")
-        self.opM = CGOp(self, "mass", 1, ("kx", "ky"), _apply_mass)
-        self.opV = CGOp(self, "visc", 2, ("l3", "wx", "wy", "wc", "ww"), _apply_visc)
+        self.opM = CGOp(self, "mass", 1, ("kx", "ky"), _apply_mass, _apply_dot_mass)
+        self.opV = CGOp(self, "visc", 2, ("l3", "wx", "wy", "wc", "ww"), _apply_visc, _apply_dot_visc)
+        self.fused = True                    # whole sub-step as one graph (needs the device-side PCG loop)
         self.fb = None
 
     # ------------------------------------------------------------------ small helpers
     def new(self):
+        """Output array of a recorded launch.  Zero-initialised on purpose: some kernels store an element twice (0, then
+        the value under a condition), and the generated adjoints are only exact on a zeroed output."""
         return wp.zeros((self.g.N, self.g.N), dtype=F, device=self.g.dev, requires_grad=self.rec)
 
     def L(self, kernel, inputs, outputs=(), record=True):
@@ -916,7 +1204,7 @@ class WSolver:
             self.cp(b[c], op.b[c])
             self.cp(diag[c], op.d[c])
             self.cp(x0[c], op.x[c])
-        self.stats[key] += op.run(tol, self.cg_maxiter)
+        op.run(tol, self.cg_maxiter)
         x = []
         for c in range(op.n):
             xa = wp.empty_like(b[c], requires_grad=self.rec)
@@ -933,7 +1221,7 @@ class WSolver:
                     self.cp(x[c].grad, op.b[c])
                     self.cp(diag[c], op.d[c])
                     wp.launch(k_set0, dim=(self.g.N, self.g.N), inputs=[op.x[c]], device=self.g.dev, record_tape=False)
-                self.stats["cg_adj"] += op.run(tol, self.cg_maxiter)
+                op.run(tol, self.cg_maxiter)
                 lam_neg, xs, outs = [], [], []
                 for c in range(op.n):
                     self.L(k_add, [op.x[c], b[c].grad], record=False)
@@ -1077,7 +1365,9 @@ class WSolver:
             self.fb["sums"] = wp.zeros(2, dtype=F, device=g.dev)
             self.fb["rows"] = wp.zeros(g.N, dtype=F, device=g.dev)
             self.fb["rows2"] = wp.zeros(g.N, dtype=F, device=g.dev)
-            self.fb["red"] = wp.zeros(8, dtype=F, device=g.dev)
+            self.fb["red"] = wp.zeros(16, dtype=F, device=g.dev)      # [0:8] frame acceptance, [8:16] CFL speed
+            self.fb["red_check"] = self.fb["red"][0:8]
+            self.fb["red_speed"] = self.fb["red"][8:16]
             self.fb["P"] = wp.zeros(len(PARAMS), dtype=F, device=g.dev)
             self.fb["S"] = {}
         fb = self.fb
@@ -1107,13 +1397,13 @@ class WSolver:
         g, fb = self.g, self.fb
         wp.launch(k_rowmax_speed, dim=g.N, inputs=[fb["qx"], fb["qy"], fb["l"], fb["s"], fb["Lam"], fb["vsx"], fb["vsy"],
                                                    g.mask, g.N, int(active), fb["rows"]], device=g.dev, record_tape=False)
-        wp.launch(k_rowreduce3, dim=1, inputs=[fb["rows"], fb["rows2"], g.N, fb["red"]], device=g.dev, record_tape=False)
+        wp.launch(k_rowreduce3, dim=1, inputs=[fb["rows"], fb["rows2"], g.N, fb["red_speed"]], device=g.dev, record_tape=False)
 
     def _g_check(self):
         g, fb = self.g, self.fb
         wp.launch(k_rowcheck, dim=g.N, inputs=[fb["l"], fb["qx"], fb["qy"], fb["m"], g.mask, g.N, fb["rows"], fb["rows2"]],
                   device=g.dev, record_tape=False)
-        wp.launch(k_rowreduce3, dim=1, inputs=[fb["rows"], fb["rows2"], g.N, fb["red"]], device=g.dev, record_tape=False)
+        wp.launch(k_rowreduce3, dim=1, inputs=[fb["rows"], fb["rows2"], g.N, fb["red_check"]], device=g.dev, record_tape=False)
 
     def _g_save(self, back=False):
         fb = self.fb
@@ -1171,20 +1461,51 @@ class WSolver:
             self.cp(fb["m3"], fb["m"])
         self.cp(V.c["l3"], fb["l"])
 
+    def cg_iterations(self):
+        """PCG iterations so far (mass, viscosity; forward and adjoint solves together).  Synchronises."""
+        return dict(mass=self.opM.iterations(), visc=self.opV.iterations())
+
+    def reset_cg_iterations(self):
+        self.opM.reset_iterations()
+        self.opV.reset_iterations()
+
+    def _substep_launches(self, nu_on, mix_on):
+        self._g_pre()
+        self.opM.launch_solve(self.cg_tol, self.cg_maxiter)
+        self._g_mid(nu_on)
+        if nu_on:
+            self.opV.launch_solve(self.visc_tol, self.cg_maxiter)
+        self._g_post(nu_on, mix_on)
+
     def fast_substep(self, nu_on, mix_on):
+        """One sub-step on the persistent buffers: a single graph (both PCG loops as conditional nodes) when the
+        device supports it, else pre / PCG / mid / PCG / post pieces."""
         R = self.runner
+        if self.fused and self.opM.mode == "device" and self.opV.mode == "device":
+            try:
+                R(f"sub{int(nu_on)}{int(mix_on)}", lambda: self._substep_launches(nu_on, mix_on))
+                self.stats["substeps"] += 1
+                return
+            except Exception as e:
+                if not R.use:
+                    raise
+                print(f"[wsolver] fused sub-step graph unavailable ({type(e).__name__}: {e}); piecewise graphs", flush=True)
+                R.graphs.pop(f"sub{int(nu_on)}{int(mix_on)}", None)
+                self.fused = False
         R("pre", self._g_pre)
-        self.stats["cg_mass"] += self.opM.run(self.cg_tol, self.cg_maxiter)
+        self.opM.run(self.cg_tol, self.cg_maxiter)
         R(f"mid{int(nu_on)}", lambda: self._g_mid(nu_on))
         if nu_on:
-            self.stats["cg_visc"] += self.opV.run(self.visc_tol, self.cg_maxiter)
+            self.opV.run(self.visc_tol, self.cg_maxiter)
         R(f"post{int(nu_on)}{int(mix_on)}", lambda: self._g_post(nu_on, mix_on))
         self.stats["substeps"] += 1
 
     def fast_forward(self, P, Pnp, S, sched, keep=True, nsub=None, frames=None, snap=()):
         """Whole pour on persistent buffers.  P, S: device arrays (copied in); sched: host schedule (fdt, q, active).
         Returns final state (device arrays, copies), checkpoints (device arrays, state at each frame start) and the
-        sub-step counts; with snap (frame indices) self.snaps = {k: state after frame k}."""
+        sub-step counts; with snap (frame indices) self.snaps = {k: state after frame k}.
+        Host synchronisation: none with nsub given; otherwise one read-back per frame (acceptance of this frame +
+        the CFL speed of the next, computed in the same graph)."""
         self.snaps = {}
         snap = set(snap)
         self._fast_setup(P, S)
@@ -1193,33 +1514,48 @@ class WSolver:
         nu_on = Pnp[NU] > 0
         ck, ns = [], []
         n = sched["n"] if frames is None else min(frames, sched["n"])
+        fdt = lambda k: float(sched["fdt"][k])
+        act = lambda k: bool(sched["active"][k])
+
+        def prep(k):                                       # inlet fields of frame k (+ its CFL speed when adaptive)
+            self.set_kq(k, int(sched["q"][k]))
+            if nsub is None:
+                R(f"prep{int(act(k))}", lambda: (self._g_fields() if act(k) else self._g_zero_fields(), self._g_speed(act(k))))
+            else:
+                R(f"fields{int(act(k))}", lambda: self._g_fields() if act(k) else self._g_zero_fields())
+
+        prep(0)
+        speed = float(fb["red_speed"].numpy()[0]) if nsub is None else 0.0
         for k in range(n):
             if keep:
                 ck.append(self.clone_state({a: fb[a] for a in ("l", "qx", "qy", "m")}))
-            fdt, q, active = float(sched["fdt"][k]), int(sched["q"][k]), bool(sched["active"][k])
-            self.set_kq(k, q)
-            if active:
-                R("fields", self._g_fields)
-            else:
-                R("zero_fields", self._g_zero_fields)
             if nsub is not None:
                 n_ = nsub[k]
-                self.set_dt(fdt / n_)
+                self.set_dt(fdt(k) / n_)
                 for _ in range(n_):
-                    self.fast_substep(nu_on, self.mix_on(Pnp, fdt / n_))
+                    self.fast_substep(nu_on, self.mix_on(Pnp, fdt(k) / n_))
+                if k + 1 < n:
+                    prep(k + 1)
             else:
-                R(f"speed{int(active)}", lambda: self._g_speed(active))
-                n_ = self._nsub(float(self.fb["red"].numpy()[0]), fdt)
+                n_ = self._nsub(speed, fdt(k))
                 R("save", self._g_save)
                 for _ in range(8):
-                    self.set_dt(fdt / n_)
+                    self.set_dt(fdt(k) / n_)
                     for _ in range(n_):
-                        self.fast_substep(nu_on, self.mix_on(Pnp, fdt / n_))
-                    R("check", self._g_check)
-                    red = self.fb["red"].numpy()
+                        self.fast_substep(nu_on, self.mix_on(Pnp, fdt(k) / n_))
+                    if k + 1 < n:                           # acceptance of k and the next frame's fields + speed
+                        self.set_kq(k + 1, int(sched["q"][k + 1]))
+                        R(f"next{int(act(k + 1))}", lambda: (self._g_check(), self._g_fields() if act(k + 1)
+                                                             else self._g_zero_fields(), self._g_speed(act(k + 1))))
+                    else:
+                        R("check", self._g_check)
+                    red = fb["red"].numpy()                  # the one host synchronisation of the frame
                     if red[2] == 0 and red[1] > self.l_floor:
+                        speed = float(red[8]) if k + 1 < n else 0.0
                         break
                     R("restore", lambda: self._g_save(back=True))
+                    self.set_kq(k, int(sched["q"][k]))
+                    R(f"fields{int(act(k))}", lambda: self._g_fields() if act(k) else self._g_zero_fields())
                     n_ *= 2
                 else:
                     raise RuntimeError(f"frame {k} failed after retries")
