@@ -324,11 +324,15 @@ def scaled_record(R, L):
     return S
 
 
-def real_program(p, N=256, flow="pitcher", V0=None, log=print):
-    """A latte_imex.run.run program (control 'v05') for the measured pour of pattern p.  Returns (prog, C, E, R, info)."""
+def real_program(p, N=256, flow="pitcher", V0=None, log=print, closure=None):
+    """A latte_imex.run.run program (control 'v05') for the measured pour of pattern p.  Returns (prog, C, E, R, info).
+    closure: V0.5 parameters (v05_adapter.SPACE keys, nu, D) replacing the S1 values."""
     C, E, R, info = build_inlet(p, flow, V0, log)
     T = info["T_pour"] + TAIL
     meta = phases_meta(p, C, R, T)
+    if closure:
+        meta["config"]["parameters"].update(closure)
+        meta["kQ"] = float(closure.get("kappa_Q", meta["kQ"]))
     prog = SF.FwdProgram(p, scaled_record(R, C["L"]), N, meta=meta)
     return prog, C, E, R, info
 
@@ -337,10 +341,10 @@ def sim_dir(p, flow="pitcher", N=256):
     return os.path.join(RES, p, SIM_SUB + ("" if flow == "pitcher" else "_" + flow) + ("" if N == 256 else f"_N{N}"))
 
 
-def solve(p, N=256, flow="pitcher", video=True, V0=None, log=print):
+def solve(p, N=256, flow="pitcher", video=True, V0=None, log=print, closure=None):
     """Pitcher + latte_imex.run.run on the measured pour; writes <results>/<p>/sim_S1[_weir]/."""
     import latte_imex.run as RR
-    prog, C, E, R, info = real_program(p, N, flow, V0, log)
+    prog, C, E, R, info = real_program(p, N, flow, V0, log, closure)
     log(f"{p}: V0 {info['V0_mL']:.1f} mL, poured {info['poured_mL']:.1f} mL, stream on {info['stream_on_frac_when_obs_on']:.1%} of "
         f"observed-on, Q_on mean {info['Q_mean_on_mLs']:.1f} mL/s, U_perp {info['U_perp_mean']:.2f} m/s, L {info['L_m'] * 1e3:.1f} mm")
     od = sim_dir(p, flow, N)
@@ -365,7 +369,7 @@ def solve(p, N=256, flow="pitcher", video=True, V0=None, log=print):
             os.remove(os.path.join(od, fn))
         except OSError:
             pass
-    info.update(solver_wall_s=time.time() - t0, T=m["T"], ledger=m["ledger"], N=N)
+    info.update(solver_wall_s=time.time() - t0, T=m["T"], ledger=m["ledger"], N=N, closure=closure)
     with open(os.path.join(od, "info.json"), "w") as f:
         json.dump(info, f, indent=1, default=float)
     log(f"{p}: solver {info['solver_wall_s']:.0f} s -> {od}")

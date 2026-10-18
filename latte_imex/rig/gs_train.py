@@ -160,6 +160,85 @@ class Shape:
         return np.concatenate([S, xyz[keep]]).astype(np.float32), np.concatenate([col, rgb[keep]]).astype(np.float32)
 
 
+class CadShape:
+    """Kona 700 mL CAD (pitcher_kona700_prior.npz from latte_imex/pitcher_geom/make_cad_prior.py: surface samples +
+    unsigned distance grid, mm, spout +x, inside bottom at z = 0) as the geometric prior: thin wall, flat facets,
+    spout lip and both handle straps.  Placed like Shape (bottom z0 and height H from the depth points, radial scale
+    from the mid-height radius) and turned so that the spout is at --spout-az.  free_handle: no distance penalty
+    behind the body (x_cad < -40 mm), where the barista's hand holds the handle in the pour recordings."""
+
+    def __init__(self, xyz, spout_az_deg, device, prior, free_handle=False):
+        Z = np.load(prior)
+        self.dev = device
+        self.free_handle = free_handle
+        self.grid = torch.tensor(Z["dist"].astype(np.float32), device=device)[None, None]     # [1, 1, X, Y, Z]
+        self.lo = torch.tensor(Z["lo"], device=device).float()
+        self.n = torch.tensor(Z["dist"].shape, device=device).float()
+        self.pts, self.nrm = Z["pts"].astype(float), Z["nrm"].astype(float)
+        P = xyz * 1e3
+        z, r = P[:, 2], np.hypot(P[:, 0], P[:, 1])
+        mid = (z > np.percentile(z, 0.5) + 30) & (z < np.percentile(z, 0.5) + 70)
+        print(f"CAD prior: depth/CAD mid radius ratio {np.median(r[mid]) / float(Z['r_mid']):.3f} (metric data: scale "
+              f"kept at 1)", flush=True)
+        self.rs = self.sz = 1.0                                  # RealSense depth and CAD are both metric
+        # place: bottom height and spout azimuth by a grid search (mean clipped distance of the depth points)
+        zb = float(np.percentile(z, 0.5)) - float(self.pts[:, 2].min())
+        sub = torch.tensor(xyz[np.random.default_rng(0).choice(len(xyz), min(len(xyz), 20000), replace=False)],
+                           device=device).float()
+        best = (1e9, zb, spout_az_deg)
+        for dz in np.arange(-6.0, 6.01, 1.0):
+            for daz in np.arange(-30.0, 30.01, 2.0):
+                self.z0, self.spout = zb + dz, math.radians(spout_az_deg + daz)
+                sc = float(self.dist(sub).clamp(max=5.0).mean())
+                if sc < best[0]:
+                    best = (sc, zb + dz, spout_az_deg + daz)
+        for dz in np.arange(-1.0, 1.01, 0.25):
+            for daz in np.arange(-2.0, 2.01, 0.5):
+                self.z0, self.spout = best[1] + dz, math.radians(best[2] + daz)
+                sc = float(self.dist(sub).clamp(max=5.0).mean())
+                if sc < best[0]:
+                    best = (sc, best[1] + dz, best[2] + daz)
+        self.z0, self.spout = best[1], math.radians(best[2])
+        print(f"CAD prior placed: CAD z = 0 at {self.z0:.1f} mm, spout azimuth {best[2]:.1f} deg (given {spout_az_deg:.0f}), "
+              f"mean clipped distance of the depth points {best[0]:.2f} mm, {len(self.pts)} surface samples"
+              f"{', handle free' if free_handle else ''}", flush=True)
+
+    def to_cad(self, mm):
+        c, s = math.cos(self.spout), math.sin(self.spout)
+        x = (c * mm[:, 0] + s * mm[:, 1]) / self.rs
+        y = (-s * mm[:, 0] + c * mm[:, 1]) / self.rs
+        return x, y, (mm[:, 2] - self.z0) / self.sz
+
+    def to_obj(self, q):
+        c, s = math.cos(self.spout), math.sin(self.spout)
+        x, y = q[:, 0] * self.rs, q[:, 1] * self.rs
+        return np.stack([c * x - s * y, s * x + c * y, q[:, 2] * self.sz + self.z0], 1)
+
+    def dist(self, P):
+        x, y, z = self.to_cad(P * 1e3)
+        q = torch.stack([x, y, z], 1)
+        u = (q - self.lo) / (self.n - 1) * 2 - 1                     # grid_sample: last dim (x, y, z) -> (W, H, D)
+        g = torch.stack([u[:, 2], u[:, 1], u[:, 0]], 1).view(1, -1, 1, 1, 3)
+        d = F.grid_sample(self.grid, g, mode="bilinear", padding_mode="border", align_corners=True).view(-1)
+        hi = self.lo + self.n - 1
+        d = d + (F.relu(self.lo - q) + F.relu(q - hi)).norm(dim=1)
+        d = d * min(self.rs, self.sz)
+        if self.free_handle:
+            d = torch.where(x < -40.0, torch.zeros_like(d), d)
+        return d
+
+    def init_points(self, xyz, rgb):
+        """CAD surface samples coloured from the nearest depth point, plus the depth points on the CAD surface (and,
+        with free_handle, those around the handle: hand)."""
+        from scipy.spatial import cKDTree
+        S = self.to_obj(self.pts) * 1e-3
+        d, j = cKDTree(xyz).query(S, distance_upper_bound=0.006)
+        col = np.where(np.isfinite(d)[:, None], rgb[np.minimum(j, len(rgb) - 1)], np.median(rgb, 0))
+        keep = (self.dist(torch.tensor(xyz, device=self.dev).float()) < 3.0).cpu().numpy()
+        print(f"CAD prior init: {len(S)} surface samples + {keep.sum()} of {len(xyz)} depth points", flush=True)
+        return np.concatenate([S, xyz[keep]]).astype(np.float32), np.concatenate([col, rgb[keep]]).astype(np.float32)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True)
@@ -172,10 +251,13 @@ def main():
     ap.add_argument("--volume", default=None, help="rmax,zmin,zmax [m] of the object frame: Gaussians outside are removed "
                     "every 500 steps and before export (floaters on the table, background)")
     ap.add_argument("--grow-grad2d", type=float, default=0.0004)
-    ap.add_argument("--shape", default=None, help="'kona700': catalogue pitcher shape as a prior (init on the surface, "
+    ap.add_argument("--shape", default=None, help="'kona700': catalogue profile, 'kona_cad': the CAD (pitcher_kona700_prior.npz) as a prior (init on the surface, "
                     "distance penalty, pruning); needs --spout-az")
     ap.add_argument("--spout-az", type=float, default=90.0, help="spout azimuth [deg] (atan2(y, x)) in the object frame")
     ap.add_argument("--w-shape", type=float, default=0.05)
+    ap.add_argument("--prior", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "pitcher_kona700_prior.npz"),
+                    help="CAD prior for --shape kona_cad")
+    ap.add_argument("--free-handle", action="store_true", help="kona_cad: no shape penalty around the handle (hand)")
     a = ap.parse_args()
     from gsplat import rasterization
     from gsplat.strategy import DefaultStrategy
@@ -183,7 +265,8 @@ def main():
     dev = "cuda"
     os.makedirs(a.out, exist_ok=True)
     views, xyz, rgb = load(a.data, dev)
-    shape = Shape(xyz, a.spout_az, dev) if a.shape == "kona700" else None
+    shape = (Shape(xyz, a.spout_az, dev) if a.shape == "kona700" else
+             CadShape(xyz, a.spout_az, dev, a.prior, a.free_handle) if a.shape == "kona_cad" else None)
     if shape is not None:
         xyz, rgb = shape.init_points(xyz, rgb)
     for i, v in enumerate(views):
