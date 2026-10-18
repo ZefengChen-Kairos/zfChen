@@ -1,15 +1,15 @@
 {
  "pattern": "heart",
  "flow": "pitcher",
- "V0_mL": 135.114495981604,
+ "V0_mL": 165.28810382190292,
  "on_target": null,
  "T_pour": 7.941,
  "L_m": 0.09162557630606435,
  "R_disc_mm": 44.89653238997153,
  "observed_on_frac": 0.9857700541493515,
- "stream_on_frac_when_obs_on": 0.967935615738375,
+ "stream_on_frac_when_obs_on": 0.9798160449667859,
  "stream_on_frac_when_obs_off": 0.0,
- "poured_mL": 118.32117230767021,
+ "poured_mL": 126.10613293794577,
  "spill_pitcher_mL": 0.0,
  "assumptions": {
   "pitcher": "NX CAD stand-in (s1_forward.geometry(0)), spout tip anchored at the measured tip",
@@ -22,17 +22,17 @@
   "closure": "S1 parameters (latte_imex/data/s1_forward), Params defaults (visc symmetric, offcup account)"
  },
  "n_out": 8941,
- "V_cup_mL": 118.32117230767014,
- "Q_mean_on_mLs": 15.59941829870911,
- "Q_max_mLs": 34.03430697714684,
- "U_exit_mean": 0.3862962009653838,
- "U_perp_mean": 0.73780136196762,
+ "V_cup_mL": 126.1061329379452,
+ "Q_mean_on_mLs": 16.43231574268722,
+ "Q_max_mLs": 35.89887003116848,
+ "U_exit_mean": 0.363604553496858,
+ "U_perp_mean": 0.7965458319311263,
  "tip_z_mm": [
-  7.454567990246214,
-  14.43505520497692,
-  53.474312501480796
+  12.15426196235056,
+  19.109737352455763,
+  58.12137928643864
  ],
- "foot_minus_tip_mm": 3.4936455980877454,
+ "foot_minus_tip_mm": 3.756018344339474,
  "tilt_cad_deg": [
   68.31977313141888,
   81.60722891702657
@@ -41,20 +41,20 @@
   -23.34618703937403,
   10.843985400292901
  ],
- "wall_s": 13.961313962936401,
- "solver_wall_s": 431.84306478500366,
+ "wall_s": 11.89247751235962,
+ "solver_wall_s": 391.0867829322815,
  "T": 8.940999999999999,
  "ledger": {
-  "t": 8.942519808019755,
-  "layer": 1.0194568611428159,
-  "milk": 0.265733716611566,
-  "brown": 0.7537231445312499,
-  "deposited": 0.26573371661156914,
+  "t": 8.94187858216505,
+  "layer": 1.0268076474426246,
+  "milk": 0.27308450291137454,
+  "brown": 0.7537231445312501,
+  "deposited": 0.2730845029113751,
   "reservoir": 0.0,
   "spilled": 0.0,
   "brown_net": 0.0,
-  "layer_error": -3.3306690738754696e-15,
-  "milk_error": -3.164135620181696e-15
+  "layer_error": -4.440892098500626e-16,
+  "milk_error": -5.551115123125783e-16
  },
  "N": 256
 }
