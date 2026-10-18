@@ -24,7 +24,7 @@ import numpy as np
 # straight sides (photos): bottom bevel 0..9 mm, then a straight, slightly inward-leaning wall up to the rim
 PROFILE_Z = [0.0, 9.0, 122.0]
 PROFILE_R = [39.5, 44.0, 42.25]
-H, WALL, BOTTOM = 122.0, 1.0, 1.2
+H, WALL, BOTTOM = 122.0, 0.6, 0.8        # sheet thickness: < 1 mm, ~0.5-0.6 mm (user, by hand)
 CREASE_Z, BEAK_Z, RIDGE_H0, RIDGE_H1 = 50.0, 104.0, 2.0, 6.5   # ridge start, beak flare start [mm]; ridge height at both
 # (product side photo: the spout side of the silhouette leans out from the channel's end to ~6.5 mm at the beak)
 RIDGE_HALF0, HALF_RIM = 15.0, 31.0               # channel half-angles [deg]: round lower end, rim
