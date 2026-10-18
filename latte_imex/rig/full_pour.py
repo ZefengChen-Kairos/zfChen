@@ -66,15 +66,33 @@ def run(p, mass=165.0, rho=0.8, dt=1e-3, dtilt=None):
     return res, dict(t=tt, Q=Q, V=V, tilt=axis_tilt)
 
 
+def run_poured(p, poured_g=165.0, rho=0.8, dtilt=0.0, tol_mL=0.5):
+    """Initial fill such that the whole pour (mixing + pattern, up to the end of the pattern phase) delivers poured_g;
+    the rest stays in the pitcher.  Secant-like update V0 += (target - poured) (the retained volume barely depends on V0)."""
+    target = poured_g / rho
+    V0 = target + 40.0
+    for _ in range(8):
+        r, S = run(p, V0 * rho, rho, dtilt=dtilt)
+        got = r["poured_before_cut_mL"] + r["poured_pattern_mL"]
+        if abs(got - target) < tol_mL:
+            break
+        V0 += (target - got)
+    r.update(poured_total_mL=got, target_poured_mL=target, steamed_g=V0 * rho)
+    return r, S
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(); ap.add_argument("patterns", nargs="+"); ap.add_argument("--mass", type=float, default=165.0)
     ap.add_argument("--rho", type=float, default=0.8); ap.add_argument("--out", default=None)
+    ap.add_argument("--poured", action="store_true", help="--mass is the milk POURED (mixing + pattern); solve the "
+                    "initial fill, no axis correction")
     a = ap.parse_args()
     import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
     fig, ax = plt.subplots(len(a.patterns), 1, figsize=(13, 2.8 * len(a.patterns)), squeeze=False)
     allr = {}
     for i, p in enumerate(a.patterns):
-        r, S = run(p, a.mass, a.rho); allr[p] = r; print(json.dumps(r), flush=True)
+        r, S = run_poured(p, a.mass, a.rho) if a.poured else run(p, a.mass, a.rho)
+        allr[p] = r; print(json.dumps(r), flush=True)
         x = ax[i, 0]; x.plot(S["t"], S["tilt"], "r-", lw=0.8, label="axis tilt [deg]")
         x.plot(S["t"], S["Q"], "b-", lw=0.8, label="model flow [mL/s]"); x.plot(S["t"], S["V"] / 3, "g-", lw=0.8, label="fill/3 [mL]")
         x.axvspan(*CUT[p], color="orange", alpha=0.15, label="pattern phase"); x.set_ylim(0, 110); x.set_ylabel(p); x.grid(alpha=0.3)

@@ -60,10 +60,17 @@ def to_unit(par):
 
 # ----------------------------------------------------------------------------- inlet (built once)
 class Pour:
-    def __init__(self, p):
-        from .full_pour import DTILT
-        RP.DTILT.update(DTILT)
-        fill = json.load(open(os.path.join(RP.RES, "full_pour_rho0.8.json")))[p]["fill_at_cut_mL"]
+    def __init__(self, p, flow=os.environ.get("FEAS_FLOW", "kona")):
+        """flow 'kona': catalogue pitcher, no axis correction, fill solved for 165 g poured (full_pour_kona_poured165.json);
+        'dtilt': the earlier calibration (real-pitcher parametric geometry + per-pour axis correction, sim_flow165)."""
+        if flow == "kona":
+            os.environ["PITCHER_GEOM"] = os.path.join(RP.REPO, "latte_imex", "pitcher_geom", "pitcher_kona700.json")
+            fill = json.load(open(os.path.join(RP.RES, "full_pour_kona_poured165.json")))[p]["fill_at_cut_mL"]
+        else:
+            from .full_pour import DTILT
+            RP.DTILT.update(DTILT)
+            fill = json.load(open(os.path.join(RP.RES, "full_pour_rho0.8.json")))[p]["fill_at_cut_mL"]
+        RP._FP.clear()
         C, E, R, info = RP.build_inlet(p, "pitcher", fill * 1e-6, log=lambda *a: None)
         self.p, self.info = p, info
         self.T = info["T_pour"] + RP.TAIL
