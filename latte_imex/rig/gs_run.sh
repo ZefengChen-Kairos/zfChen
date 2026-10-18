@@ -27,14 +27,16 @@ out, a, _ = rasterization(m, torch.tensor([[1., 0, 0, 0]], device="cuda"), torch
                           torch.tensor([[[100., 0, 32], [0, 100., 32], [0, 0, 1]]], device="cuda"), 64, 64)
 print("gsplat self-test ok, alpha max", float(a.max()))
 PY
-# runs: name|data|iterations|extra args.  *_shape runs use the catalogue pitcher shape (CAFEDE KONA Allround 700 mL)
-# as a prior; spout azimuth in the object frame: static milk_cup -15 deg (table frame), pours +90 deg (tag frame, +y)
-RUNS="coffee_cup|coffee_cup|15000|--volume 0.075,0.002,0.075
+# runs: name|data|iterations|extra args.  *_cad runs use the CAD of the rig pitcher (CAFEDE KONA Allround 700 mL,
+# pitcher_kona700_prior.npz) as a geometric prior: Gaussians initialised on the CAD surface, kept within 1.5 mm of it,
+# floaters pruned.  Static milk_cup: spout near -15 deg, refined automatically (azimuth + height); pours: tag frame,
+# spout +y (90 deg, fixed), handle left free (the barista's hand).  Plain runs (no prior) for comparison.
+RUNS="milk_cup_cad|milk_cup|15000|--volume 0.090,0.002,0.135 --shape kona_cad --spout-az -15
+pitcher_pours_cad|pitcher_pours|30000|--volume 0.090,-0.036,0.098 --shape kona_cad --spout-az 90 --fix-az --free-handle
+coffee_cup|coffee_cup|15000|--volume 0.075,0.002,0.075
 milk_cup|milk_cup|15000|--volume 0.090,0.002,0.135
-milk_cup_shape|milk_cup|15000|--volume 0.090,0.002,0.135 --shape kona700 --spout-az -15
-pitcher_pours|pitcher_pours|30000|--volume 0.090,-0.036,0.098
-pitcher_pours_shape|pitcher_pours|30000|--volume 0.090,-0.036,0.098 --shape kona700 --spout-az 90"
-ONLY="${ONLY:-}"                                           # e.g. ONLY="milk_cup_shape pitcher_pours_shape"
+pitcher_pours|pitcher_pours|30000|--volume 0.090,-0.036,0.098"
+ONLY="${ONLY:-}"                                           # e.g. ONLY="milk_cup_cad pitcher_pours_cad"
 echo "$RUNS" | while IFS='|' read -r name data iters extra; do
   [ -d "data/$data" ] || continue
   if [ -n "$ONLY" ] && ! echo " $ONLY " | grep -q " $name "; then continue; fi

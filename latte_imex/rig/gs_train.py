@@ -167,7 +167,7 @@ class CadShape:
     from the mid-height radius) and turned so that the spout is at --spout-az.  free_handle: no distance penalty
     behind the body (x_cad < -40 mm), where the barista's hand holds the handle in the pour recordings."""
 
-    def __init__(self, xyz, spout_az_deg, device, prior, free_handle=False):
+    def __init__(self, xyz, spout_az_deg, device, prior, free_handle=False, search_az=True):
         Z = np.load(prior)
         self.dev = device
         self.free_handle = free_handle
@@ -186,18 +186,15 @@ class CadShape:
         sub = torch.tensor(xyz[np.random.default_rng(0).choice(len(xyz), min(len(xyz), 20000), replace=False)],
                            device=device).float()
         best = (1e9, zb, spout_az_deg)
-        for dz in np.arange(-6.0, 6.01, 1.0):
-            for daz in np.arange(-30.0, 30.01, 2.0):
-                self.z0, self.spout = zb + dz, math.radians(spout_az_deg + daz)
-                sc = float(self.dist(sub).clamp(max=5.0).mean())
-                if sc < best[0]:
-                    best = (sc, zb + dz, spout_az_deg + daz)
-        for dz in np.arange(-1.0, 1.01, 0.25):
-            for daz in np.arange(-2.0, 2.01, 0.5):
-                self.z0, self.spout = best[1] + dz, math.radians(best[2] + daz)
-                sc = float(self.dist(sub).clamp(max=5.0).mean())
-                if sc < best[0]:
-                    best = (sc, best[1] + dz, best[2] + daz)
+        for zc, ac, dzs, das in [(zb, spout_az_deg, np.arange(-6.0, 6.01, 1.0), np.arange(-30.0, 30.01, 2.0)),
+                                 (None, None, np.arange(-1.0, 1.01, 0.25), np.arange(-2.0, 2.01, 0.5))]:
+            zc, ac = (best[1], best[2]) if zc is None else (zc, ac)       # fine pass around the coarse optimum
+            for dz in dzs:
+                for daz in (das if search_az else [0.0]):
+                    self.z0, self.spout = zc + dz, math.radians(ac + daz)
+                    sc = float(self.dist(sub).clamp(max=5.0).mean())
+                    if sc < best[0]:
+                        best = (sc, zc + dz, ac + daz)
         self.z0, self.spout = best[1], math.radians(best[2])
         print(f"CAD prior placed: CAD z = 0 at {self.z0:.1f} mm, spout azimuth {best[2]:.1f} deg (given {spout_az_deg:.0f}), "
               f"mean clipped distance of the depth points {best[0]:.2f} mm, {len(self.pts)} surface samples"
@@ -258,6 +255,8 @@ def main():
     ap.add_argument("--prior", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "pitcher_kona700_prior.npz"),
                     help="CAD prior for --shape kona_cad")
     ap.add_argument("--free-handle", action="store_true", help="kona_cad: no shape penalty around the handle (hand)")
+    ap.add_argument("--fix-az", action="store_true", help="kona_cad: keep --spout-az (search the height only), e.g. in "
+                    "the tag frame of the pour recordings where the spout direction is known")
     a = ap.parse_args()
     from gsplat import rasterization
     from gsplat.strategy import DefaultStrategy
@@ -266,7 +265,7 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     views, xyz, rgb = load(a.data, dev)
     shape = (Shape(xyz, a.spout_az, dev) if a.shape == "kona700" else
-             CadShape(xyz, a.spout_az, dev, a.prior, a.free_handle) if a.shape == "kona_cad" else None)
+             CadShape(xyz, a.spout_az, dev, a.prior, a.free_handle, not a.fix_az) if a.shape == "kona_cad" else None)
     if shape is not None:
         xyz, rgb = shape.init_points(xyz, rgb)
     for i, v in enumerate(views):

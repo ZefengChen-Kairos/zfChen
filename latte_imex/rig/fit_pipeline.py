@@ -33,7 +33,7 @@ from .tulip_feas import KEYS, Pour, Target, from_unit, to_unit, _rot
 from ..v05_adapter import SPACE
 
 PATTERNS = RP.PATTERNS
-NAMES = dict(heart="爱心 heart", push_heart="推推乐 push heart", leaf="树叶 leaf", swan="天鹅 swan", tulip="郁金香 tulip")
+NAMES = dict(heart="heart", push_heart="push heart", leaf="leaf", swan="swan", tulip="tulip")
 
 
 def _load(out):
@@ -187,7 +187,6 @@ def sheet(a, rows, cal):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.colors import LinearSegmentedColormap
-    plt.rcParams["font.family"] = ["Noto Sans CJK SC", "WenQuanYi Zen Hei", "DejaVu Sans"]
     cm = LinearSegmentedColormap.from_list("milk", [(0.36, 0.20, 0.09), (0.66, 0.47, 0.30), (1.0, 0.97, 0.92)])
     cm.set_bad((0.12, 0.12, 0.12))
     best = next(d for d in rows if d["cid"] != "C_S1")
@@ -295,38 +294,47 @@ def movie(p, od, out_mp4, fps=24):
     s = np.linspace(-EXT, EXT, S)
     U, V = np.meshgrid(s, s)
     outside = U ** 2 + V ** 2 > 1.0
-    real = list(imageio.get_reader(os.path.join(RP.REPO, "raw_data", "rig", "real_panel", f"{p}.mp4")))
+    rr = imageio.get_reader(os.path.join(RP.REPO, "raw_data", "rig", "real_panel", f"{p}.mp4"))
+    n_real = rr.count_frames()
     cap = cv2.VideoCapture(os.path.join(od, "movie.mp4"))
-    mfps = cap.get(5)
-    sim = []
-    while True:
-        ok, f = cap.read()
-        if not ok:
-            break
-        Lf = f[:, :768]
-        mx = (383.5 + U * 376.0).astype(np.float32)
-        my = (383.5 + V * 376.0).astype(np.float32)
-        fr = cv2.remap(Lf, mx, my, cv2.INTER_LINEAR)
-        fr[outside] = 0
-        sim.append(cv2.warpAffine(fr, M, (S, S))[..., ::-1])
+    mfps, n_sim = cap.get(5), int(cap.get(7))
+    mx = (383.5 + U * 376.0).astype(np.float32)
+    my = (383.5 + V * 376.0).astype(np.float32)
+    cur = dict(i=-1, f=None)
+
+    def sim_frame(i):                                    # sequential reader of the simulation movie (left panel)
+        while cur["i"] < i:
+            ok, f = cap.read()
+            if not ok:
+                break
+            cur["i"] += 1
+            fr = cv2.remap(f[:, :768], mx, my, cv2.INTER_LINEAR)
+            fr[outside] = 0
+            cur["f"] = cv2.warpAffine(fr, M, (S, S))[..., ::-1]
+        return cur["f"]
+
     I = np.load(os.path.join(od, "inlet.npz"))
     outline = _pitcher_outline()
     from .full_pour import TIP_KONA
-    T = min(len(real) / fps, (len(sim) - 1) / mfps)
+    T = min(n_real / fps, (n_sim - 1) / mfps)
     font = cv2.FONT_HERSHEY_SIMPLEX
-    frames = []
+    w = imageio.get_writer(out_mp4, fps=fps, codec="libx264", quality=7, macro_block_size=2)
+    canvas = None
     for t in np.arange(0, T, 1 / fps):
         canvas = np.full((S + 70, 3 * S + 40, 3), 25, np.uint8)
-        canvas[60:60 + S, 10:10 + S] = real[min(int(round(t * fps)), len(real) - 1)]
-        canvas[60:60 + S, 20 + S:20 + 2 * S] = sim[min(int(round(t * mfps)), len(sim) - 1)]
+        canvas[60:60 + S, 10:10 + S] = rr.get_data(min(int(round(t * fps)), n_real - 1))
+        canvas[60:60 + S, 20 + S:20 + 2 * S] = sim_frame(min(int(round(t * mfps)), n_sim - 1))
         canvas[60:60 + S, 30 + 2 * S:30 + 3 * S] = action_panel(I, t, S, S, outline, TIP_KONA * 1e3)
         cv2.putText(canvas, "real (3 cameras, rectified)", (14, 30), font, 0.7, (230, 230, 230), 2)
         cv2.putText(canvas, "simulation (fitted closure)", (24 + S, 30), font, 0.7, (230, 230, 230), 2)
         cv2.putText(canvas, "hand action (measured)", (34 + 2 * S, 30), font, 0.7, (230, 230, 230), 2)
         cv2.putText(canvas, f"{p}   t = {t:5.2f} s", (14, 54), font, 0.6, (255, 220, 0), 1)
-        frames.append(canvas)
-    frames += [frames[-1]] * fps
-    imageio.mimwrite(out_mp4, frames, fps=fps, codec="libx264", quality=7, macro_block_size=2)
+        w.append_data(canvas)
+    for _ in range(fps):
+        w.append_data(canvas)
+    w.close()
+    rr.close()
+    cap.release()
 
 
 def render(a, log=print):
