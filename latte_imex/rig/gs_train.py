@@ -86,6 +86,80 @@ def look_at(eye, target, up=(0, 0, 1.0)):
     return M
 
 
+# CAFEDE KONA "Allround" 700 mL milk jug (the rig pitcher): outer radius [mm] vs height [mm], catalogue drawing
+KONA700_Z = [0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 105, 110, 118, 122]
+KONA700_R = [38.0, 39.3, 43.5, 44.0, 44.0, 44.0, 44.0, 43.7, 43.5, 43.3, 42.8, 42.6, 42.3, 42.2, 42.1, 42.1]
+
+
+class Shape:
+    """Known pitcher shape (catalogue profile, 1 mm wall, spout lip ~49 mm) as a geometric prior.  The catalogue shape is
+    placed and scaled to the reconstruction: bottom z0 and height H from the depth points along the object z axis,
+    radial scale from the mid-height radius; spout azimuth given (handle opposite, left free: thin wire + hand).
+    dist(P): distance [mm] of points P [m] to the wall shell (outer and inner wall, inside bottom); 0 in the spout and
+    handle regions."""
+
+    def __init__(self, xyz, spout_az_deg, device):
+        P = xyz * 1e3
+        z, r = P[:, 2], np.hypot(P[:, 0], P[:, 1])
+        self.z0 = float(np.percentile(z, 0.5)); self.H = float(np.percentile(z, 99.5)) - self.z0
+        mid = (z > self.z0 + 0.25 * self.H) & (z < self.z0 + 0.6 * self.H)
+        rc = np.interp(np.linspace(0.25, 0.6, 50) * 122.0, KONA700_Z, KONA700_R).mean()
+        self.rs = float(np.median(r[mid]) / rc)
+        self.spout = np.radians(spout_az_deg)
+        self.lut = torch.tensor(np.interp(np.arange(0, 122.01, 0.5), KONA700_Z, KONA700_R) * self.rs, device=device).float()
+        self.dev = device
+        print(f"shape prior: bottom z0 {self.z0:.1f} mm, height {self.H:.1f} mm (catalogue 122), radial scale "
+              f"{self.rs:.3f}, spout azimuth {spout_az_deg:.0f} deg", flush=True)
+
+    def r_out(self, z_mm):
+        zc = ((z_mm - self.z0) / self.H * 122.0).clamp(0, 122.0)
+        return self.lut[(zc / 0.5).round().long()]
+
+    def dist(self, P):
+        mm = P * 1e3
+        x, y, z = mm[:, 0], mm[:, 1], mm[:, 2]
+        r = torch.hypot(x, y)
+        ro = self.r_out(z)
+        ve = F.relu(self.z0 - z) + F.relu(z - (self.z0 + self.H))
+        d_wall = torch.minimum((r - ro).abs(), (r - (ro - 1.0)).abs())
+        d_side = torch.sqrt(d_wall ** 2 + ve ** 2)
+        d_bot = torch.sqrt(F.relu(r - ro) ** 2 + torch.minimum((z - self.z0).abs(), (z - self.z0 - 1.5).abs()) ** 2)
+        d = torch.minimum(d_side, d_bot)
+        az = torch.atan2(y, x)
+        da = torch.remainder(az - self.spout + math.pi, 2 * math.pi) - math.pi
+        top = self.z0 + self.H
+        spout = (da.abs() < math.radians(35)) & (z > top - 30) & (z < top + 2) & (r > ro - 3) & (r < 49.0 * self.rs + 3)
+        dh = torch.remainder(az - self.spout, 2 * math.pi) - math.pi
+        handle = (dh.abs() < math.radians(30)) & (z > self.z0 + 3) & (z < top + 4) & (r < ro + 45)
+        return torch.where(spout | handle, torch.zeros_like(d), d)
+
+    def init_points(self, xyz, rgb):
+        """Surface samples of the shell (outer wall, inner wall near the rim, inside bottom, spout lip) coloured from the
+        nearest depth point, plus the depth points that lie on the shell or in the handle region."""
+        from scipy.spatial import cKDTree
+        ro = lambda zz: np.interp(np.clip((zz - self.z0) / self.H * 122.0, 0, 122), KONA700_Z, KONA700_R) * self.rs
+        S = []
+        for zz in np.arange(self.z0 + 0.5, self.z0 + self.H, 1.2):
+            R = ro(zz); ph = np.arange(0, 2 * np.pi, 1.2 / R)
+            S.append(np.stack([R * np.cos(ph), R * np.sin(ph), np.full_like(ph, zz)], 1))
+            if zz > self.z0 + self.H - 35:
+                S.append(np.stack([(R - 1) * np.cos(ph), (R - 1) * np.sin(ph), np.full_like(ph, zz)], 1))
+        for rr in np.arange(0, ro(self.z0 + 2) - 1, 1.5):
+            ph = np.arange(0, 2 * np.pi, 1.5 / max(rr, 1.5))
+            S.append(np.stack([rr * np.cos(ph), rr * np.sin(ph), np.full_like(ph, self.z0 + 1.5)], 1))
+        for zz in np.arange(self.z0 + self.H - 25, self.z0 + self.H, 1.0):
+            for da in np.radians(np.arange(-30, 31, 2.0)):
+                for rr in np.arange(ro(zz), 49.0 * self.rs, 1.0):
+                    a_ = self.spout + da
+                    S.append(np.array([[rr * np.cos(a_), rr * np.sin(a_), zz]]))
+        S = np.concatenate(S) * 1e-3
+        d, j = cKDTree(xyz).query(S, distance_upper_bound=0.006)
+        col = np.where(np.isfinite(d)[:, None], rgb[np.minimum(j, len(rgb) - 1)], np.median(rgb, 0))
+        keep = (self.dist(torch.tensor(xyz, device=self.dev)) < 3.0).cpu().numpy()
+        print(f"shape prior init: {len(S)} surface samples + {keep.sum()} of {len(xyz)} depth points", flush=True)
+        return np.concatenate([S, xyz[keep]]).astype(np.float32), np.concatenate([col, rgb[keep]]).astype(np.float32)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True)
@@ -98,6 +172,10 @@ def main():
     ap.add_argument("--volume", default=None, help="rmax,zmin,zmax [m] of the object frame: Gaussians outside are removed "
                     "every 500 steps and before export (floaters on the table, background)")
     ap.add_argument("--grow-grad2d", type=float, default=0.0004)
+    ap.add_argument("--shape", default=None, help="'kona700': catalogue pitcher shape as a prior (init on the surface, "
+                    "distance penalty, pruning); needs --spout-az")
+    ap.add_argument("--spout-az", type=float, default=90.0, help="spout azimuth [deg] (atan2(y, x)) in the object frame")
+    ap.add_argument("--w-shape", type=float, default=0.05)
     a = ap.parse_args()
     from gsplat import rasterization
     from gsplat.strategy import DefaultStrategy
@@ -105,6 +183,9 @@ def main():
     dev = "cuda"
     os.makedirs(a.out, exist_ok=True)
     views, xyz, rgb = load(a.data, dev)
+    shape = Shape(xyz, a.spout_az, dev) if a.shape == "kona700" else None
+    if shape is not None:
+        xyz, rgb = shape.init_points(xyz, rgb)
     for i, v in enumerate(views):
         v["test"] = len(views) >= 14 and i % 7 == 3
     test = [v for v in views if v["test"]]
@@ -149,7 +230,12 @@ def main():
 
     def outside():
         m = params["means"].detach()
-        return (torch.hypot(m[:, 0], m[:, 1]) > vol[0]) | (m[:, 2] < vol[1]) | (m[:, 2] > vol[2])
+        out = torch.zeros(len(m), dtype=torch.bool, device=m.device)
+        if vol is not None:
+            out |= (torch.hypot(m[:, 0], m[:, 1]) > vol[0]) | (m[:, 2] < vol[1]) | (m[:, 2] > vol[2])
+        if shape is not None:
+            out |= shape.dist(m) > 5.0
+        return out
 
     def prune_outside(st):
         try:
@@ -178,6 +264,8 @@ def main():
         wd = a.w_depth * max(0.1, 1 - step / (0.6 * a.iters))
         ld = ((dep_r[dm] - v["depth"][dm]).abs().clamp(max=0.02) / 0.005).mean() if dm.any() else 0.0
         loss = 0.8 * l1 + 0.2 * ls + a.w_alpha * la + wd * ld + 1e-3 * (cc[i] ** 2).sum()
+        if shape is not None:                              # keep the Gaussians on the known shell (1.5 mm tolerance)
+            loss = loss + a.w_shape * (F.relu(shape.dist(params["means"]) - 1.5) ** 2).mean()
         strategy.step_pre_backward(params, optimizers, state, step, info)
         loss.backward()
         for opt in optimizers.values():
@@ -185,14 +273,14 @@ def main():
         cc_opt.step(); cc_opt.zero_grad(set_to_none=True)
         sched.step()
         strategy.step_post_backward(params, optimizers, state, step, info, packed=False)
-        if vol is not None and step % 500 == 499 and step < a.iters - 1:
+        if (vol is not None or shape is not None) and step % 500 == 499 and step < a.iters - 1:
             prune_outside(state)
         if step % 500 == 0 or step == a.iters - 1:
             print(f"step {step:6d}  loss {loss.item():.4f}  l1 {l1.item():.4f}  alpha {float(la):.4f}  depth {float(ld):.3f}  "
                   f"gaussians {len(params['means'])}  {time.time() - t0:.0f} s", flush=True)
 
     # ---------------------------------------------------------------- outputs
-    if vol is not None:
+    if vol is not None or shape is not None:
         with torch.no_grad():
             keep = ~outside()
             for k in list(params.keys()):

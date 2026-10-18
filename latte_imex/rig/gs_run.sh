@@ -27,17 +27,20 @@ out, a, _ = rasterization(m, torch.tensor([[1., 0, 0, 0]], device="cuda"), torch
                           torch.tensor([[[100., 0, 32], [0, 100., 32], [0, 0, 1]]], device="cuda"), 64, 64)
 print("gsplat self-test ok, alpha max", float(a.max()))
 PY
-for obj in coffee_cup milk_cup pitcher_pours; do
-  [ -d "data/$obj" ] || continue
-  if [ -f "out/$obj/metrics.json" ]; then echo "$obj done, skipping"; continue; fi
-  IT=15000; [ "$obj" = pitcher_pours ] && IT=30000
-  case $obj in                                             # object volume rmax,zmin,zmax [m] in the object frame
-    coffee_cup) VOL=0.075,0.002,0.075 ;;
-    milk_cup) VOL=0.090,0.002,0.135 ;;
-    pitcher_pours) VOL=0.090,-0.036,0.098 ;;               # pitcher tag frame: bottom -33 mm, rim +93 mm
-  esac
-  echo "===== $(date '+%F %T') $obj ($IT iterations) ====="
-  python gs_train.py --data "data/$obj" --out "out/$obj" --iters $IT --volume $VOL
+# runs: name|data|iterations|extra args.  *_shape runs use the catalogue pitcher shape (CAFEDE KONA Allround 700 mL)
+# as a prior; spout azimuth in the object frame: static milk_cup -15 deg (table frame), pours +90 deg (tag frame, +y)
+RUNS="coffee_cup|coffee_cup|15000|--volume 0.075,0.002,0.075
+milk_cup|milk_cup|15000|--volume 0.090,0.002,0.135
+milk_cup_shape|milk_cup|15000|--volume 0.090,0.002,0.135 --shape kona700 --spout-az -15
+pitcher_pours|pitcher_pours|30000|--volume 0.090,-0.036,0.098
+pitcher_pours_shape|pitcher_pours|30000|--volume 0.090,-0.036,0.098 --shape kona700 --spout-az 90"
+ONLY="${ONLY:-}"                                           # e.g. ONLY="milk_cup_shape pitcher_pours_shape"
+echo "$RUNS" | while IFS='|' read -r name data iters extra; do
+  [ -d "data/$data" ] || continue
+  if [ -n "$ONLY" ] && ! echo " $ONLY " | grep -q " $name "; then continue; fi
+  if [ -f "out/$name/metrics.json" ]; then echo "$name done, skipping"; continue; fi
+  echo "===== $(date '+%F %T') $name ($iters iterations) ====="
+  python gs_train.py --data "data/$data" --out "out/$name" --iters "$iters" $extra
 done
 tar -czf gs_results.tar.gz out
 ls -lh gs_results.tar.gz
