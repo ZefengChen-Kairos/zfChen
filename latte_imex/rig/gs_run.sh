@@ -30,9 +30,11 @@ PY
 # runs: name|data|iterations|extra args.  *_cad runs use the CAD of the rig pitcher (CAFEDE KONA Allround 700 mL,
 # pitcher_kona700_prior.npz) as a geometric prior: Gaussians initialised on the CAD surface, kept within 1.5 mm of it,
 # floaters pruned.  Static milk_cup: spout near -15 deg, refined automatically (azimuth + height); pours: tag frame,
-# spout +y (90 deg, fixed), handle left free (the barista's hand).  Plain runs (no prior) for comparison.
+# spout +y (90 deg, fixed); the hand pixels are 'ignore' in the masks, so the whole jug incl. both handle straps is
+# held to the CAD, SH degree 1 (the hand moves between frames: higher bands only learn noise).  Every Gaussian is
+# also kept flat and on the shell along its extent (no needles).  Plain runs (no prior) for comparison.
 RUNS="milk_cup_cad|milk_cup|15000|--volume 0.090,0.002,0.135 --shape kona_cad --spout-az -15
-pitcher_pours_cad|pitcher_pours|30000|--volume 0.090,-0.036,0.098 --shape kona_cad --spout-az 90 --fix-az --free-handle
+pitcher_pours_cad|pitcher_pours|30000|--volume 0.090,-0.036,0.098 --shape kona_cad --spout-az 90 --fix-az --sh 1
 coffee_cup|coffee_cup|15000|--volume 0.075,0.002,0.075
 milk_cup|milk_cup|15000|--volume 0.090,0.002,0.135
 pitcher_pours|pitcher_pours|30000|--volume 0.090,-0.036,0.098"

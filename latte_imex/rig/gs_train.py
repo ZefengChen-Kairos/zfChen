@@ -236,6 +236,21 @@ class CadShape:
         return np.concatenate([S, xyz[keep]]).astype(np.float32), np.concatenate([col, rgb[keep]]).astype(np.float32)
 
 
+def major_axis(params):
+    """Scales (sorted, descending) and the two end points mean +- 2 s_max * major axis of every Gaussian [m]."""
+    sc = torch.exp(params["scales"])
+    q = F.normalize(params["quats"], dim=1)
+    w, x, y, z = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+    R = torch.stack([torch.stack([1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)], 1),
+                     torch.stack([2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)], 1),
+                     torch.stack([2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)], 1)], 1)
+    k = sc.argmax(1)
+    axis = R[torch.arange(len(k), device=k.device), :, k]          # column k of R = the major axis in the world
+    smax = sc.gather(1, k[:, None])
+    ends = torch.cat([params["means"] + 2 * smax * axis, params["means"] - 2 * smax * axis])
+    return torch.sort(sc, 1, descending=True).values, ends
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True)
@@ -252,6 +267,10 @@ def main():
                     "distance penalty, pruning); needs --spout-az")
     ap.add_argument("--spout-az", type=float, default=90.0, help="spout azimuth [deg] (atan2(y, x)) in the object frame")
     ap.add_argument("--w-shape", type=float, default=0.05)
+    ap.add_argument("--w-needle", type=float, default=0.05, help="penalty on needle-like Gaussians: major / middle "
+                    "scale above --aniso, major scale above --smax")
+    ap.add_argument("--aniso", type=float, default=4.0)
+    ap.add_argument("--smax", type=float, default=0.004, help="[m]")
     ap.add_argument("--prior", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "pitcher_kona700_prior.npz"),
                     help="CAD prior for --shape kona_cad")
     ap.add_argument("--free-handle", action="store_true", help="kona_cad: no shape penalty around the handle (hand)")
@@ -317,6 +336,9 @@ def main():
             out |= (torch.hypot(m[:, 0], m[:, 1]) > vol[0]) | (m[:, 2] < vol[1]) | (m[:, 2] > vol[2])
         if shape is not None:
             out |= shape.dist(m) > 5.0
+            _, ends = major_axis({k: params[k].detach() for k in ("scales", "quats", "means")})
+            de = shape.dist(ends)                          # a Gaussian whose extent leaves the shell: spike / floater
+            out |= torch.maximum(de[:len(m)], de[len(m):]) > 5.0
         return out
 
     def prune_outside(st):
@@ -346,8 +368,14 @@ def main():
         wd = a.w_depth * max(0.1, 1 - step / (0.6 * a.iters))
         ld = ((dep_r[dm] - v["depth"][dm]).abs().clamp(max=0.02) / 0.005).mean() if dm.any() else 0.0
         loss = 0.8 * l1 + 0.2 * ls + a.w_alpha * la + wd * ld + 1e-3 * (cc[i] ** 2).sum()
-        if shape is not None:                              # keep the Gaussians on the known shell (1.5 mm tolerance)
+        if shape is not None or a.w_needle > 0:
+            ss, ends = major_axis(params)
+        if shape is not None:                              # keep the Gaussians -- centre and extent -- on the shell
             loss = loss + a.w_shape * (F.relu(shape.dist(params["means"]) - 1.5) ** 2).mean()
+            loss = loss + a.w_shape * (F.relu(shape.dist(ends) - 1.5) ** 2).mean()
+        if a.w_needle > 0:                                 # flat discs on the shell, not needles
+            loss = loss + a.w_needle * ((F.relu(torch.log(ss[:, 0] / ss[:, 1]) - math.log(a.aniso)) ** 2).mean()
+                                        + (F.relu(ss[:, 0] / a.smax - 1.0) ** 2).mean())
         strategy.step_pre_backward(params, optimizers, state, step, info)
         loss.backward()
         for opt in optimizers.values():
