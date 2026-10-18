@@ -18,8 +18,9 @@ def main():
     ap.add_argument("--keys", default=",".join(W.PARAMS) + ",foot_a,foot_b")
     ap.add_argument("--sched", type=int, default=2, help="also check this many schedule entries (x, Q of active frames)")
     ap.add_argument("--device", default=None)
+    ap.add_argument("--scales", default="0", help="video loss scales (run.DiffPour)")
     a = ap.parse_args()
-    D = DiffPour(a.pattern, N=a.N, device=a.device, T_max=a.T, tau=0.1)
+    D = DiffPour(a.pattern, N=a.N, device=a.device, T_max=a.T, tau=0.1, scales=[float(x) for x in a.scales.split(",")])
     P = dict(D.s1, foot_a=0.05, foot_b=-0.02)
     L, g, _ = D.loss_grad(P)
     ns = D.nsub

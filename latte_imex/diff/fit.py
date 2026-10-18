@@ -11,7 +11,7 @@ physical time; calibration sequences weighted equally.  Each iteration runs ever
 backward (exact adjoint, run.DiffPour.loss_grad), averages the losses and their gradients and takes an Adam step in
 the unit box (clipped to [0, 1]); the sigmoid temperature is annealed from --tau0 to --tau1.  Reported with every
 iteration: the mean per-frame IoU over the video (vIoU) and the final-frame metrics of the Sobol fit (tulip_feas
-Target.score: IoU, gap IoU, J).  The iterate with the lowest objective is kept (with --loss final: the highest final J).
+Target.score: IoU, gap IoU, J).  The iterate with the highest whole-video IoU is kept (with --loss final: the highest final J).
 Start: --init a closure json (e.g. results/fit/best_closure.json from fit_pipeline, so the gradient refines the
 global Sobol search), default the S1 closure.  A failed forward (non-finite state) halves the step and retries.
 
@@ -270,6 +270,8 @@ def main(argv=None):
     ap.add_argument("--tau1", type=float, default=0.03)
     ap.add_argument("--w-gap", dest="w_gap", type=float, default=2.0)
     ap.add_argument("--loss", default="video", choices=["video", "final"])
+    ap.add_argument("--scales", default="0.3,0.15,0",
+                    help="video loss scales [cup radii] (run.py): blurred residual terms, 0 = per pixel; '0' = pixel term only")
     ap.add_argument("--w-final", dest="w_final", type=float, default=0.0, help="extra final-frame soft-IoU term (video loss)")
     ap.add_argument("--init", default=None, help="closure json to start from (default: S1)")
     ap.add_argument("--device", default=None)
@@ -286,7 +288,8 @@ def main(argv=None):
     log = lambda *x: print(*x, flush=True)
     use_foot(a.foot)
     cal = a.cal.split(",")
-    kw = dict(N=a.N, device=a.device, w_gap=a.w_gap, tau=a.tau0, T_max=a.T, loss=a.loss, w_final=a.w_final)
+    kw = dict(N=a.N, device=a.device, w_gap=a.w_gap, tau=a.tau0, T_max=a.T, loss=a.loss, w_final=a.w_final,
+              scales=tuple(float(x) for x in a.scales.split(",")))
     workers = a.workers if a.workers >= 0 else (len(cal) if (a.device or "cuda").startswith("cuda") else 0)
     pours = {p: Pour(p, kw, process=workers > 0) for p in cal}
     log(f"{len(cal)} calibration pours, {'one worker process each' if workers > 0 else 'in-process'}")
@@ -350,7 +353,9 @@ def main(argv=None):
                                         v=np.array([x[3] for x in r[4]]))
         if it == 0:
             save("start")
-        better = (L < best["loss"]) if (best is not None and a.loss == "video") else (best is None or J > best["J"])
+        # best iterate: video loss -> highest whole-video IoU (the loss itself changes with the annealed tau, so its
+        # values are not comparable across iterations); final loss -> highest final J
+        better = best is None or ((vI > best["viou"]) if a.loss == "video" else (J > best["J"]))
         if best is None or better:
             best = rec
             save("best")

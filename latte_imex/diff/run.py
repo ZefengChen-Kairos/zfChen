@@ -5,6 +5,11 @@ soft whiteness w and the observation mask v, fixed by the observation) is compar
 end nearest to its time, on the visible cup surface only; per frame the squared whiteness residual is normalised by
 the number of visible pixels, frames are averaged with their share of the physical time,
     L = sum_j  dt_j / sum dt  *  sum_x v_j (p(c) - w_j)^2 / sum_x v_j,      p = sigmoid((c - 0.5) / tau),
+or, with scales s_1..s_n (cup radii; 0 = the term above), the mean over the scales of the blurred residual
+    sum_x (G_s*(v p) - G_s*(v w))^2 / G_s*v  /  sum_x G_s*v       (G_s: Gaussian of width s R)
+i.e. the local mean whiteness compared over neighbourhoods of size s R, weighted by local visibility: white placed a
+little off its observed position still lowers the coarse terms, so the gradient moves white towards the observation
+instead of only removing it (the pixel term alone is lowest for a pattern that is absent rather than misplaced),
 and the gradient of every frame term is injected into the backward pass at its frame (no state is ever reset to
 the observation).  Optional extra term (w_final > 0, or loss 'final' alone): soft IoU of the final field against the
 finished-pattern target, with the target gaps weighted,
@@ -18,6 +23,7 @@ the petals weigh more than the rest of the cup.
 """
 from __future__ import annotations
 
+import math
 import time
 
 import numpy as np
@@ -75,6 +81,77 @@ def k_obs_loss(sums: A1, wgt: F, out: A1):
     out[0] = wgt * sums[0] / (sums[1] + F(1e-30))
 
 
+@wp.kernel
+def k_vp(l: A2, m: A2, vo: A2, mask: I2, tau: F, out: A2):
+    """v * p(c) (visible soft whiteness of the simulation)."""
+    j, i = wp.tid()
+    out[j, i] = F(0.0)
+    if mask[j, i] != 0:
+        v = vo[j, i]
+        if v != F(0.0):
+            c = m[j, i] / l[j, i]
+            out[j, i] = v / (F(1.0) + wp.exp(-(c - F(0.5)) / tau))
+
+
+@wp.kernel
+def k_blur(a: A2, wts: A1, r: int, N: int, axis: int, out: A2):
+    """One pass of a separable truncated Gaussian, zero outside the grid (blur_np is the same on the host)."""
+    j, i = wp.tid()
+    acc = F(0.0)
+    for d in range(2 * r + 1):
+        if axis == 0:
+            ii = i + d - r
+            if ii >= 0 and ii < N:
+                acc += wts[d] * a[j, ii]
+        else:
+            jj = j + d - r
+            if jj >= 0 and jj < N:
+                acc += wts[d] * a[jj, i]
+    out[j, i] = acc
+
+
+@wp.kernel
+def k_ms(Bp: A2, Bw: A2, iBv: A2, coef: F, sums: A1):
+    """sum (Bp - Bw)^2 / Bv  (= sum Bv (Bp/Bv - Bw/Bv)^2: local mean whiteness, weighted by local visibility)."""
+    j, i = wp.tid()
+    q = iBv[j, i]
+    if q != F(0.0):
+        d = Bp[j, i] - Bw[j, i]
+        wp.atomic_add(sums, 0, coef * d * d * q)
+
+
+@wp.kernel
+def k_ms0(sum0: A1, frac: F, sums: A1):
+    sums[0] = sums[0] + frac * sum0[0] / (sum0[1] + F(1e-30))
+
+
+@wp.kernel
+def k_wsum(sums: A1, wgt: F, out: A1):
+    out[0] = wgt * sums[0]
+
+
+def gauss_w(sig):
+    r = max(1, int(math.ceil(3 * sig)))
+    w = np.exp(-0.5 * (np.arange(-r, r + 1) / sig) ** 2)
+    return w / w.sum(), r
+
+
+def blur_np(a, sig):
+    """Host twin of k_blur (x pass, then y pass)."""
+    w, r = gauss_w(sig)
+    N = a.shape[0]
+    for ax in (1, 0):
+        pad = np.zeros_like(a)
+        for d in range(2 * r + 1):
+            sh = d - r
+            src = np.roll(a, -sh, axis=ax)
+            idx = np.arange(N) + sh
+            ok = (idx >= 0) & (idx < N)
+            pad += w[d] * (src * (ok[None, :] if ax == 1 else ok[:, None]))
+        a = pad
+    return a
+
+
 def video_on_grid(p, geo, t_end):
     """Whole-video observations (raw_data/rig/video_obs/<p>.npz) on the solver cells: list of (frame index, time
     weight, w, v) for the frames inside the simulated time."""
@@ -116,7 +193,7 @@ def target_on_grid(p, geo):
 
 class DiffPour:
     def __init__(self, p, N=128, device=None, T_max=None, w_gap=2.0, tau=0.05, check_every=None, graphs=True,
-                 loss="video", w_final=0.0, log=print):
+                 loss="video", w_final=0.0, scales=(0.0,), log=print):
         self.p, self.N, self.log = p, N, log
         wp.init()
         script, pour = SC.pour_script(p, N)
@@ -144,13 +221,35 @@ class DiffPour:
         self._seed = {c: z() for c in ("l", "qx", "qy", "m")}     # dL/d(state): after the frame in, before it out
         self._seen, self._nblk, self._bwd_graphs = set(), {}, graphs
         self.obs = []
+        self.scales = tuple(float(x) for x in scales)
+        from ..rig.real_program import CUP_R
         if loss == "video":
             t_end = np.cumsum(self.S["fdt"])
             for k, wt, wo, vo, tj in video_on_grid(p, self.geo, t_end):
-                self.obs.append(dict(k=k, wt=wt, t=tj, wo=wp.array(wo, dtype=F, device=dev),
-                                     vo=wp.array(vo, dtype=F, device=dev), wo_np=wo, vo_np=vo > 0))
+                ob = dict(k=k, wt=wt, t=tj, wo=wp.array(wo, dtype=F, device=dev),
+                          vo=wp.array(vo, dtype=F, device=dev), wo_np=wo, vo_np=vo > 0, ms=[])
+                for sc in self.scales:                   # host side of the multi-scale terms (scales > 0)
+                    if sc <= 0:
+                        continue
+                    sig = sc * CUP_R * N
+                    Bv, Bw = blur_np(vo, sig), blur_np(vo * wo, sig)
+                    keep = Bv > 0.05
+                    iBv = np.where(keep, 1.0 / np.maximum(Bv, 1e-30), 0.0)
+                    ob["ms"].append(dict(w=wp.array(gauss_w(sig)[0], dtype=F, device=dev), r=gauss_w(sig)[1],
+                                         Bw=wp.array(Bw, dtype=F, device=dev), iBv=wp.array(iBv, dtype=F, device=dev),
+                                         coef=1.0 / (len(self.scales) * max(Bv[keep].sum(), 1e-30))))
+                self.obs.append(ob)
+            # reference: the loss of a simulation with no white at all (p = 0) -- a fit must get well below it
+            self.L_brown = 0.0
+            for ob in self.obs:
+                v, w = ob["vo_np"].astype(float), ob["wo_np"]
+                t = (v * w * w).sum() / max(v.sum(), 1e-30) / len(self.scales) if 0.0 in self.scales else 0.0
+                for m in ob["ms"]:
+                    t += m["coef"] * float((m["Bw"].numpy() ** 2 * m["iBv"].numpy()).sum())
+                self.L_brown += ob["wt"] * t
         log(f"{p}: {self.S['n']} frames, T {self.S['T']:.2f} s, N {N}, device {dev}, loss {loss}"
-            + (f" ({len(self.obs)} observed frames)" if self.obs else ""))
+            + (f" ({len(self.obs)} observed frames, scales {self.scales} R; no-white reference loss "
+               f"{self.L_brown:.4f})" if self.obs else ""))
 
     # ------------------------------------------------------------------ pieces
     def _apply_foot(self, P):
@@ -187,10 +286,26 @@ class DiffPour:
                 wp.launch(k_softiou, dim=(g.N, g.N), inputs=[S["l"], S["m"], self.tw, self.ww, g.mask, F(self.tau), sums],
                           device=g.dev)
                 wp.launch(k_loss, dim=1, inputs=[sums, out], device=g.dev)
-            else:
+            elif self.scales == (0.0,):
                 wp.launch(k_obs, dim=(g.N, g.N), inputs=[S["l"], S["m"], ob["wo"], ob["vo"], g.mask, F(self.tau), sums],
                           device=g.dev)
                 wp.launch(k_obs_loss, dim=1, inputs=[sums, F(ob["wt"]), out], device=g.dev)
+            else:                                        # multi-scale: mean over the scales of the blurred residual
+                Lt = lambda kern, ins, d=(g.N, g.N): wp.launch(kern, dim=d, inputs=ins, device=g.dev)
+                vp = wp.zeros((g.N, g.N), dtype=F, device=g.dev, requires_grad=rec)
+                Lt(k_vp, [S["l"], S["m"], ob["vo"], g.mask, F(self.tau), vp])
+                if 0.0 in self.scales:
+                    sum0 = wp.zeros(2, dtype=F, device=g.dev, requires_grad=rec)
+                    wp.launch(k_obs, dim=(g.N, g.N), inputs=[S["l"], S["m"], ob["wo"], ob["vo"], g.mask, F(self.tau),
+                                                             sum0], device=g.dev)
+                    Lt(k_ms0, [sum0, F(1.0 / len(self.scales)), sums], 1)
+                for t in ob["ms"]:
+                    bx = wp.zeros((g.N, g.N), dtype=F, device=g.dev, requires_grad=rec)
+                    by = wp.zeros((g.N, g.N), dtype=F, device=g.dev, requires_grad=rec)
+                    Lt(k_blur, [vp, t["w"], t["r"], g.N, 0, bx])
+                    Lt(k_blur, [bx, t["w"], t["r"], g.N, 1, by])
+                    Lt(k_ms, [by, t["Bw"], t["iBv"], F(t["coef"]), sums])
+                Lt(k_wsum, [sums, F(ob["wt"]), out], 1)
         if rec:
             tape = wp.Tape()
             with tape:
