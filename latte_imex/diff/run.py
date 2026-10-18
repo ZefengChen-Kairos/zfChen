@@ -137,6 +137,12 @@ class DiffPour:
         self.s1 = {k: float(script.params[k]) for k in W.PARAMS}
         self.nsub = None
         self.mode, self.w_final = loss, (1.0 if loss == "final" else w_final)
+        # backward replay: persistent buffers (fixed addresses for the per-frame graphs)
+        z = lambda: wp.zeros((N, N), dtype=F, device=dev)
+        self._Pg = wp.zeros(len(W.PARAMS), dtype=F, device=dev, requires_grad=True)
+        self._ck_in = {c: z() for c in ("l", "qx", "qy", "m")}    # checkpoint of the frame being replayed
+        self._seed = {c: z() for c in ("l", "qx", "qy", "m")}     # dL/d(state): after the frame in, before it out
+        self._seen, self._nblk, self._bwd_graphs = set(), {}, graphs
         self.obs = []
         if loss == "video":
             t_end = np.cumsum(self.S["fdt"])
@@ -224,6 +230,46 @@ class DiffPour:
             out[c] = o
         return out
 
+    def _replay(self, k, fdt, q, act, nsub, Pnp, key):
+        """Backward of frame k: replay it from the checkpoint (self._ck_in) under a tape, seed its output adjoint with
+        self._seed and leave dL/d(state at the frame start) in self._seed; dL/dP and dL/d(schedule) accumulate in
+        self._Pg.grad and self.Sw[...].grad.  All arrays come from the solver's pool and dt / frame index are read from
+        device arrays, so on CUDA the whole replay (forward launches, PCG solves with their adjoint solves, backward
+        launches) is captured once per (sub-steps, active, viscosity, mixing) into one graph and replayed -- the first
+        frame of each kind runs eagerly (sizes the pool), the second captures."""
+        sol = self.sol
+        cs = ("l", "qx", "qy", "m")
+
+        def body():
+            sol.pool_begin(self._nblk.get(key))
+            st = {c: sol.new() for c in cs}
+            for c in cs:
+                sol.cp(self._ck_in[c], st[c])
+            tape = wp.Tape()
+            sol.tape = tape
+            with tape:
+                out, _ = sol.frame(st, self._Pg, Pnp, self.Sw, k, fdt, q, act, nsub=nsub)
+            for c in cs:
+                sol.cp(self._seed[c], out[c].grad)
+            tape.backward()
+            for c in cs:
+                sol.cp(st[c].grad, self._seed[c])
+            self._nblk[key] = sol.pool_end()
+            sol.tape = None                        # (Tape.reset() would also zero the accumulated dL/dP)
+
+        R = sol.runner
+        if R.use and self._bwd_graphs and key in self._seen:
+            try:
+                R(("bwd",) + key, body)
+                return
+            except Exception as e:
+                sol.pool_on = False
+                R.graphs.pop(("bwd",) + key, None)
+                self._bwd_graphs = False
+                self.log(f"[run] graph capture of the backward replay failed ({type(e).__name__}: {e}); eager replay")
+        body()
+        self._seen.add(key)
+
     def video_metrics(self, after):
         """Hard IoU (c > 0.5 vs w > 0.5) on the visible pixels of every observed frame: (time, IoU) list."""
         res = []
@@ -265,28 +311,32 @@ class DiffPour:
             st = after(ob["k"])
             c = np.where(msk, st["m"].numpy() / np.where(msk, st["l"].numpy(), 1.0), np.nan)
             self.strip.append((ob["t"], c.astype(np.float32), ob["wo_np"].astype(np.float32), ob["vo_np"]))
-        zero = lambda: {c: wp.zeros((self.N, self.N), dtype=F, device=self.geo.dev) for c in ("l", "qx", "qy", "m")}
-        gs = gfin if gfin is not None else zero()
-        Pnp, Pw = self._P(P, True)
+        for c in ("l", "qx", "qy", "m"):
+            if gfin is not None:
+                sol.cp(gfin[c], self._seed[c])
+            else:
+                self._seed[c].zero_()
+        Pnp = np.array([float(P[k]) for k in W.PARAMS], float)
+        self._Pg.assign(Pnp)
+        self._Pg.grad.zero_()
         for a in self.Sw.values():
             a.grad.zero_()
         sol.rec = True
+        nu_on = bool(Pnp[W.NU] > 0)
         for k in range(n - 1, -1, -1):
             if k in gobs:
-                gs = self._sum(gs, gobs.pop(k))
-            st = sol.clone_state(ck[k], requires_grad=True)
-            tape = wp.Tape()
-            sol.tape = tape
-            with tape:
-                out, _ = sol.frame(st, Pw, Pnp, self.Sw, k, float(S["fdt"][k]), int(S["q"][k]), bool(S["active"][k]),
-                                   nsub=ns[k])
-            tape.backward(grads={out[c]: gs[c] for c in ("l", "qx", "qy", "m")})
-            gs = {c: st[c].grad for c in ("l", "qx", "qy", "m")}
+                for c, a in gobs.pop(k).items():
+                    wp.launch(W.k_add, dim=a.shape, inputs=[a, self._seed[c]], device=self.geo.dev)
+            for c in ("l", "qx", "qy", "m"):
+                sol.cp(ck[k][c], self._ck_in[c])
+            fdt, q, act = float(S["fdt"][k]), int(S["q"][k]), bool(S["active"][k])
+            sol.set_dt(fdt / ns[k])
+            sol.set_kq(k, q)
+            self._replay(k, fdt, q, act, ns[k], Pnp, (ns[k], act, nu_on, sol.mix_on(Pnp, fdt / ns[k])))
             if k + 1 < n:
                 ck[k + 1] = None                   # free the checkpoint (no longer needed as an observed state)
-            del tape                               # (Tape.reset() would also zero the accumulated dL/dP)
         sol.rec, sol.tape = False, None
-        gP = Pw.grad.numpy()
+        gP = self._Pg.grad.numpy()
         self.sched_grad = {k: v.grad.numpy().copy() for k, v in self.Sw.items()}
         self.timing = dict(forward_s=t1 - t0, backward_s=time.time() - t1)
         g = {k: float(gP[i]) for i, k in enumerate(W.PARAMS)}

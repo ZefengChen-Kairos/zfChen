@@ -723,6 +723,7 @@ class Geo:
 # tile reductions (one atomic add per block of TB cells) fused into the kernels that produce their operands.
 TB = 128
 TBc = wp.constant(TB)
+POOL_BLK = 32                                  # arrays per block of the recorded-path pool
 S_RZ, S_PAP, S_RZN, S_RR, S_BB, S_BETA, S_IT, S_ITT = range(8)
 
 
@@ -954,7 +955,7 @@ class Runner:
         self.stats = dict(captures=0, replays=0)
 
     def __call__(self, key, fn):
-        if not self.use:
+        if not self.use or self.dev.is_capturing:       # (inside an enclosing capture: plain launches, become its nodes)
             fn()
             return
         g = self.graphs.get(key)
@@ -1121,8 +1122,10 @@ def _apply_visc(op, src, dst):
 class WSolver:
     """Two paths over the same kernels:
       fast_* : no gradients; every buffer persistent, each piece of a sub-step a CUDA graph (forward passes)
-      frame  : arrays allocated per launch so that wp.Tape can record them (the per-frame replay of the backward
-               pass, and the CPU tests); its PCG solves run on the same graph-captured CGOp as the fast path.
+      frame  : recorded under wp.Tape (the per-frame replay of the backward pass, and the CPU tests); arrays allocated
+               per launch, or taken from the persistent pool (pool_begin / pool_end) so that the whole replay of a
+               frame, forward + backward, can be one CUDA graph (run.DiffPour._replay); its PCG solves run on the same
+               CGOp as the fast path.
     rec: allocate gradients and register the adjoints of the PCG solves on `tape` (set by the caller)."""
 
     def __init__(self, geo, cfl=0.5, max_substeps=64, cg_tol=1e-10, visc_tol=1e-8, cg_maxiter=500,
@@ -1146,12 +1149,50 @@ class WSolver:
         self.opV = CGOp(self, "visc", 2, ("l3", "wx", "wy", "wc", "ww"), _apply_visc, _apply_dot_visc)
         self.fused = True                    # whole sub-step as one graph (needs the device-side PCG loop)
         self.fb = None
+        self.pool_on = False                 # recorded path: arrays from the persistent pool (pool_begin)
+        self._blocks, self._views, self._blocks1, self._views1 = [], [], [], []
+        self.pool_i = self.pool1_i = 0
 
     # ------------------------------------------------------------------ small helpers
     def new(self):
         """Output array of a recorded launch.  Zero-initialised on purpose: some kernels store an element twice (0, then
-        the value under a condition), and the generated adjoints are only exact on a zeroed output."""
+        the value under a condition), and the generated adjoints are only exact on a zeroed output.  With the pool on,
+        the next pool slot (zeroed with its gradient by pool_begin): no allocation, and fixed addresses, so a whole
+        recorded frame (forward + backward) can be captured into a CUDA graph and replayed."""
+        if self.pool_on:
+            return self._take(self._blocks, self._views, (self.g.N, self.g.N), "pool_i")
         return wp.zeros((self.g.N, self.g.N), dtype=F, device=self.g.dev, requires_grad=self.rec)
+
+    def new1(self):
+        """Length-2 accumulator (pooled like new)."""
+        if self.pool_on:
+            return self._take(self._blocks1, self._views1, (2,), "pool1_i")
+        return wp.zeros(2, dtype=F, device=self.g.dev, requires_grad=self.rec)
+
+    def _take(self, blocks, views, shape, ctr):
+        i = getattr(self, ctr)
+        b, e = divmod(i, POOL_BLK)
+        if b == len(blocks):
+            if self.g.dev.is_cuda and self.g.dev.is_capturing:
+                raise RuntimeError("array pool would grow inside a graph capture")
+            blk = wp.zeros((POOL_BLK, *shape), dtype=F, device=self.g.dev, requires_grad=True)
+            blocks.append(blk)
+            views.append([blk[t] for t in range(POOL_BLK)])
+        setattr(self, ctr, i + 1)
+        return views[b][e]
+
+    def pool_begin(self, nblk=None):
+        """Start a pooled recorded frame: slots from the first one again; zero the first nblk blocks (values and
+        gradients; all blocks if None)."""
+        self.pool_on, self.pool_i, self.pool1_i = True, 0, 0
+        for blk in self._blocks[:nblk] + self._blocks1:
+            blk.zero_()
+            blk.grad.zero_()
+
+    def pool_end(self):
+        """Stop pooling; returns the number of blocks this frame used."""
+        self.pool_on = False
+        return -(-self.pool_i // POOL_BLK)
 
     def L(self, kernel, inputs, outputs=(), record=True):
         wp.launch(kernel, dim=(self.g.N, self.g.N), inputs=list(inputs) + list(outputs), device=self.g.dev,
@@ -1207,7 +1248,7 @@ class WSolver:
         op.run(tol, self.cg_maxiter)
         x = []
         for c in range(op.n):
-            xa = wp.empty_like(b[c], requires_grad=self.rec)
+            xa = self.new()
             self.cp(op.x[c], xa)
             x.append(xa)
         if self.rec and self.tape is not None:
@@ -1225,13 +1266,13 @@ class WSolver:
                 lam_neg, xs, outs = [], [], []
                 for c in range(op.n):
                     self.L(k_add, [op.x[c], b[c].grad], record=False)
-                    ln = wp.empty_like(b[c])
+                    ln = self.new()
                     self.L(k_neg, [op.x[c], ln], record=False)
                     lam_neg.append(ln)
-                    xc = wp.empty_like(b[c])
+                    xc = self.new()
                     self.cp(x[c], xc)
                     xs.append(xc)
-                    outs.append(wp.zeros_like(b[c], requires_grad=True))
+                    outs.append(self.new())
                 sub = wp.Tape()
                 with sub:
                     apply_eager(xs, outs)
@@ -1247,7 +1288,7 @@ class WSolver:
             return out
         self.set_kq(k, q)
         Kraw = self.new()
-        sums = wp.zeros(2, dtype=F, device=g.dev, requires_grad=self.rec)
+        sums = self.new1()
         self.L(k_kernel_raw, [g.xc, g.yc, g.mask, S["x"], S["y"], S["r1"], S["r2"], S["phi"], self.kq, F(g.h)],
                [Kraw, sums])
         self.L(k_fields, [Kraw, sums, g.mask, g.xc, g.yc, P, S["x"], S["y"], S["Q"], S["ux"], S["uy"], S["U"], S["d"],
@@ -1298,7 +1339,7 @@ class WSolver:
             self.L(k_visc_diag, [l3, wx, wy, wc, ww, g.nbx, g.nby, g.mask, dt, ih, N], [dx, dy])
 
             def A_visc(xs, outs):
-                T = wp.zeros((N, N), dtype=F, device=g.dev, requires_grad=True)
+                T = self.new()
                 self.L(k_sym_T, [xs[0], xs[1], wc, ih, N], [T])
                 self.L(k_sym_apply, [xs[0], xs[1], l3, wx, wy, T, ww, g.nbx, g.nby, g.mask, dt, ih, N], [outs[0], outs[1]])
 

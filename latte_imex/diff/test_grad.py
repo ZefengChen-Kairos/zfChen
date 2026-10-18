@@ -36,8 +36,8 @@ def main():
             worst = max(worst, rel)
         print(f"  {k:8s} adjoint {g[k]: .6e}  FD {fd: .6e}  rel diff {rel:.1e}")
     # schedule entries (per-frame arrival record): the hit point x and the flow Q of a few pouring frames
+    D._apply_foot(P)            # the parameter loop left the last perturbed landing-point shift applied
     act = np.where(D.S["active"])[0]
-    import warp as wp
     for kk in act[len(act) // 2: len(act) // 2 + a.sched]:
         for key in ("x", "Q"):
             ga = D.sched_grad[key][kk]
@@ -46,9 +46,9 @@ def main():
             vals = []
             for sgn in (1, -1):
                 arr = base.copy(); arr[kk] += sgn * h
-                D.Sw[key] = wp.array(arr, dtype=W.F, device=D.geo.dev, requires_grad=True)
+                D.Sw[key].assign(arr)              # in place: captured graphs hold these addresses
                 vals.append(D.loss(P, nsub=ns)[0])
-            D.Sw[key] = wp.array(base, dtype=W.F, device=D.geo.dev, requires_grad=True)
+            D.Sw[key].assign(base)
             D._foot = (float(P["foot_a"]), float(P["foot_b"]))
             fd = (vals[0] - vals[1]) / (2 * h)
             rel = abs(ga - fd) / max(abs(fd), abs(ga), 1e-12)
