@@ -1,7 +1,9 @@
 """Gradient-based calibration of the V0.5 closure with the differentiable Warp solver.
 
 Parameters: v05_adapter.SPACE (8 closure parameters) in the unit box (log-scaled where SPACE says 'log'); nu and D
-fixed.  Objective (--loss video, default): whole-video supervision, run.DiffPour -- every observed frame of each
+fixed; plus (default, --no-foot to switch off) a landing-point correction shared by all pours, foot_a / foot_b [cup
+diameters] along / across the jet's horizontal direction (schedule.foot_shift): the measured pours start their white
+about 0.3 R ahead of where the modelled jet lands, a bias no closure parameter can absorb.  Objective (--loss video, default): whole-video supervision, run.DiffPour -- every observed frame of each
 calibration pour compared with the continuous simulation on its visible surface, normalised per frame, averaged over
 physical time; calibration sequences weighted equally.  Each iteration runs every calibration pattern forward and
 backward (exact adjoint, run.DiffPour.loss_grad), averages the losses and their gradients and takes an Adam step in
@@ -29,13 +31,22 @@ import numpy as np
 from ..v05_adapter import SPACE
 from . import wsolver as W
 
+FOOT_SPACE = {"foot_a": (-0.25, 0.25, "lin"),      # landing-point correction [cup diameters], along the jet
+              "foot_b": (-0.15, 0.15, "lin")}      # ... and across it (schedule.foot_shift); shared by all pours
+SP = dict(SPACE)
 KEYS = tuple(SPACE)
+
+
+def use_foot(on):
+    global KEYS, SP
+    SP = dict(SPACE, **(FOOT_SPACE if on else {}))
+    KEYS = tuple(SP)
 
 
 def to_unit(P):
     u = []
     for k in KEYS:
-        lo, hi, sc = SPACE[k]
+        lo, hi, sc = SP[k]
         v = float(P[k])
         u.append(math.log(v / lo) / math.log(hi / lo) if sc == "log" else (v - lo) / (hi - lo))
     return np.clip(np.array(u), 0.0, 1.0)
@@ -44,7 +55,7 @@ def to_unit(P):
 def from_unit(u, base):
     P = dict(base)
     for k, x in zip(KEYS, np.clip(u, 0.0, 1.0)):
-        lo, hi, sc = SPACE[k]
+        lo, hi, sc = SP[k]
         P[k] = lo * (hi / lo) ** x if sc == "log" else lo + (hi - lo) * x
     return P
 
@@ -53,7 +64,7 @@ def dtheta_du(P):
     """d theta / d u per key (chain rule from the unit box)."""
     out = []
     for k in KEYS:
-        lo, hi, sc = SPACE[k]
+        lo, hi, sc = SP[k]
         out.append(float(P[k]) * math.log(hi / lo) if sc == "log" else hi - lo)
     return np.array(out)
 
@@ -239,17 +250,20 @@ def main(argv=None):
     ap.add_argument("--init", default=None, help="closure json to start from (default: S1)")
     ap.add_argument("--device", default=None)
     ap.add_argument("--T", type=float, default=None, help="simulate only the first T seconds (tests)")
+    ap.add_argument("--no-foot", dest="foot", action="store_false",
+                    help="do not fit the shared landing-point correction (foot_a, foot_b)")
     ap.add_argument("--workers", type=int, default=-1, help="-1: one process per pour on CUDA, in-process on the CPU; "
                     "0: in-process; >0: worker processes")
     a = ap.parse_args(argv)
     os.makedirs(os.path.join(a.out, "fields"), exist_ok=True)
     log = lambda *x: print(*x, flush=True)
+    use_foot(a.foot)
     cal = a.cal.split(",")
     kw = dict(N=a.N, device=a.device, w_gap=a.w_gap, tau=a.tau0, T_max=a.T, loss=a.loss, w_final=a.w_final)
     workers = a.workers if a.workers >= 0 else (len(cal) if (a.device or "cuda").startswith("cuda") else 0)
     pours = {p: Pour(p, kw, process=workers > 0) for p in cal}
     log(f"{len(cal)} calibration pours, {'one worker process each' if workers > 0 else 'in-process'}")
-    base = dict(pours[cal[0]].s1)
+    base = dict(pours[cal[0]].s1, **({"foot_a": 0.0, "foot_b": 0.0} if a.foot else {}))
     if a.init:
         base.update({k: float(v) for k, v in json.load(open(a.init)).items() if k in base})
         log(f"start: {a.init}")

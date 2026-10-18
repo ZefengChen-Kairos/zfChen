@@ -128,6 +128,8 @@ class DiffPour:
         self.sol = W.WSolver(self.geo, v05=self.S["return_law"] == "v05", check_every=check_every, graphs=graphs)
         dev = self.geo.dev
         self.Sw = {k: wp.array(self.S[k], dtype=F, device=dev, requires_grad=True) for k in W.SCHED}
+        self.foot_dir = SC.foot_dirs(self.S["ux"], self.S["uy"])
+        self._foot = (0.0, 0.0)
         tw, valid, gaps, self.T = target_on_grid(p, self.geo)
         self.tw = wp.array(tw, dtype=F, device=dev)
         self.ww = wp.array(valid * (1.0 + w_gap * gaps), dtype=F, device=dev)
@@ -145,12 +147,22 @@ class DiffPour:
             + (f" ({len(self.obs)} observed frames)" if self.obs else ""))
 
     # ------------------------------------------------------------------ pieces
+    def _apply_foot(self, P):
+        """Landing-point correction (schedule.foot_shift) from P['foot_a'], P['foot_b'] (default 0)."""
+        ab = (float(P.get("foot_a", 0.0)), float(P.get("foot_b", 0.0)))
+        if ab != self._foot:
+            x, y = SC.foot_shift(self.S["x"], self.S["y"], self.S["ux"], self.S["uy"], *ab)
+            self.Sw["x"].assign(x)
+            self.Sw["y"].assign(y)
+            self._foot = ab
+
     def _P(self, P, rec):
         Pnp = np.array([float(P[k]) for k in W.PARAMS], float)
         return Pnp, wp.array(Pnp, dtype=F, device=self.geo.dev, requires_grad=rec)
 
     def forward(self, P, keep=True, nsub=None):
         """Final state + per-frame checkpoints (device arrays, fast path with CUDA graphs) + sub-step counts."""
+        self._apply_foot(P)
         sol = self.sol
         sol.rec, sol.tape = False, None
         Pnp, Pw = self._P(P, False)
@@ -225,6 +237,7 @@ class DiffPour:
         return res
 
     def loss(self, P, nsub=None):
+        self._apply_foot(P)
         sol = self.sol
         sol.rec, sol.tape = False, None
         Pnp, Pw = self._P(P, False)
@@ -276,4 +289,9 @@ class DiffPour:
         gP = Pw.grad.numpy()
         self.sched_grad = {k: v.grad.numpy().copy() for k, v in self.Sw.items()}
         self.timing = dict(forward_s=t1 - t0, backward_s=time.time() - t1)
-        return L, {k: float(gP[i]) for i, k in enumerate(W.PARAMS)}, self.sol.to_numpy(final)
+        g = {k: float(gP[i]) for i, k in enumerate(W.PARAMS)}
+        ex, ey = self.foot_dir                      # chain rule of the landing-point correction
+        gx, gy = self.sched_grad["x"], self.sched_grad["y"]
+        g["foot_a"] = float(np.sum(gx * ex + gy * ey))
+        g["foot_b"] = float(np.sum(-gx * ey + gy * ex))
+        return L, g, self.sol.to_numpy(final)

@@ -44,6 +44,39 @@ def build(script, N, num=None, T_max=None):
     return out
 
 
+FOOT = ("foot_a", "foot_b")     # global landing-point correction [cup diameters]: along / across the jet direction
+
+
+def foot_dirs(ux, uy):
+    """Unit vector of the jet's horizontal arrival velocity per frame (zero where it is zero)."""
+    u = np.hypot(ux, uy)
+    ok = u > 1e-12
+    return np.where(ok, ux / np.where(ok, u, 1.0), 0.0), np.where(ok, uy / np.where(ok, u, 1.0), 0.0)
+
+
+def foot_shift(x, y, ux, uy, a, b):
+    """Landing point moved by a along the jet's horizontal direction and b across it (to its left)."""
+    ex, ey = foot_dirs(np.asarray(ux, float), np.asarray(uy, float))
+    return x + a * ex - b * ey, y + a * ey + b * ex
+
+
+def shift_program(prog, a, b):
+    """Make prog(t) return inlets with the landing point shifted (foot_shift), for runs outside the Warp solver."""
+    if not a and not b:
+        return prog
+    base = type(prog)
+
+    class Shifted(base):
+        def __call__(self, t):
+            inl = base.__call__(self, t)
+            if inl.active:
+                x, y = foot_shift(inl.x_hit[0], inl.x_hit[1], inl.u_in[0], inl.u_in[1], a, b)
+                inl.x_hit = (float(x), float(y))
+            return inl
+    prog.__class__ = Shifted
+    return prog
+
+
 def pour_script(p, N):
     """ProgScript of pattern p's measured pour through the Kona 700 mL pitcher (tulip_feas.Pour inlet) and the S1
     closure as starting parameters."""
