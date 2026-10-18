@@ -1,10 +1,13 @@
 """Gradient-based calibration of the V0.5 closure with the differentiable Warp solver.
 
 Parameters: v05_adapter.SPACE (8 closure parameters) in the unit box (log-scaled where SPACE says 'log'); nu and D
-fixed.  Each iteration runs every calibration pattern forward and backward (exact adjoint, run.DiffPour.loss_grad),
-averages the soft-IoU losses and their gradients and takes an Adam step in the unit box (clipped to [0, 1]).  The
-soft-IoU temperature is annealed from --tau0 to --tau1.  Every iteration also scores the final fields with the hard
-metrics of the Sobol fit (tulip_feas.Target.score: IoU, gap IoU, J); the best iterate by mean J is kept.
+fixed.  Objective (--loss video, default): whole-video supervision, run.DiffPour -- every observed frame of each
+calibration pour compared with the continuous simulation on its visible surface, normalised per frame, averaged over
+physical time; calibration sequences weighted equally.  Each iteration runs every calibration pattern forward and
+backward (exact adjoint, run.DiffPour.loss_grad), averages the losses and their gradients and takes an Adam step in
+the unit box (clipped to [0, 1]); the sigmoid temperature is annealed from --tau0 to --tau1.  Reported with every
+iteration: the mean per-frame IoU over the video (vIoU) and the final-frame metrics of the Sobol fit (tulip_feas
+Target.score: IoU, gap IoU, J).  The iterate with the lowest objective is kept (with --loss final: the highest final J).
 Start: --init a closure json (e.g. results/fit/best_closure.json from fit_pipeline, so the gradient refines the
 global Sobol search), default the S1 closure.  A failed forward (non-finite state) halves the step and retries.
 
@@ -91,16 +94,54 @@ def sheet(out, Ds, cal, log):
     plt.close(fig)
 
 
+def video_strip(out, cal):
+    """Per calibration pattern: observed whiteness (visible area) | start | best simulation at 8 observed times."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    rows = []
+    for p in cal:
+        for tag in ("start", "best"):
+            fn = os.path.join(out, "fields", f"{p}_{tag}_video.npz")
+            if os.path.exists(fn):
+                rows.append((p, tag, np.load(fn)))
+    if not rows:
+        return
+    nc = rows[0][2]["c"].shape[0]
+    fig, ax = plt.subplots(len(cal) * 3, nc, figsize=(1.9 * nc, 2.0 * 3 * len(cal)), dpi=90, squeeze=False)
+    for x in ax.flat:
+        x.axis("off")
+    for i, p in enumerate(cal):
+        Zs = {tag: Z for q, tag, Z in rows if q == p}
+        if "best" not in Zs:
+            continue
+        Zb = Zs["best"]
+        for j in range(nc):
+            w = np.where(Zb["v"][j], Zb["w"][j], np.nan)
+            ax[3 * i, j].imshow(w, cmap="gray", vmin=0, vmax=1)
+            ax[3 * i, j].set_title(f"{p} obs t={Zb['t'][j]:.1f}s", fontsize=7)
+            for r, tag in ((1, "start"), (2, "best")):
+                if tag in Zs:
+                    ax[3 * i + r, j].imshow(np.clip(Zs[tag]["c"][j], 0, 1),
+                                            cmap="gray", vmin=0, vmax=1)
+                    ax[3 * i + r, j].set_title(f"sim ({tag})", fontsize=7)
+    fig.tight_layout()
+    fig.savefig(os.path.join(out, "video_strip.png"))
+    plt.close(fig)
+
+
 def progress(out, recs):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     it = [r["it"] for r in recs]
     fig, ax = plt.subplots(1, 3, figsize=(15, 4), dpi=100)
-    ax[0].plot(it, [r["loss"] for r in recs], "k.-"); ax[0].set_title("soft-IoU loss (mean)")
+    ax[0].plot(it, [r["loss"] for r in recs], "k.-"); ax[0].set_title("loss (mean over sequences)")
     for p in recs[0]["per"]:
         ax[1].plot(it, [r["per"][p]["J"] for r in recs], ".-", label=f"{p} J")
-    ax[1].plot(it, [r["J"] for r in recs], "k.-", label="mean J"); ax[1].legend(fontsize=7); ax[1].set_title("IoU + gap IoU")
+    ax[1].plot(it, [r["J"] for r in recs], "k.-", label="mean final J")
+    ax[1].plot(it, [r["viou"] for r in recs], "r.-", label="mean video IoU"); ax[1].legend(fontsize=7)
+    ax[1].set_title("video IoU / final IoU + gap IoU")
     U = np.array([r["u"] for r in recs])
     for i, k in enumerate(KEYS):
         ax[2].plot(it, U[:, i], ".-", label=k)
@@ -122,6 +163,8 @@ def main(argv=None):
     ap.add_argument("--tau0", type=float, default=0.10)
     ap.add_argument("--tau1", type=float, default=0.03)
     ap.add_argument("--w-gap", dest="w_gap", type=float, default=2.0)
+    ap.add_argument("--loss", default="video", choices=["video", "final"])
+    ap.add_argument("--w-final", dest="w_final", type=float, default=0.0, help="extra final-frame soft-IoU term (video loss)")
     ap.add_argument("--init", default=None, help="closure json to start from (default: S1)")
     ap.add_argument("--device", default=None)
     ap.add_argument("--T", type=float, default=None, help="simulate only the first T seconds (tests)")
@@ -130,7 +173,8 @@ def main(argv=None):
     log = lambda *x: print(*x, flush=True)
     from .run import DiffPour
     cal = a.cal.split(",")
-    Ds = {p: DiffPour(p, N=a.N, device=a.device, w_gap=a.w_gap, tau=a.tau0, T_max=a.T, log=log) for p in cal}
+    Ds = {p: DiffPour(p, N=a.N, device=a.device, w_gap=a.w_gap, tau=a.tau0, T_max=a.T, loss=a.loss,
+                       w_final=a.w_final, log=log) for p in cal}
     base = dict(Ds[cal[0]].s1)
     if a.init:
         base.update({k: float(v) for k, v in json.load(open(a.init)).items() if k in base})
@@ -153,7 +197,8 @@ def main(argv=None):
                 D.tau = tau
                 L, g, final = D.loss_grad(P)
                 M, c = score(D, final)
-                res[p] = (L, g, M, c)
+                M["viou"] = float(np.mean([v for _, v in D.vmetrics])) if D.vmetrics else float("nan")
+                res[p] = (L, g, M, c, D.strip, D.vmetrics)
         except RuntimeError as e:                       # non-finite state: back off
             log(f"it {it}: forward failed ({e}); halving the step")
             lr *= 0.5
@@ -163,22 +208,31 @@ def main(argv=None):
         gth = np.mean([[r[1][k] for k in KEYS] for r in res.values()], axis=0)
         gu = gth * dtheta_du(P)
         J = float(np.mean([r[2]["J"] for r in res.values()]))
-        rec = dict(it=it, loss=L, J=J, tau=tau, lr=lr, u=u.tolist(), params={k: P[k] for k in KEYS}, grad_u=gu.tolist(),
-                   per={p: dict(loss=r[0], iou=r[2]["iou"], gap_iou=r[2]["gap_iou"], J=r[2]["J"]) for p, r in res.items()},
+        vI = float(np.mean([r[2]["viou"] for r in res.values()]))
+        rec = dict(it=it, loss=L, J=J, viou=vI, tau=tau, lr=lr, u=u.tolist(), params={k: P[k] for k in KEYS}, grad_u=gu.tolist(),
+                   per={p: dict(loss=r[0], viou=r[2]["viou"], iou=r[2]["iou"], gap_iou=r[2]["gap_iou"], J=r[2]["J"],
+                                video_iou=r[5]) for p, r in res.items()},
                    wall_s=time.time() - t0)
         recs.append(rec)
         with open(fn, "a") as f:
             f.write(json.dumps(rec) + "\n")
-        log(f"it {it:3d}  loss {L:.4f}  J {J:.3f}  " + "  ".join(f"{p} {r[2]['iou']:.2f}/{r[2]['gap_iou']:.2f}" for p, r in res.items())
+        log(f"it {it:3d}  loss {L:.4f}  vIoU {vI:.3f}  final J {J:.3f}  "
+            + "  ".join(f"{p} v{r[2]['viou']:.2f} f{r[2]['iou']:.2f}/{r[2]['gap_iou']:.2f}" for p, r in res.items())
             + f"  |g| {np.linalg.norm(gu):.2e}  {rec['wall_s']:.0f} s ("
             + ", ".join(f"{p} fwd {D.timing['forward_s']:.0f} + bwd {D.timing['backward_s']:.0f} s" for p, D in Ds.items()) + ")")
+        def save(tag):
+            for p, r in res.items():
+                np.save(os.path.join(a.out, "fields", f"{p}_{tag}.npy"), r[3].astype(np.float32))
+                if r[4]:
+                    np.savez_compressed(os.path.join(a.out, "fields", f"{p}_{tag}_video.npz"), t=[x[0] for x in r[4]],
+                                        c=np.array([x[1] for x in r[4]]), w=np.array([x[2] for x in r[4]]),
+                                        v=np.array([x[3] for x in r[4]]))
         if it == 0:
-            for p, r in res.items():
-                np.save(os.path.join(a.out, "fields", f"{p}_start.npy"), r[3].astype(np.float32))
-        if best is None or J > best["J"]:
+            save("start")
+        better = (L < best["loss"]) if (best is not None and a.loss == "video") else (best is None or J > best["J"])
+        if best is None or better:
             best = rec
-            for p, r in res.items():
-                np.save(os.path.join(a.out, "fields", f"{p}_best.npy"), r[3].astype(np.float32))
+            save("best")
             json.dump(dict(P), open(os.path.join(a.out, "best_closure.json"), "w"), indent=1)
         # Adam (descent on the loss) in the unit box
         m1 = b1 * m1 + (1 - b1) * gu
@@ -189,9 +243,11 @@ def main(argv=None):
         it += 1
         progress(a.out, recs)
     sheet(a.out, Ds, cal, log)
-    log(f"best: iteration {best['it']}, mean J {best['J']:.3f} (start {recs[0]['J']:.3f}); "
+    video_strip(a.out, cal)
+    log(f"best: iteration {best['it']}, loss {best['loss']:.4f} (start {recs[0]['loss']:.4f}), video IoU "
+        f"{best['viou']:.3f} (start {recs[0]['viou']:.3f}), final J {best['J']:.3f} (start {recs[0]['J']:.3f}); "
         + " ".join(f"{k} {best['params'][k]:.4g}" for k in KEYS))
-    log(f"-> {a.out}/best_closure.json, progress.png, sheet.png")
+    log(f"-> {a.out}/best_closure.json, progress.png, sheet.png, video_strip.png")
 
 
 if __name__ == "__main__":

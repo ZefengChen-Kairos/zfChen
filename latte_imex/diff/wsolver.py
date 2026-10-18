@@ -1181,10 +1181,12 @@ class WSolver:
         R(f"post{int(nu_on)}{int(mix_on)}", lambda: self._g_post(nu_on, mix_on))
         self.stats["substeps"] += 1
 
-    def fast_forward(self, P, Pnp, S, sched, keep=True, nsub=None, frames=None):
+    def fast_forward(self, P, Pnp, S, sched, keep=True, nsub=None, frames=None, snap=()):
         """Whole pour on persistent buffers.  P, S: device arrays (copied in); sched: host schedule (fdt, q, active).
         Returns final state (device arrays, copies), checkpoints (device arrays, state at each frame start) and the
-        sub-step counts."""
+        sub-step counts; with snap (frame indices) self.snaps = {k: state after frame k}."""
+        self.snaps = {}
+        snap = set(snap)
         self._fast_setup(P, S)
         R, fb = self.runner, self.fb
         R("init", lambda: self.L(k_init_state, [], [fb["l"], fb["qx"], fb["qy"], fb["m"]], record=False))
@@ -1222,5 +1224,7 @@ class WSolver:
                 else:
                     raise RuntimeError(f"frame {k} failed after retries")
             ns.append(n_)
+            if k in snap:
+                self.snaps[k] = self.clone_state({a: fb[a] for a in ("l", "qx", "qy", "m")})
             self.stats["frames"] += 1
         return self.clone_state({a: fb[a] for a in ("l", "qx", "qy", "m")}), ck, ns
