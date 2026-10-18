@@ -7,8 +7,12 @@ Dimensions (mm; z up from the outside bottom, spout towards +x, handle towards -
   spout     V beak, tip 53.5 mm from the axis (tape: spout tip to the opposite rim 96.5 mm); the crease starts
             ~60 mm up the body and opens to +-35 deg at the rim; the lip bends DOWN towards the tip: the rim edge
             drops by SPOUT_DIP (5 mm, catalogue drawing) at the tip while the beak keeps flaring outwards
-  handle    flat strap 13.5 x 2.0 mm (tape), top arm at the rim out to x = -72, vertical drop, rounded return to the
-            body at ~22 mm; thumb tab above the rim to x = -74.5 (128 mm overall)
+  facets    the lower body is a 12-sided prism (photos: vertical flats inside and outside), blending into the round
+            body between FACET_Z0 and FACET_Z1; flats ~1.5 mm inside the round profile
+  bottom    inside: raised round boss (diameter 44, 2 mm) as seen from above
+  handle    flat white strap 13.5 x 2.0 mm (tape), top arm at the rim out to x = -72, vertical drop, rounded return
+            to the body at ~21 mm; a round-topped thumb tab stands ~11 mm above the rim at the arm (photo), 128 mm
+            handle-to-spout overall
     python -m latte_imex.pitcher_geom.make_kona700_cad [--out latte_imex/pitcher_geom/pitcher_kona700]
 """
 import argparse, math, os
@@ -20,6 +24,8 @@ H, WALL, BOTTOM = 122.0, 1.0, 1.2
 LIP_R, CREASE_Z, HALF_RIM = 55.3, 60.0, 35.0   # LIP_R: beak radius extrapolated to z = H (tip at the dipped lip: ~53.5)
 SPOUT_DIP, DIP_HALF = 5.0, 40.0                  # lip drop at the tip [mm], angular half-width of the dip [deg]
 NPH = 144
+N_FACETS, FACET_Z0, FACET_Z1 = 12, 30.0, 48.0
+BOSS_R, BOSS_H = 22.0, 2.0
 
 
 def r_body(z):
@@ -33,7 +39,14 @@ def radius(z, offset, ph):
     tip = rb + (LIP_R + offset - rb) * s ** 1.6           # beak tip radius rises towards the rim
     half = math.radians(12 + (HALF_RIM - 12) * s)
     w = np.clip(1 - np.abs(ph) / half, 0, 1)
-    return np.maximum(rb, rb + (tip - rb) * w ** 1.3)
+    r = np.maximum(rb, rb + (tip - rb) * w ** 1.3)
+    f = np.clip((FACET_Z1 - z) / (FACET_Z1 - FACET_Z0), 0, 1)       # 1: full polygon, 0: round
+    if f > 0:
+        a = 2 * math.pi / N_FACETS
+        d = np.mod(ph + a / 2, a) - a / 2                            # angle from the nearest flat centre (one at the spout)
+        poly = math.cos(a / 2) / np.cos(d)                           # vertices on the circle, flats inside
+        r = r * (1 - f + f * poly * (1 if offset == 0 else 1))
+    return r
 
 
 def rim_height(ph):
@@ -78,9 +91,9 @@ def loft(zs, offset):
 
 def build():
     import cadquery as cq
-    zo = [0.0, 2, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 105, 110, 115, 118, 122]
+    zo = [0.0, 2, 5, 10, 20, 30, 36, 42, 48, 55, 60, 70, 80, 90, 100, 105, 110, 115, 118, 122]
     outer = loft(zo, 0.0)
-    zi = [BOTTOM, 3, 6, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 105, 110, 115, 118, 122, 126]
+    zi = [BOTTOM, 3, 6, 10, 20, 30, 36, 42, 48, 55, 60, 70, 80, 90, 100, 105, 110, 115, 118, 122, 126]
     inner = loft(zi, -WALL)
     shell = cq.Workplane().add(outer).cut(cq.Workplane().add(inner))
     # downward-bent lip: cut away a wedge above z_rim(phi) = H - SPOUT_DIP (1 - |phi| / DIP_HALF)^1.5 around the spout,
@@ -96,14 +109,20 @@ def build():
     shell = shell.cut(cq.Workplane().add(cutter))
     # handle: strap 13.5 (y) x 2.0, path in the x-z plane on the -x side
     T, Wd = 2.0, 13.5
-    path = (cq.Workplane("XZ").moveTo(-r_body(117) + 0.6, 117).lineTo(-66, 117)
-            .threePointArc((-70 + 6 * (1 - math.cos(math.radians(45))), 117 - 6 * (1 - math.cos(math.radians(45)))), (-70, 111))
-            .lineTo(-70, 52)
-            .threePointArc((-63.5, 32), (-r_body(22) + 0.6, 22)))
+    xh = -73.5                                     # strap centre line of the vertical part (outer face at -74.5: 128 mm overall)
+    path = (cq.Workplane("XZ").moveTo(-r_body(117) + 0.6, 117).lineTo(xh + 4, 117)
+            .threePointArc((xh + 6 * (1 - math.cos(math.radians(45))), 117 - 6 * (1 - math.cos(math.radians(45)))), (xh, 111))
+            .lineTo(xh, 52)
+            .threePointArc((xh + 7.5, 31), (-r_body(21) + 0.6, 21)))
     prof = cq.Workplane("YZ", origin=(-r_body(117) + 0.6, 0, 117)).rect(Wd, T)
     handle = prof.sweep(path, transition="round")
-    tab = (cq.Workplane("XY").box(32, Wd, T).translate((-58.5, 0, 0))     # thumb tab: rim -> x = -74.5, rising outwards
-           .rotate((-42.5, 0, 0), (-42.5, 1, 0), 9).translate((0, 0, 120.0)))
+    # thumb tab: strap-wide plate standing on the arm next to the rim, round top, leaning back 15 deg
+    tab_h = 13.0
+    tab = (cq.Workplane("YZ").moveTo(-Wd / 2, 0).lineTo(Wd / 2, 0).lineTo(Wd / 2, tab_h - Wd / 2)
+           .threePointArc((0, tab_h), (-Wd / 2, tab_h - Wd / 2)).close().extrude(T)
+           .rotate((0, 0, 0), (0, 1, 0), -15).translate((-r_body(117) - 3.0, 0, 116.0)))
+    boss = cq.Workplane("XY").circle(BOSS_R).extrude(BOSS_H + 0.2).translate((0, 0, BOTTOM - 0.2)).edges(">Z").fillet(1.5)
+    shell = shell.union(boss)
     solid = shell.union(handle).union(tab)
     for nm, part in (("shell", shell), ("handle", handle), ("tab", tab)):
         b = part.val().BoundingBox()
