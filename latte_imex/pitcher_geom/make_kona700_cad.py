@@ -7,7 +7,7 @@ Dimensions (mm; z up from the outside bottom, spout towards +x, handle towards -
             (tape, across the spout axis), wall 1.0, bottom 1.2
   spout     a pressed channel shows outside as a rounded ridge from ~48 mm up (front photo: rounded lower end
             ~23 mm wide, tapering out to ~44 mm at the rim, ~3 mm proud), flaring in the top ~18 mm into the V beak
-            (+-31 deg at the rim); the lip bends DOWN: the rim edge drops by SPOUT_DIP = 7 mm at the tip (side photo) while the beak
+            (+-31 deg at the rim); the lip bends DOWN: the rim edge drops by SPOUT_DIP = 4.4 mm at the tip (catalogue drawing, gradual over the front half) while the beak
             keeps flaring outwards, tip ~49 mm from the axis (tape across the top: spout tip to the opposite rim
             ~90-96 mm; the catalogue drawing gives ~49)
   facets    the lower body is a 14-sided prism (product page '14边对称设计', flats centred on the spout and the handle), blending into the round
@@ -30,7 +30,7 @@ CREASE_Z, BEAK_Z, RIDGE_H0, RIDGE_H1 = 50.0, 104.0, 2.0, 6.5   # ridge start, be
 RIDGE_HALF0, HALF_RIM = 15.0, 31.0               # channel half-angles [deg]: round lower end, rim
 # (front photo: the channel tapers from ~44 mm wide at the rim to ~23 mm at its rounded lower end at ~48 mm)
 LIP_R = 49.1                                     # beak radius extrapolated to z = H (the dipped tip ends at ~49)
-SPOUT_DIP, DIP_HALF = 7.0, 40.0                  # lip drop at the tip [mm], angular half-width of the dip [deg]
+SPOUT_DIP, DIP_HALF, DIP_POW = 4.4, 100.0, 1.75  # lip drop at the tip [mm] (catalogue drawing), angular half-width [deg], shape
 NPH = 144
 N_FACETS, FACET_Z0, FACET_Z1 = 14, 30.0, 48.0      # product page: 14-sided symmetric body, flats at spout and handle
 BOSS_R, BOSS_H = 22.0, 2.0
@@ -68,7 +68,7 @@ def radius(z, offset, ph):
 def rim_height(ph):
     """Rim edge height [mm] vs azimuth: H, dipping by SPOUT_DIP at the spout tip (downward-bent lip)."""
     w = np.clip(1 - np.abs(np.degrees(ph)) / DIP_HALF, 0, 1)
-    return H - SPOUT_DIP * w ** 1.5
+    return H - SPOUT_DIP * w ** DIP_POW
 
 
 def section(z, offset=0.0):
@@ -112,7 +112,7 @@ def build():
     zi = [BOTTOM, 3, 6, 9, 20, 30, 36, 42, 48, 50, 51.5, 53, 55, 57, 59.5, 62, 66, 70, 80, 90, 100, 104, 108, 112, 115, 118, 120, 122, 126]
     inner = loft(zi, -WALL)
     shell = cq.Workplane().add(outer).cut(cq.Workplane().add(inner))
-    # downward-bent lip: cut away a wedge above z_rim(phi) = H - SPOUT_DIP (1 - |phi| / DIP_HALF)^1.5 around the spout,
+    # downward-bent lip: cut away a wedge above z_rim(phi) = H - SPOUT_DIP (1 - |phi| / DIP_HALF)^DIP_POW around the spout,
     # lofted through planar radial sections (phi = const), so the rim edge slopes down to the tip
     secs = []
     for d in np.linspace(-DIP_HALF, DIP_HALF, 17):
