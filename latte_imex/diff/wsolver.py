@@ -691,7 +691,7 @@ def k_rdiv(r: A2, diag: A2, z: A2):
 class Geo:
     def __init__(self, N, R=0.49, device=None):
         self.N, self.h = N, 1.0 / N
-        self.dev = device or wp.get_preferred_device()
+        self.dev = wp.get_device(device) if device else wp.get_preferred_device()
         h = self.h
         c = (np.arange(N) + 0.5) * h - 0.5
         x = np.repeat(c[None, :], N, 0)
