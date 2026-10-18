@@ -33,6 +33,7 @@ def main():
         _, ns = ref.advance_frame(S["inlets"][k], frame_dt=S["fdt"][k])
         nref.append(ns)
     t_ref = time.time() - t0
+    print(f"numpy reference: {n} frames in {t_ref:.1f} s; compiling/running the Warp solver", flush=True)
     import warp as wp
     wp.init()
     g = W.Geo(a.N, device=a.device)

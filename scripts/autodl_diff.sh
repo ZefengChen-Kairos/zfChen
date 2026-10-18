@@ -16,6 +16,9 @@ if [ "${_LATTE_BG:-}" != "1" ]; then
 fi
 set -eo pipefail
 export PYTHONUNBUFFERED=1
+# the container sees all host cores: uncapped numba/BLAS thread pools oversubscribe the few CPUs it actually has
+export NUMBA_NUM_THREADS=${NUMBA_NUM_THREADS:-4} OMP_NUM_THREADS=${OMP_NUM_THREADS:-4} \
+       OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-4} MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
 [ -f /etc/network_turbo ] && source /etc/network_turbo || true
 export PYTHONWARNINGS=ignore
 python -c "import warp" 2>/dev/null || python -m pip install -q warp-lang
