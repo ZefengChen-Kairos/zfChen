@@ -8,7 +8,8 @@ Dimensions (mm; z up from the outside bottom, spout towards +x, handle towards -
   spout     a pressed channel shows outside as a rounded ridge from ~48 mm up (front photo: rounded lower end
             ~23 mm wide, tapering out to ~44 mm at the rim, ~3 mm proud), flaring in the top ~18 mm into the V beak
             (+-31 deg at the rim); the lip bends DOWN: the rim edge drops by SPOUT_DIP = 7 mm at the tip (side photo) while the beak
-            keeps flaring outwards, tip 53.7 mm from the axis (tape: spout tip to the opposite rim 96.5 mm)
+            keeps flaring outwards, tip ~49 mm from the axis (tape across the top: spout tip to the opposite rim
+            ~90-96 mm; the catalogue drawing gives ~49)
   facets    the lower body is a 14-sided prism (product page '14边对称设计', flats centred on the spout and the handle), blending into the round
             body between FACET_Z0 and FACET_Z1; flats ~1.5 mm inside the round profile
   bottom    inside: raised round boss (diameter 44, 2 mm) as seen from above
@@ -28,7 +29,7 @@ CREASE_Z, BEAK_Z, RIDGE_H0, RIDGE_H1 = 50.0, 104.0, 2.0, 6.5   # ridge start, be
 # (product side photo: the spout side of the silhouette leans out from the channel's end to ~6.5 mm at the beak)
 RIDGE_HALF0, HALF_RIM = 15.0, 31.0               # channel half-angles [deg]: round lower end, rim
 # (front photo: the channel tapers from ~44 mm wide at the rim to ~23 mm at its rounded lower end at ~48 mm)
-LIP_R = 58.0                                     # beak radius extrapolated to z = H (the dipped tip ends at ~53.7)
+LIP_R = 49.1                                     # beak radius extrapolated to z = H (the dipped tip ends at ~49)
 SPOUT_DIP, DIP_HALF = 7.0, 40.0                  # lip drop at the tip [mm], angular half-width of the dip [deg]
 NPH = 144
 N_FACETS, FACET_Z0, FACET_Z1 = 14, 30.0, 48.0      # product page: 14-sided symmetric body, flats at spout and handle
@@ -131,11 +132,12 @@ def build():
             .threePointArc((xh + 7.5, 31), (-r_body(21) + 0.6, 21)))
     prof = cq.Workplane("YZ", origin=(-r_body(117) + 0.6, 0, 117)).rect(Wd, T)
     handle = prof.sweep(path, transition="round")
-    # thumb tab: strap-wide plate standing on the arm next to the rim, round top, leaning back 15 deg
+    # thumb rest: strap-wide plate with a round top standing on the OUTER end of the top arm (above the vertical
+    # part, as on the product), leaning back 20 deg
     tab_h = 13.0
     tab = (cq.Workplane("YZ").moveTo(-Wd / 2, 0).lineTo(Wd / 2, 0).lineTo(Wd / 2, tab_h - Wd / 2)
            .threePointArc((0, tab_h), (-Wd / 2, tab_h - Wd / 2)).close().extrude(T)
-           .rotate((0, 0, 0), (0, 1, 0), -15).translate((-r_body(117) - 3.0, 0, 116.0)))
+           .rotate((0, 0, 0), (0, 1, 0), -20).translate((xh - 1.0, 0, 117.0)))
     boss = cq.Workplane("XY").circle(BOSS_R).extrude(BOSS_H + 0.2).translate((0, 0, BOTTOM - 0.2)).edges(">Z").fillet(1.5)
     shell = shell.union(boss)
     solid = shell.union(handle).union(tab)
