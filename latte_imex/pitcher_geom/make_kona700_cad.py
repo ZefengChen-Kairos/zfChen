@@ -13,9 +13,9 @@ Dimensions (mm; z up from the outside bottom, spout towards +x, handle towards -
   facets    the lower body is a 14-sided prism (product page '14边对称设计', flats centred on the spout and the handle), blending into the round
             body between FACET_Z0 and FACET_Z1; flats ~1.5 mm inside the round profile
   bottom    inside: raised round boss (diameter 44, 2 mm) as seen from above
-  handle    flat white strap 13.5 x 2.0 mm (tape), top arm at the rim out to x = -72, vertical drop, rounded return
-            to the body at ~21 mm; a round-topped thumb tab stands ~11 mm above the rim at the arm (photo), 128 mm
-            handle-to-spout overall
+  handle    two separate flat straps 13.5 x 2.0 mm (tape; product photos): the grip strap (arm at 110 mm out to
+            x = -72, vertical drop, rounded return to the body at ~21 mm) and above it the thumb strap (at 119 mm,
+            parallel, curling up beyond the vertical part to x = -77); 128 mm thumb-rest-to-spout overall
     python -m latte_imex.pitcher_geom.make_kona700_cad [--out latte_imex/pitcher_geom/pitcher_kona700]
 """
 import argparse, math, os
@@ -123,21 +123,21 @@ def build():
         secs.append(cq.Wire.makePolygon([cq.Vector(*p) for p in pts], close=True))
     cutter = cq.Solid.makeLoft(secs, ruled=False)
     shell = shell.cut(cq.Workplane().add(cutter))
-    # handle: strap 13.5 (y) x 2.0, path in the x-z plane on the -x side
+    # handle (product photos): TWO separate straps leaving the body near the rim.
+    #   grip strap (fingers): arm at Z_ARM out to the vertical part at xh, down, rounded return to the body at 21 mm
+    #   thumb strap: above it at Z_THUMB, parallel to the arm, curling up at its outer end beyond the vertical part
     T, Wd = 2.0, 13.5
-    xh = -73.5                                     # strap centre line of the vertical part (outer face at -74.5: 128 mm overall)
-    path = (cq.Workplane("XZ").moveTo(-r_body(117) + 0.6, 117).lineTo(xh + 4, 117)
-            .threePointArc((xh + 6 * (1 - math.cos(math.radians(45))), 117 - 6 * (1 - math.cos(math.radians(45)))), (xh, 111))
+    xh, Z_ARM, Z_THUMB = -72.0, 110.0, 119.0
+    c45 = 1 - math.cos(math.radians(45))
+    path = (cq.Workplane("XZ").moveTo(-r_body(Z_ARM) + 0.6, Z_ARM).lineTo(xh + 6, Z_ARM)
+            .threePointArc((xh + 6 * c45, Z_ARM - 6 * c45), (xh, Z_ARM - 6))
             .lineTo(xh, 52)
             .threePointArc((xh + 7.5, 31), (-r_body(21) + 0.6, 21)))
-    prof = cq.Workplane("YZ", origin=(-r_body(117) + 0.6, 0, 117)).rect(Wd, T)
+    prof = cq.Workplane("YZ", origin=(-r_body(Z_ARM) + 0.6, 0, Z_ARM)).rect(Wd, T)
     handle = prof.sweep(path, transition="round")
-    # thumb rest: strap-wide plate with a round top standing on the OUTER end of the top arm (above the vertical
-    # part, as on the product), leaning back 20 deg
-    tab_h = 13.0
-    tab = (cq.Workplane("YZ").moveTo(-Wd / 2, 0).lineTo(Wd / 2, 0).lineTo(Wd / 2, tab_h - Wd / 2)
-           .threePointArc((0, tab_h), (-Wd / 2, tab_h - Wd / 2)).close().extrude(T)
-           .rotate((0, 0, 0), (0, 1, 0), -20).translate((xh - 1.0, 0, 117.0)))
+    tpath = (cq.Workplane("XZ").moveTo(-r_body(Z_THUMB) + 0.6, Z_THUMB).lineTo(-63.0, Z_THUMB)
+             .threePointArc((-70.5, Z_THUMB + 1.6), (-77.0, Z_THUMB + 6.0)))
+    tab = cq.Workplane("YZ", origin=(-r_body(Z_THUMB) + 0.6, 0, Z_THUMB)).rect(Wd, T).sweep(tpath, transition="round")
     boss = cq.Workplane("XY").circle(BOSS_R).extrude(BOSS_H + 0.2).translate((0, 0, BOTTOM - 0.2)).edges(">Z").fillet(1.5)
     shell = shell.union(boss)
     solid = shell.union(handle).union(tab)
