@@ -85,7 +85,7 @@ E0_WIN = 0.5             # [s] half window of the running median of the measured
 def e0_offsets(p):
     """E0 input replay: the measured landing-point offset of pour p (rig/stream_foot.py: the stream foot seen by the
     three cameras minus the model's landing point, along / across the jet), as functions of the sim time: running
-    median of the trusted frames over +-E0_WIN s, the pour median where no trusted frame is near.  A measurement of
+    median of the trusted frames over +-E0_WIN s (where they are sparse, of the plausible ones), else the pour median.  A measurement of
     the input, not a fit to the pattern (V1 plan 4.1).  None if the pour has no stream_foot.json."""
     import json
     import os
@@ -93,17 +93,25 @@ def e0_offsets(p):
     fn = os.path.join(RES, p, "stream_foot.json")
     if not os.path.exists(fn):
         return None
-    F = [r for r in json.load(open(fn))["frames"] if r.get("trusted") and "along" in r]
+    allf = [r for r in json.load(open(fn))["frames"] if "along" in r]
+    F = [r for r in allf if r.get("trusted")]
     if len(F) < 5:
         return None
+    # second tier where trusted frames are sparse (thin, fast stream: the final cut): plausible frames -- a stream
+    # path that is roughly straight and starts near the tip, but a weaker image response
+    G2 = [r for r in allf if r["quality"] > 0.2 and r["rms_mm"] <= 3.5 and r["slope"] <= 0.8 and r["top_mm"] <= 12.0]
     t = np.array([r["t"] for r in F])
     A = np.array([[r["along"], r["across"]] for r in F])
+    t2 = np.array([r["t"] for r in G2])
+    A2 = np.array([[r["along"], r["across"]] for r in G2]).reshape(-1, 2)
     med = np.median(A, 0)
-    tg = np.arange(t.min() - 1.0, t.max() + 1.0, 0.05)
+    tg = np.arange(min(t.min(), t2.min() if len(t2) else t.min()) - 1.0, max(t.max(), t2.max() if len(t2) else t.max()) + 1.0, 0.05)
     G = np.empty((len(tg), 2))
     for i, tt in enumerate(tg):
         near = np.abs(t - tt) <= E0_WIN
-        G[i] = np.median(A[near], 0) if near.sum() >= 3 else med
+        near2 = np.abs(t2 - tt) <= E0_WIN if len(t2) else np.zeros(0, bool)
+        G[i] = (np.median(A[near], 0) if near.sum() >= 3 else
+                np.median(A2[near2], 0) if near2.sum() >= 3 else med)
     return (lambda tt: float(np.interp(tt, tg, G[:, 0], left=med[0], right=med[0])),
             lambda tt: float(np.interp(tt, tg, G[:, 1], left=med[1], right=med[1])))
 
