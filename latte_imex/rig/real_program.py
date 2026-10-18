@@ -191,7 +191,8 @@ def forward_pitcher():
             geom = GridPitcherGeometry.load(gp, lip_slope=math.radians(ALPHA_DEG))
         else:
             geom = SF.geometry(ALPHA_DEG)
-        _FP["fp"] = ForwardPitcher(geom, ForwardLaw())
+        law = json.loads(os.environ.get("PITCHER_LAW", "{}"))  # e.g. {"C_d": 1.2} (flow-law sensitivity runs)
+        _FP["fp"] = ForwardPitcher(geom, ForwardLaw(**law))
     return _FP["fp"]
 
 
