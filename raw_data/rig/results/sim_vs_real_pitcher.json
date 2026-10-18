@@ -6,7 +6,9 @@
   "sim_flow165_newtarget": 0.81,
   "gap_iou_flow165_newtarget": 0.0,
   "sim_kona": 0.781,
-  "gap_iou_kona": 0.185
+  "gap_iou_kona": 0.185,
+  "sim_kona_cad": 0.775,
+  "gap_iou_kona_cad": 0.036
  },
  "push_heart": {
   "sim_S1": 0.396,
@@ -15,7 +17,9 @@
   "sim_flow165_newtarget": 0.348,
   "gap_iou_flow165_newtarget": 0.011,
   "sim_kona": 0.417,
-  "gap_iou_kona": 0.043
+  "gap_iou_kona": 0.043,
+  "sim_kona_cad": 0.353,
+  "gap_iou_kona_cad": 0.001
  },
  "leaf": {
   "sim_S1": 0.171,
@@ -24,7 +28,9 @@
   "sim_flow165_newtarget": 0.435,
   "gap_iou_flow165_newtarget": 0.071,
   "sim_kona": 0.574,
-  "gap_iou_kona": 0.117
+  "gap_iou_kona": 0.117,
+  "sim_kona_cad": 0.516,
+  "gap_iou_kona_cad": 0.09
  },
  "swan": {
   "sim_S1": 0.205,
@@ -33,7 +39,9 @@
   "sim_flow165_newtarget": 0.488,
   "gap_iou_flow165_newtarget": 0.204,
   "sim_kona": 0.479,
-  "gap_iou_kona": 0.128
+  "gap_iou_kona": 0.128,
+  "sim_kona_cad": 0.47,
+  "gap_iou_kona_cad": 0.23
  },
  "tulip": {
   "sim_S1": 0.342,
@@ -42,6 +50,8 @@
   "sim_flow165_newtarget": 0.329,
   "gap_iou_flow165_newtarget": 0.076,
   "sim_kona": 0.322,
-  "gap_iou_kona": 0.059
+  "gap_iou_kona": 0.059,
+  "sim_kona_cad": 0.29,
+  "gap_iou_kona_cad": 0.098
  }
 }

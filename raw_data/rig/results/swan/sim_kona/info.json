@@ -1,16 +1,16 @@
 {
  "pattern": "swan",
  "flow": "pitcher",
- "V0_mL": 186.49091128652253,
+ "V0_mL": 138.09052636641832,
  "on_target": null,
  "T_pour": 11.516,
  "L_m": 0.08983639426824439,
  "R_disc_mm": 44.019833191439744,
  "observed_on_frac": 0.983935394234109,
- "stream_on_frac_when_obs_on": 0.9912629070691025,
+ "stream_on_frac_when_obs_on": 0.9892330773982879,
  "stream_on_frac_when_obs_off": 0.0,
- "poured_mL": 122.33493087933196,
- "spill_pitcher_mL": 3.2912125773535195,
+ "poured_mL": 107.29301023158214,
+ "spill_pitcher_mL": 0.0,
  "assumptions": {
   "pitcher": "NX CAD stand-in (s1_forward.geometry(0)), spout tip anchored at the measured tip",
   "law": "ForwardLaw() defaults (C_d 0.6, C_v 1, H = max head, projected widths)",
@@ -22,17 +22,17 @@
   "closure": "S1 parameters (latte_imex/data/s1_forward), Params defaults (visc symmetric, offcup account)"
  },
  "n_out": 12516,
- "V_cup_mL": 122.33493087933101,
- "Q_mean_on_mLs": 10.88995803503142,
- "Q_max_mLs": 29.28916047278343,
- "U_exit_mean": 0.34876560222863356,
- "U_perp_mean": 0.6838122665108862,
+ "V_cup_mL": 107.29301023158268,
+ "Q_mean_on_mLs": 9.569742894371773,
+ "Q_max_mLs": 31.08627635661414,
+ "U_exit_mean": 0.3434875090195535,
+ "U_perp_mean": 0.6591085246988395,
  "tip_z_mm": [
-  10.220198242844685,
-  15.362400019824358,
-  54.3962259238045
+  8.088605289030733,
+  13.356210891403373,
+  50.5673328370725
  ],
- "foot_minus_tip_mm": 2.6606054551467153,
+ "foot_minus_tip_mm": 2.9059283765984243,
  "tilt_cad_deg": [
   55.139142396963805,
   79.02364584314475
@@ -41,20 +41,20 @@
   -13.95796753737209,
   8.636740360883579
  ],
- "wall_s": 26.649871349334717,
- "solver_wall_s": 445.71636176109314,
+ "wall_s": 33.96257305145264,
+ "solver_wall_s": 626.611879825592,
  "T": 12.516,
  "ledger": {
-  "t": 12.517877815447216,
-  "layer": 1.0207855969603776,
-  "milk": 0.26706245242912763,
+  "t": 12.518436107851986,
+  "layer": 0.9824372177094246,
+  "milk": 0.2287140731781746,
   "brown": 0.75372314453125,
-  "deposited": 0.2670624524291269,
+  "deposited": 0.22871407317817372,
   "reservoir": 0.0,
-  "spilled": 0.00794942064447934,
+  "spilled": 0.02666259818366411,
   "brown_net": 0.0,
-  "layer_error": 6.661338147750939e-16,
-  "milk_error": 7.216449660063518e-16
+  "layer_error": 8.881784197001252e-16,
+  "milk_error": 8.881784197001252e-16
  },
  "N": 256
 }
