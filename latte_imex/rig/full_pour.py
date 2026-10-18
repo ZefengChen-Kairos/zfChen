@@ -14,6 +14,11 @@ import latte_imex.rig.real_program as RP
 SCR = "/tmp/claude-0/-home-user/699ad593-ca9a-58b9-a0ac-50a2002cb19c/scratchpad/pours"
 CUT = dict(heart=(10.4, 18.4), push_heart=(12.6, 24.0), leaf=(11.0, 20.0), swan=(10.4, 22.0), tulip=(98.8, 112.2))
 TIP_P = np.array([0.0, 0.053, 0.093])
+# CAD jug (pitcher_kona700): rim 92.3 mm above the tag-4 centre (bottom -30.6, height 122.9 in the tag frame), the bent
+# lip ends 5 mm below the rim, 53.7 mm from the axis
+TIP_KONA = np.array([0.0, 0.0537, 0.0873])
+if "kona700" in os.environ.get("PITCHER_GEOM", ""):
+    TIP_P = TIP_KONA
 # Per-pour pitcher-axis correction [deg, about the pitcher x axis; negative = more towards the spout], chosen so that the
 # whole pour (mixing + pattern) empties 165 g of milk (206 mL at 0.8 g/mL) with ~2-3 mL left when the stream breaks.
 DTILT = dict(heart=-6.5, push_heart=-8.0, leaf=-11.5, swan=-8.5, tulip=-7.5)

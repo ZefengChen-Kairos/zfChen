@@ -66,6 +66,8 @@ class Pour:
         if flow == "kona":
             os.environ["PITCHER_GEOM"] = os.path.join(RP.REPO, "latte_imex", "pitcher_geom", "pitcher_kona700.json")
             fill = json.load(open(os.path.join(RP.RES, "full_pour_kona_poured165.json")))[p]["fill_at_cut_mL"]
+            from .full_pour import TIP_KONA
+            RP.TIP_OVERRIDE = TIP_KONA
         else:
             from .full_pour import DTILT
             RP.DTILT.update(DTILT)

@@ -18,12 +18,13 @@ PROFILE_Z = [0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 115, 120, 126]
 PROFILE_R = [47.5, 47.2, 47.0, 46.8, 46.5, 46.3, 46.1, 45.8, 45.9, 45.4, 44.9, 43.9, 43.3, 42.4, 41.2, 39.6]
 # CAFEDE KONA x 元一 "Allround" milk jug, 700 mL version (the rig pitcher): product drawing (height 122 mm, handle-to-spout
 # 128 mm), outer radius measured on the drawing's silhouette at 0.232 mm/px (handle side, the spout side is shaded);
-# spout lip ~49 mm from the axis.  Inner cavity with a 1 mm wall: ~0.70 L, the catalogue capacity.
+# spout lip 53.5 mm from the axis (tape measurement on the real jug: spout tip to the opposite rim 96.5 mm, rim
+# diameter across 84.5 mm; the drawing's shaded spout side gave ~49 mm).  Inner cavity with a 1 mm wall: ~0.67 L.
 PROFILES = dict(
     rig=dict(z=PROFILE_Z, r=PROFILE_R, H=126.0, lip_r=53.0),
     kona700=dict(z=[0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 105, 110, 118, 122],
                  r=[38.0, 39.3, 43.5, 44.0, 44.0, 44.0, 44.0, 43.7, 43.5, 43.3, 42.8, 42.6, 42.3, 42.2, 42.1, 42.1],
-                 H=122.0, lip_r=49.0),
+                 H=122.0, lip_r=53.5),
 )
 
 

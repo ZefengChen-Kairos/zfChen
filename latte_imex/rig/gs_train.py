@@ -92,7 +92,7 @@ KONA700_R = [38.0, 39.3, 43.5, 44.0, 44.0, 44.0, 44.0, 43.7, 43.5, 43.3, 42.8, 4
 
 
 class Shape:
-    """Known pitcher shape (catalogue profile, 1 mm wall, spout lip ~49 mm) as a geometric prior.  The catalogue shape is
+    """Known pitcher shape (catalogue profile, 1 mm wall, spout lip ~53.5 mm) as a geometric prior.  The catalogue shape is
     placed and scaled to the reconstruction: bottom z0 and height H from the depth points along the object z axis,
     radial scale from the mid-height radius; spout azimuth given (handle opposite, left free: thin wire + hand).
     dist(P): distance [mm] of points P [m] to the wall shell (outer and inner wall, inside bottom); 0 in the spout and
@@ -128,7 +128,7 @@ class Shape:
         az = torch.atan2(y, x)
         da = torch.remainder(az - self.spout + math.pi, 2 * math.pi) - math.pi
         top = self.z0 + self.H
-        spout = (da.abs() < math.radians(35)) & (z > top - 30) & (z < top + 2) & (r > ro - 3) & (r < 49.0 * self.rs + 3)
+        spout = (da.abs() < math.radians(35)) & (z > top - 30) & (z < top + 2) & (r > ro - 3) & (r < 53.5 * self.rs + 3)
         dh = torch.remainder(az - self.spout, 2 * math.pi) - math.pi
         handle = (dh.abs() < math.radians(30)) & (z > self.z0 + 3) & (z < top + 4) & (r < ro + 45)
         return torch.where(spout | handle, torch.zeros_like(d), d)
@@ -149,7 +149,7 @@ class Shape:
             S.append(np.stack([rr * np.cos(ph), rr * np.sin(ph), np.full_like(ph, self.z0 + 1.5)], 1))
         for zz in np.arange(self.z0 + self.H - 25, self.z0 + self.H, 1.0):
             for da in np.radians(np.arange(-30, 31, 2.0)):
-                for rr in np.arange(ro(zz), 49.0 * self.rs, 1.0):
+                for rr in np.arange(ro(zz), 53.5 * self.rs, 1.0):
                     a_ = self.spout + da
                     S.append(np.array([[rr * np.cos(a_), rr * np.sin(a_), zz]]))
         S = np.concatenate(S) * 1e-3

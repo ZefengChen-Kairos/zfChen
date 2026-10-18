@@ -122,6 +122,7 @@ M_CAD = np.array([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])   # colum
 
 
 DTILT = {}                                                 # pattern -> extra pitcher rotation about its x axis [deg]
+TIP_OVERRIDE = None                                        # spout tip in the pitcher (tag) frame [m], else pitcher_pose.npz
 
 
 def cup_poses(p, dt=DT):
@@ -136,7 +137,7 @@ def cup_poses(p, dt=DT):
     n = int(math.floor((t1 - t0) / dt))
     tg = t0 + (np.arange(n) + 0.5) * dt
     rots = Rotation.from_rotvec(P["rotvec"])
-    tip_p = np.asarray(P["tip_p"], float)
+    tip_p = np.asarray(P["tip_p"] if TIP_OVERRIDE is None else TIP_OVERRIDE, float)
     if DTILT.get(p):                                       # pitcher-axis correction (full_pour.DTILT), tip kept in place
         rx = Rotation.from_euler("x", DTILT[p], degrees=True)
         rots = rots * rx; tip_p = rx.inv().apply(tip_p)
