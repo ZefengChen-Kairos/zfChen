@@ -15,9 +15,10 @@ Dimensions (mm; z up from the outside bottom, spout towards +x, handle towards -
   facets    the lower body is a 14-sided prism (product page '14边对称设计', flats centred on the spout and the handle), blending into the round
             body between FACET_Z0 and FACET_Z1; flats ~1.5 mm inside the round profile
   bottom    inside: raised round boss (diameter 44, 2 mm) as seen from above
-  handle    two separate flat straps 13.5 x 2.0 mm (tape; product photos): the grip strap (arm at 110 mm out to
-            x = -72, vertical drop, rounded return to the body at ~21 mm) and above it the thumb strap (at 119 mm,
-            parallel, curling up beyond the vertical part to x = -77); 128 mm thumb-rest-to-spout overall
+  handle    two separate flat straps 13.5 x 2.0 mm (tape; product photos), positions traced on the catalogue drawing:
+            the grip strap (arm at 109.3 mm out to x = -73.2, vertical down to ~68 mm, then a long sweep back to the
+            body at ~30.5 mm) and above it the thumb strap (at 115.3 mm, flat to x = -62, rising gently to its end at
+            (-74.3, 119.0))
     python -m latte_imex.pitcher_geom.make_kona700_cad [--out latte_imex/pitcher_geom/pitcher_kona700]
 """
 import argparse, math, os
@@ -31,7 +32,9 @@ CREASE_Z, BEAK_Z = 52.0, 108.0                   # channel start, beak flare sta
 # spout centre-line outer radius [mm] vs height (catalogue drawing, spout-side silhouette, 0.232 mm/px): quick rise of
 # the pressed channel, nearly flat, then the flare of the top ~10 mm to the tip (the dipped lip ends at ~117.6)
 SPOUT_Z = [52.0, 58.0, 64.0, 70.0, 80.0, 90.0, 100.0, 108.0, 110.0, 112.0, 114.0, 116.0, 118.0, 120.0, 122.0]
-SPOUT_R = [43.3, 44.1, 44.5, 44.9, 45.5, 45.9, 46.1, 46.4, 46.6, 47.0, 47.5, 48.2, 49.0, 49.7, 50.3]
+SPOUT_R = [43.3, 44.9, 45.8, 46.3, 46.9, 47.3, 47.5, 47.8, 48.0, 48.4, 48.9, 49.6, 50.4, 51.1, 51.7]
+# (re-traced with the body axis from the mid-height body edges: +1.4 mm on the first tracing above z 64, ramping in
+# from the channel's start; agrees with the tape, spout tip to the opposite rim ~90-96 mm)
 RIDGE_HALF0, HALF_RIM = 15.0, 31.0               # channel half-angles [deg]: round lower end, rim
 # (front photo: the channel tapers from ~44 mm wide at the rim to ~23 mm at its rounded lower end at ~48 mm)
 SPOUT_DIP, DIP_HALF, DIP_POW = 4.4, 100.0, 1.75  # lip drop at the tip [mm] (catalogue drawing), angular half-width [deg], shape
@@ -141,19 +144,22 @@ def build():
     cutter = cq.Solid.makeLoft(secs, ruled=False)
     shell = shell.cut(cq.Workplane().add(cutter))
     # handle (product photos): TWO separate straps leaving the body near the rim.
-    #   grip strap (fingers): arm at Z_ARM out to the vertical part at xh, down, rounded return to the body at 21 mm
-    #   thumb strap: above it at Z_THUMB, parallel to the arm, curling up at its outer end beyond the vertical part
+    #   grip strap (fingers): arm at Z_ARM out to the vertical part at xh, down to ~68 mm, then a long sweep back to the
+    #   body at ~30.5 mm (catalogue drawing, traced: GRIP_SWEEP = strap centre line)
+    #   thumb strap: above it at Z_THUMB, flat out to x -62, then rising gently to its end at (-74.3, 119.0) (traced)
     T, Wd = 2.0, 13.5
-    xh, Z_ARM, Z_THUMB = -72.0, 110.0, 119.0
+    xh, Z_ARM, Z_THUMB = -73.2, 109.3, 115.3
+    GRIP_SWEEP = [(-72.7, 63.0), (-71.8, 58.0), (-70.0, 53.0), (-67.6, 48.0), (-64.4, 43.0), (-60.1, 38.5),
+                  (-55.0, 34.8), (-50.0, 32.3), (-r_body(30.5) + 0.6, 30.5)]
     c45 = 1 - math.cos(math.radians(45))
     path = (cq.Workplane("XZ").moveTo(-r_body(Z_ARM) + 0.6, Z_ARM).lineTo(xh + 6, Z_ARM)
             .threePointArc((xh + 6 * c45, Z_ARM - 6 * c45), (xh, Z_ARM - 6))
-            .lineTo(xh, 52)
-            .threePointArc((xh + 7.5, 31), (-r_body(21) + 0.6, 21)))
+            .lineTo(xh, 68.0)
+            .spline(GRIP_SWEEP, tangents=[(0, -1), (1.0, -0.15)], includeCurrent=True))
     prof = cq.Workplane("YZ", origin=(-r_body(Z_ARM) + 0.6, 0, Z_ARM)).rect(Wd, T)
     handle = prof.sweep(path, transition="round")
-    tpath = (cq.Workplane("XZ").moveTo(-r_body(Z_THUMB) + 0.6, Z_THUMB).lineTo(-63.0, Z_THUMB)
-             .threePointArc((-70.5, Z_THUMB + 1.6), (-77.0, Z_THUMB + 6.0)))
+    tpath = (cq.Workplane("XZ").moveTo(-r_body(Z_THUMB) + 0.6, Z_THUMB).lineTo(-62.0, Z_THUMB)
+             .threePointArc((-68.5, 116.6), (-74.3, 119.0)))
     tab = cq.Workplane("YZ", origin=(-r_body(Z_THUMB) + 0.6, 0, Z_THUMB)).rect(Wd, T).sweep(tpath, transition="round")
     boss = cq.Workplane("XY").circle(BOSS_R).extrude(BOSS_H + 0.2).translate((0, 0, BOTTOM - 0.2)).edges(">Z").fillet(1.5)
     shell = shell.union(boss)

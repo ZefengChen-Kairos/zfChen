@@ -16,7 +16,7 @@ CUT = dict(heart=(10.4, 18.4), push_heart=(12.6, 24.0), leaf=(11.0, 20.0), swan=
 TIP_P = np.array([0.0, 0.053, 0.093])
 # CAD jug (pitcher_kona700): rim 92.3 mm above the tag-4 centre (bottom -30.6, height 122.9 in the tag frame), the bent
 # lip ends 7 mm below the rim, ~49 mm from the axis
-TIP_KONA = np.array([0.0, 0.0490, 0.0879])
+TIP_KONA = np.array([0.0, 0.0502, 0.0879])
 if "kona700" in os.environ.get("PITCHER_GEOM", ""):
     TIP_P = TIP_KONA
 # Per-pour pitcher-axis correction [deg, about the pitcher x axis; negative = more towards the spout], chosen so that the
