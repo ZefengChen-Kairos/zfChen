@@ -215,10 +215,11 @@ def sheet(a, rows, cal):
 # ----------------------------------------------------------------------------- render
 def _solve_one(args):
     p, out, closure, N = args
+    sub = "sim_" + os.path.basename(os.path.normpath(out))           # results/fit -> sim_fit, results/diff_fit -> sim_diff_fit
     os.environ["PITCHER_GEOM"] = os.path.join(RP.REPO, "latte_imex", "pitcher_geom", "pitcher_kona700.json")
     from .full_pour import TIP_KONA
     RP.TIP_OVERRIDE = TIP_KONA
-    RP.SIM_SUB = "sim_fit"
+    RP.SIM_SUB = sub
     RP._FP.clear()
     fill = json.load(open(os.path.join(RP.RES, "full_pour_kona_poured165.json")))[p]["fill_at_cut_mL"]
     od, info = RP.solve(p, N, "pitcher", video=True, V0=fill * 1e-6, log=lambda *x: None, closure=closure)
@@ -353,7 +354,7 @@ def render(a, log=print):
     for p in pats:
         movie(p, res[p], os.path.join(rd, f"{p}.mp4"))
         log(f"  {p}: {os.path.join(rd, p + '.mp4')}")
-    RP.SIM_SUB = "sim_fit"
+    RP.SIM_SUB = "sim_" + os.path.basename(os.path.normpath(a.out))
     RP.compare(pats, "pitcher", a.N_render, out=os.path.join(rd, "summary.png"))
     log(f"  -> {rd}/summary.png (+ .json)")
 

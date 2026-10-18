@@ -57,14 +57,16 @@ def target_on_grid(p, geo):
 
 
 class DiffPour:
-    def __init__(self, p, N=128, device=None, T_max=None, w_gap=2.0, tau=0.05, log=print):
+    def __init__(self, p, N=128, device=None, T_max=None, w_gap=2.0, tau=0.05, check_every=None, log=print):
         self.p, self.N, self.log = p, N, log
         wp.init()
         script, pour = SC.pour_script(p, N)
         self.script, self.pour = script, pour
         self.S = SC.build(script, N, T_max=T_max)
         self.geo = W.Geo(N, device=device)
-        self.sol = W.WSolver(self.geo, v05=self.S["return_law"] == "v05")
+        if check_every is None:                     # PCG convergence read back every 4 iterations on the GPU
+            check_every = 4 if self.geo.dev.is_cuda else 1
+        self.sol = W.WSolver(self.geo, v05=self.S["return_law"] == "v05", check_every=check_every)
         dev = self.geo.dev
         self.Sw = {k: wp.array(self.S[k], dtype=F, device=dev, requires_grad=True) for k in W.SCHED}
         tw, valid, gaps, self.T = target_on_grid(p, self.geo)

@@ -574,6 +574,50 @@ def k_neg(a: A2, b: A2):
     b[j, i] = -a[j, i]
 
 
+@wp.kernel
+def k_rowdot(a: A2, b: A2, N: int, add: int, rows: A1):
+    """rows[j] (+)= sum_i a[j, i] b[j, i]  (first level of a contention-free dot product)."""
+    j = wp.tid()
+    acc = F(0.0)
+    for i in range(N):
+        acc += a[j, i] * b[j, i]
+    if add != 0:
+        rows[j] = rows[j] + acc
+    else:
+        rows[j] = acc
+
+
+@wp.kernel
+def k_rowsum(rows: A1, N: int, sc: A1, slot: int):
+    acc = F(0.0)
+    for j in range(N):
+        acc += rows[j]
+    sc[slot] = acc
+
+
+@wp.kernel
+def k_alpha(sc: A1):
+    sc[2] = sc[0] / (sc[1] + F(1e-300))
+
+
+@wp.kernel
+def k_beta(sc: A1):
+    sc[4] = sc[3] / sc[0]
+    sc[0] = sc[3]
+
+
+@wp.kernel
+def k_cg_dir_dev(r: A2, diag: A2, sc: A1, p: A2):
+    j, i = wp.tid()
+    p[j, i] = r[j, i] / diag[j, i] + sc[4] * p[j, i]
+
+
+@wp.kernel
+def k_rdiv(r: A2, diag: A2, z: A2):
+    j, i = wp.tid()
+    z[j, i] = r[j, i] / diag[j, i]
+
+
 # ============================================================================ geometry
 class Geo:
     def __init__(self, N, R=0.49, device=None):
@@ -610,7 +654,7 @@ class WSolver:
     `tape` (set by the caller)."""
 
     def __init__(self, geo, cfl=0.5, max_substeps=64, cg_tol=1e-10, visc_tol=1e-8, cg_maxiter=500,
-                 kernel_quadrature=3, explicit_mixing_limit=0.05, l_floor=1e-3, v05=True):
+                 kernel_quadrature=3, explicit_mixing_limit=0.05, l_floor=1e-3, v05=True, check_every=1):
         self.g = geo
         self.cfl, self.max_substeps = cfl, max_substeps
         self.cg_tol, self.visc_tol, self.cg_maxiter = cg_tol, visc_tol, cg_maxiter
@@ -620,7 +664,9 @@ class WSolver:
         self.stats = dict(cg_mass=0, cg_visc=0, cg_adj=0, substeps=0, frames=0)
         N = geo.N
         self._buf = {k: wp.zeros((N, N), dtype=F, device=geo.dev) for k in ("r", "p", "Ap", "r2", "p2", "Ap2", "tmp", "tmp2")}
-        self._one = wp.zeros(64, dtype=F, device=geo.dev)
+        self._rows = wp.zeros(N, dtype=F, device=geo.dev)
+        self._sc = wp.zeros(8, dtype=F, device=geo.dev)       # rz, pAp, alpha, rz_new, beta, rr, bb
+        self.check_every = check_every
 
     # ------------------------------------------------------------------ arrays
     def new(self):
@@ -643,14 +689,16 @@ class WSolver:
         return {k: v.numpy().copy() for k, v in st.items()}
 
     # ------------------------------------------------------------------ PCG (not taped) and its adjoint
-    def _dot(self, pairs):
-        self._one.zero_()
-        for a, b in pairs:
-            self.L(k_dot, [a, b, self._one], record=False)
-        return float(self._one.numpy()[0])
+    def _dotdev(self, pairs, slot):
+        """sc[slot] = sum over the pairs of a . b, on the device (no host sync)."""
+        N = self.g.N
+        for c, (a, b) in enumerate(pairs):
+            wp.launch(k_rowdot, dim=N, inputs=[a, b, N, int(c > 0), self._rows], device=self.g.dev, record_tape=False)
+        wp.launch(k_rowsum, dim=1, inputs=[self._rows, N, self._sc, slot], device=self.g.dev, record_tape=False)
 
     def pcg(self, apply, b, diag, x0, tol):
-        """apply(xs, outs, record) -> writes outs; b, diag, x0: lists of 1 or 2 arrays.  Returns (x list, iterations)."""
+        """Jacobi-preconditioned CG, scalars on the device; convergence (|r| <= tol |b|) read back every
+        self.check_every iterations.  apply(xs, outs, record) writes outs; b, diag, x0: lists of 1 or 2 arrays."""
         n = len(b)
         names = (("r", "p", "Ap"), ("r2", "p2", "Ap2"))[:n]
         x = []
@@ -661,30 +709,31 @@ class WSolver:
         r = [self._buf[nm[0]] for nm in names]
         p = [self._buf[nm[1]] for nm in names]
         Ap = [self._buf[nm[2]] for nm in names]
+        z = [self._buf["tmp"], self._buf["tmp2"]][:n]
+        sc = self._sc
         apply(x, Ap, False)
         for c in range(n):
             self.L(k_cg_init, [b[c], Ap[c], diag[c], r[c], p[c]], record=False)
-        rz = self._dot(list(zip(r, p)))
-        bnorm = math.sqrt(self._dot(list(zip(b, b)))) + 1e-300
+        self._dotdev(list(zip(r, p)), 0)                     # rz
+        self._dotdev(list(zip(b, b)), 6)
+        bnorm = math.sqrt(float(sc.numpy()[6])) + 1e-300
         it = 0
-        alpha = wp.zeros(1, dtype=F, device=self.g.dev)
         for it in range(1, self.cg_maxiter + 1):
             apply(p, Ap, False)
-            pAp = self._dot(list(zip(p, Ap)))
-            alpha.fill_(rz / (pAp + 1e-300))
+            self._dotdev(list(zip(p, Ap)), 1)
+            wp.launch(k_alpha, dim=1, inputs=[sc], device=self.g.dev, record_tape=False)
             for c in range(n):
-                self.L(k_cg_step, [alpha, 0, p[c], Ap[c], x[c], r[c]], record=False)
-            if math.sqrt(self._dot(list(zip(r, r)))) <= tol * bnorm:
-                break
-            # rz_new = r . (r / diag)
-            self._one.zero_()
+                self.L(k_cg_step, [sc, 2, p[c], Ap[c], x[c], r[c]], record=False)
+            if it % self.check_every == 0 or it == self.cg_maxiter:
+                self._dotdev(list(zip(r, r)), 5)
+                if math.sqrt(max(float(sc.numpy()[5]), 0.0)) <= tol * bnorm:
+                    break
             for c in range(n):
-                self.L(k_cg_dir, [r[c], diag[c], F(0.0), self._buf["tmp"]], record=False)
-                self.L(k_dot, [r[c], self._buf["tmp"], self._one], record=False)
-            rz_new = float(self._one.numpy()[0])
+                self.L(k_rdiv, [r[c], diag[c], z[c]], record=False)
+            self._dotdev(list(zip(r, z)), 3)                 # rz_new
+            wp.launch(k_beta, dim=1, inputs=[sc], device=self.g.dev, record_tape=False)
             for c in range(n):
-                self.L(k_cg_dir, [r[c], diag[c], F(rz_new / rz), p[c]], record=False)
-            rz = rz_new
+                self.L(k_cg_dir_dev, [r[c], diag[c], sc, p[c]], record=False)
         return x, it
 
     def solve(self, apply, coefs, b, diag, x0, tol, key):

@@ -37,6 +37,6 @@ echo "===== $(date '+%F %T') render ====="
 python -m latte_imex.rig.fit_pipeline render --out "$OUT" --cal "$CAL" --jobs ${JOBS:-5}
 tar -czf results/fit_results.tar.gz "$OUT/summary.json" "$OUT/best_closure.json" "$OUT/records.jsonl" "$OUT/config.json" \
     "$OUT/sheet.png" "$OUT/render" $(ls "$OUT"/fields/C_*_N256.npy 2>/dev/null) \
-    raw_data/rig/results/*/sim_fit/info.json raw_data/rig/results/*/sim_fit/c.npz raw_data/rig/results/*/sim_fit/movie.mp4 "$LOG"
+    raw_data/rig/results/*/sim_$(basename "$OUT")/info.json raw_data/rig/results/*/sim_$(basename "$OUT")/c.npz "$LOG"
 ls -lh results/fit_results.tar.gz
 echo "===== $(date '+%F %T') DONE ====="
