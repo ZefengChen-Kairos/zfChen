@@ -5,9 +5,11 @@ Dimensions (mm; z up from the outside bottom, spout towards +x, handle towards -
   body      straight sides (photos): bevel at the bottom, wall from r 44.0 (z 9) to the rim, rim diameter 84.5 (tape),
             height 122 / 128 mm handle-to-spout (catalogue)
             (tape, across the spout axis), wall 1.0, bottom 1.2
-  spout     a pressed channel shows outside as a rounded ridge from ~48 mm up (front photo: rounded lower end
-            ~23 mm wide, tapering out to ~44 mm at the rim, ~3 mm proud), flaring in the top ~18 mm into the V beak
-            (+-31 deg at the rim); the lip bends DOWN: the rim edge drops by SPOUT_DIP = 4.4 mm at the tip (catalogue drawing, gradual over the front half) while the beak
+  spout     a pressed channel shows outside as a rounded ridge from ~52 mm up (front photo: rounded lower end
+            ~23 mm wide, tapering out to ~44 mm at the rim); its centre-line radius follows the catalogue drawing
+            (SPOUT_Z / SPOUT_R, measured on the silhouette): it rises quickly to ~4 mm proud by z 70, stays almost
+            constant up to ~108 and flares out only in the top ~10 mm to the tip (concave, trumpet-like front edge),
+            where the round channel turns into the V beak (+-31 deg at the rim); the lip bends DOWN: the rim edge drops by SPOUT_DIP = 4.4 mm at the tip (catalogue drawing, gradual over the front half) while the beak
             keeps flaring outwards, tip ~49 mm from the axis (tape across the top: spout tip to the opposite rim
             ~90-96 mm; the catalogue drawing gives ~49)
   facets    the lower body is a 14-sided prism (product page '14边对称设计', flats centred on the spout and the handle), blending into the round
@@ -25,11 +27,13 @@ import numpy as np
 PROFILE_Z = [0.0, 9.0, 122.0]
 PROFILE_R = [39.5, 44.0, 42.25]
 H, WALL, BOTTOM = 122.0, 0.6, 0.8        # sheet thickness: < 1 mm, ~0.5-0.6 mm (user, by hand)
-CREASE_Z, BEAK_Z, RIDGE_H0, RIDGE_H1 = 50.0, 104.0, 2.0, 6.5   # ridge start, beak flare start [mm]; ridge height at both
-# (product side photo: the spout side of the silhouette leans out from the channel's end to ~6.5 mm at the beak)
+CREASE_Z, BEAK_Z = 52.0, 108.0                   # channel start, beak flare start [mm]
+# spout centre-line outer radius [mm] vs height (catalogue drawing, spout-side silhouette, 0.232 mm/px): quick rise of
+# the pressed channel, nearly flat, then the flare of the top ~10 mm to the tip (the dipped lip ends at ~117.6)
+SPOUT_Z = [52.0, 58.0, 64.0, 70.0, 80.0, 90.0, 100.0, 108.0, 110.0, 112.0, 114.0, 116.0, 118.0, 120.0, 122.0]
+SPOUT_R = [43.3, 44.1, 44.5, 44.9, 45.5, 45.9, 46.1, 46.4, 46.6, 47.0, 47.5, 48.2, 49.0, 49.7, 50.3]
 RIDGE_HALF0, HALF_RIM = 15.0, 31.0               # channel half-angles [deg]: round lower end, rim
 # (front photo: the channel tapers from ~44 mm wide at the rim to ~23 mm at its rounded lower end at ~48 mm)
-LIP_R = 49.1                                     # beak radius extrapolated to z = H (the dipped tip ends at ~49)
 SPOUT_DIP, DIP_HALF, DIP_POW = 4.4, 100.0, 1.75  # lip drop at the tip [mm] (catalogue drawing), angular half-width [deg], shape
 NPH = 144
 N_FACETS, FACET_Z0, FACET_Z1 = 14, 30.0, 48.0      # product page: 14-sided symmetric body, flats at spout and handle
@@ -40,14 +44,26 @@ def r_body(z):
     return float(np.interp(z, PROFILE_Z, PROFILE_R))
 
 
+_SPOUT = None
+
+
+def r_spout(z):
+    """Spout centre-line outer radius [mm] (smooth monotone interpolation of SPOUT_Z / SPOUT_R)."""
+    global _SPOUT
+    if _SPOUT is None:
+        from scipy.interpolate import PchipInterpolator
+        _SPOUT = PchipInterpolator(SPOUT_Z, SPOUT_R)
+    return float(_SPOUT(np.clip(z, SPOUT_Z[0], SPOUT_Z[-1])))
+
+
 def radius(z, offset, ph):
     """Wall radius at height z [mm] and azimuths ph [rad] (spout at 0): outer (offset 0) or inner (offset -WALL)."""
     rb = r_body(min(z, H)) + offset
     zc = min(z, H)
-    ridge = ((RIDGE_H0 + (RIDGE_H1 - RIDGE_H0) * min(1.0, (zc - CREASE_Z) / (BEAK_Z - CREASE_Z)))
-             * min(1.0, (zc - CREASE_Z) / 4.0) ** 0.5) if zc > CREASE_Z else 0.0
+    # channel height above the body: from the drawing, faded in over the first 4 mm (rounded lower end)
+    ridge = max(r_spout(zc) + offset - rb, 0.0) * min(1.0, (zc - CREASE_Z) / 4.0) ** 0.5 if zc > CREASE_Z else 0.0
     b = np.clip((zc - BEAK_Z) / (H - BEAK_Z), 0, 1) ** 1.3                                        # beak flare 0..1
-    tip = rb + ridge + (LIP_R + offset - rb - ridge) * b
+    tip = rb + ridge
     # straight channel edges (front photo): the half-width grows linearly from the round end to the rim
     half = math.radians(RIDGE_HALF0 + (HALF_RIM - RIDGE_HALF0) * np.clip((zc - CREASE_Z) / (H - CREASE_Z), 0, 1))
     r_end = (rb * math.radians(RIDGE_HALF0))                        # rounded (semicircular) lower end of the channel
@@ -107,9 +123,10 @@ def loft(zs, offset):
 
 def build():
     import cadquery as cq
-    zo = [0.0, 2, 5, 9, 20, 30, 36, 42, 48, 50, 51.5, 53, 55, 57, 59.5, 62, 66, 70, 80, 90, 100, 104, 108, 112, 115, 118, 120, 122]
+    top = [100, 104, 106, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122]
+    zo = [0.0, 2, 5, 9, 20, 30, 36, 42, 48, 50, 52, 53, 54.5, 56, 58, 61, 64, 67, 70, 75, 80, 90] + top
     outer = loft(zo, 0.0)
-    zi = [BOTTOM, 3, 6, 9, 20, 30, 36, 42, 48, 50, 51.5, 53, 55, 57, 59.5, 62, 66, 70, 80, 90, 100, 104, 108, 112, 115, 118, 120, 122, 126]
+    zi = [BOTTOM, 3, 6, 9, 20, 30, 36, 42, 48, 50, 52, 53, 54.5, 56, 58, 61, 64, 67, 70, 75, 80, 90] + top + [126]
     inner = loft(zi, -WALL)
     shell = cq.Workplane().add(outer).cut(cq.Workplane().add(inner))
     # downward-bent lip: cut away a wedge above z_rim(phi) = H - SPOUT_DIP (1 - |phi| / DIP_HALF)^DIP_POW around the spout,
