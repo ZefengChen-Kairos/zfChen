@@ -4,9 +4,10 @@ NX stand-in (pitcher_nx.stp: straight 101 mm cylinder, 0.52 L) with the jug actu
 Dimensions (mm; z up from the outside bottom, spout towards +x, handle towards -x):
   body      outer radius profile of the catalogue drawing (height 122, 128 mm handle-to-spout), rim diameter 84.5
             (tape, across the spout axis), wall 1.0, bottom 1.2
-  spout     V beak, tip 53.5 mm from the axis (tape: spout tip to the opposite rim 96.5 mm); the crease starts
-            ~60 mm up the body and opens to +-35 deg at the rim; the lip bends DOWN towards the tip: the rim edge
-            drops by SPOUT_DIP (5 mm, catalogue drawing) at the tip while the beak keeps flaring outwards
+  spout     a pressed channel shows outside as a rounded ridge from ~45 mm up (photo: rounded lower end, ~17 mm
+            wide, ~23 mm wide near the top, ~3 mm proud), flaring in the top ~18 mm into the V beak (+-35 deg at the
+            rim); the lip bends DOWN: the rim edge drops by SPOUT_DIP = 7 mm at the tip (side photo) while the beak
+            keeps flaring outwards, tip 53.7 mm from the axis (tape: spout tip to the opposite rim 96.5 mm)
   facets    the lower body is a 12-sided prism (photos: vertical flats inside and outside), blending into the round
             body between FACET_Z0 and FACET_Z1; flats ~1.5 mm inside the round profile
   bottom    inside: raised round boss (diameter 44, 2 mm) as seen from above
@@ -21,8 +22,10 @@ import numpy as np
 PROFILE_Z = [0, 2, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 105, 110, 118, 122]
 PROFILE_R = [38.0, 38.6, 39.6, 43.0, 44.0, 44.0, 44.0, 44.0, 43.7, 43.5, 43.3, 42.8, 42.6, 42.4, 42.3, 42.25, 42.25]
 H, WALL, BOTTOM = 122.0, 1.0, 1.2
-LIP_R, CREASE_Z, HALF_RIM = 55.3, 60.0, 35.0   # LIP_R: beak radius extrapolated to z = H (tip at the dipped lip: ~53.5)
-SPOUT_DIP, DIP_HALF = 5.0, 40.0                  # lip drop at the tip [mm], angular half-width of the dip [deg]
+CREASE_Z, BEAK_Z, RIDGE_H = 45.0, 104.0, 3.0    # ridge start, beak flare start [mm], ridge height [mm]
+RIDGE_HALF0, RIDGE_HALF1, HALF_RIM = 11.0, 15.0, 35.0   # half-angles [deg]: ridge bottom, ridge top, beak at the rim
+LIP_R = 61.2                                     # beak radius extrapolated to z = H (the dipped tip ends at ~53.7)
+SPOUT_DIP, DIP_HALF = 7.0, 40.0                  # lip drop at the tip [mm], angular half-width of the dip [deg]
 NPH = 144
 N_FACETS, FACET_Z0, FACET_Z1 = 12, 30.0, 48.0
 BOSS_R, BOSS_H = 22.0, 2.0
@@ -35,11 +38,17 @@ def r_body(z):
 def radius(z, offset, ph):
     """Wall radius at height z [mm] and azimuths ph [rad] (spout at 0): outer (offset 0) or inner (offset -WALL)."""
     rb = r_body(min(z, H)) + offset
-    s = np.clip((min(z, H) - CREASE_Z) / (H - CREASE_Z), 0, 1)
-    tip = rb + (LIP_R + offset - rb) * s ** 1.6           # beak tip radius rises towards the rim
-    half = math.radians(12 + (HALF_RIM - 12) * s)
-    w = np.clip(1 - np.abs(ph) / half, 0, 1)
-    r = np.maximum(rb, rb + (tip - rb) * w ** 1.3)
+    zc = min(z, H)
+    ridge = RIDGE_H * min(1.0, max(zc - CREASE_Z, 0.0) / 10.0) ** 0.5 if zc > CREASE_Z else 0.0   # rounded lower end
+    b = np.clip((zc - BEAK_Z) / (H - BEAK_Z), 0, 1) ** 1.3                                        # beak flare 0..1
+    tip = rb + ridge + (LIP_R + offset - rb - ridge) * b
+    if zc <= BEAK_Z:
+        half = math.radians(RIDGE_HALF0 + (RIDGE_HALF1 - RIDGE_HALF0) * np.clip((zc - CREASE_Z) / (BEAK_Z - CREASE_Z), 0, 1))
+    else:
+        half = math.radians(RIDGE_HALF1 + (HALF_RIM - RIDGE_HALF1) * (zc - BEAK_Z) / (H - BEAK_Z))
+    x = np.clip(np.abs(ph) / half, 0, 1)
+    prof = (1 - b) * np.sqrt(1 - x ** 2) + b * (1 - x) ** 1.3                                     # round ridge -> V beak
+    r = rb + (tip - rb) * prof
     f = np.clip((FACET_Z1 - z) / (FACET_Z1 - FACET_Z0), 0, 1)       # 1: full polygon, 0: round
     if f > 0:
         a = 2 * math.pi / N_FACETS
@@ -91,9 +100,9 @@ def loft(zs, offset):
 
 def build():
     import cadquery as cq
-    zo = [0.0, 2, 5, 10, 20, 30, 36, 42, 48, 55, 60, 70, 80, 90, 100, 105, 110, 115, 118, 122]
+    zo = [0.0, 2, 5, 10, 20, 30, 36, 42, 45, 48, 52, 56, 62, 70, 80, 90, 100, 104, 108, 112, 115, 118, 120, 122]
     outer = loft(zo, 0.0)
-    zi = [BOTTOM, 3, 6, 10, 20, 30, 36, 42, 48, 55, 60, 70, 80, 90, 100, 105, 110, 115, 118, 122, 126]
+    zi = [BOTTOM, 3, 6, 10, 20, 30, 36, 42, 45, 48, 52, 56, 62, 70, 80, 90, 100, 104, 108, 112, 115, 118, 120, 122, 126]
     inner = loft(zi, -WALL)
     shell = cq.Workplane().add(outer).cut(cq.Workplane().add(inner))
     # downward-bent lip: cut away a wedge above z_rim(phi) = H - SPOUT_DIP (1 - |phi| / DIP_HALF)^1.5 around the spout,
