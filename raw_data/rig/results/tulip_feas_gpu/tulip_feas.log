@@ -1,0 +1,111 @@
+设置成功!
+注意：
+1. 仅限学术用途和加速访问github/huggingface，不承诺稳定性
+2. 开启加速后对访问其他资源如pip源等会*更慢*
+ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
+contourpy 1.2.0 requires numpy<2.0,>=1.20, but you have numpy 2.2.6 which is incompatible.
+matplotlib 3.8.2 requires numpy<2,>=1.21, but you have numpy 2.2.6 which is incompatible.
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+GPU: NVIDIA GeForce RTX 4090
+===== 2026-10-18 02:48:43 tulip feasibility: Sobol 256 + refine 64 at N=128, confirm 12 at N=256 =====
+
+A module that was compiled using NumPy 1.x cannot be run in
+NumPy 2.2.6 as it may crash. To support both 1.x and 2.x
+versions of NumPy, modules must be compiled with NumPy 2.0.
+Some module may need to rebuild instead e.g. with 'pybind11>=2.12'.
+
+If you are a user of the module, the easiest solution will be to
+downgrade to 'numpy<2' or try to upgrade the affected module.
+We expect that some modules will need time to support NumPy 2.
+
+Traceback (most recent call last):  File "/root/miniconda3/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/root/miniconda3/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/root/autodl-tmp/feas/latte_imex/rig/tulip_feas.py", line 36, in <module>
+    from ..v05_adapter import SPACE
+  File "/root/autodl-tmp/feas/latte_imex/v05_adapter.py", line 96, in <module>
+    from . import video_extract as VE
+  File "/root/autodl-tmp/feas/latte_imex/video_extract.py", line 86, in <module>
+    from matplotlib.colors import rgb_to_hsv
+  File "/root/miniconda3/lib/python3.10/site-packages/matplotlib/__init__.py", line 161, in <module>
+    from . import _api, _version, cbook, _docstring, rcsetup
+  File "/root/miniconda3/lib/python3.10/site-packages/matplotlib/rcsetup.py", line 27, in <module>
+    from matplotlib.colors import Colormap, is_color_like
+  File "/root/miniconda3/lib/python3.10/site-packages/matplotlib/colors.py", line 57, in <module>
+    from matplotlib import _api, _cm, cbook, scale
+  File "/root/miniconda3/lib/python3.10/site-packages/matplotlib/scale.py", line 22, in <module>
+    from matplotlib.ticker import (
+  File "/root/miniconda3/lib/python3.10/site-packages/matplotlib/ticker.py", line 143, in <module>
+    from matplotlib import transforms as mtransforms
+  File "/root/miniconda3/lib/python3.10/site-packages/matplotlib/transforms.py", line 49, in <module>
+    from matplotlib._path import (
+Traceback (most recent call last):
+  File "/root/miniconda3/lib/python3.10/site-packages/numpy/core/_multiarray_umath.py", line 44, in __getattr__
+    raise ImportError(msg)
+ImportError: 
+A module that was compiled using NumPy 1.x cannot be run in
+NumPy 2.2.6 as it may crash. To support both 1.x and 2.x
+versions of NumPy, modules must be compiled with NumPy 2.0.
+Some module may need to rebuild instead e.g. with 'pybind11>=2.12'.
+
+If you are a user of the module, the easiest solution will be to
+downgrade to 'numpy<2' or try to upgrade the affected module.
+We expect that some modules will need time to support NumPy 2.
+
+
+Traceback (most recent call last):
+  File "/root/miniconda3/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/root/miniconda3/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/root/autodl-tmp/feas/latte_imex/rig/tulip_feas.py", line 36, in <module>
+    from ..v05_adapter import SPACE
+  File "/root/autodl-tmp/feas/latte_imex/v05_adapter.py", line 96, in <module>
+    from . import video_extract as VE
+  File "/root/autodl-tmp/feas/latte_imex/video_extract.py", line 86, in <module>
+    from matplotlib.colors import rgb_to_hsv
+  File "/root/miniconda3/lib/python3.10/site-packages/matplotlib/__init__.py", line 161, in <module>
+    from . import _api, _version, cbook, _docstring, rcsetup
+  File "/root/miniconda3/lib/python3.10/site-packages/matplotlib/rcsetup.py", line 27, in <module>
+    from matplotlib.colors import Colormap, is_color_like
+  File "/root/miniconda3/lib/python3.10/site-packages/matplotlib/colors.py", line 57, in <module>
+    from matplotlib import _api, _cm, cbook, scale
+  File "/root/miniconda3/lib/python3.10/site-packages/matplotlib/scale.py", line 22, in <module>
+    from matplotlib.ticker import (
+  File "/root/miniconda3/lib/python3.10/site-packages/matplotlib/ticker.py", line 143, in <module>
+    from matplotlib import transforms as mtransforms
+  File "/root/miniconda3/lib/python3.10/site-packages/matplotlib/transforms.py", line 49, in <module>
+    from matplotlib._path import (
+ImportError: numpy.core.multiarray failed to import
+设置成功!
+注意：
+1. 仅限学术用途和加速访问github/huggingface，不承诺稳定性
+2. 开启加速后对访问其他资源如pip源等会*更慢*
+GPU: NVIDIA GeForce RTX 4090
+===== 2026-10-18 03:01:40 tulip feasibility: Sobol 256 + refine 64 at N=128, confirm 12 at N=256 =====
+building the tulip inlet (real pitcher, 165 g calibration) ...
+  V0 120.2 mL, poured 119.0 mL, T 14.3 s; target gap area 0.357 R^2
+stage A (Sobol): 257 runs at N=128
+  batch of 48 at N=128: 107 s, 48 ok; best J 0.812 (gap_iou max 0.262)
+  batch of 48 at N=128: 101 s, 48 ok; best J 0.648 (gap_iou max 0.229)
+  batch of 48 at N=128: 99 s, 48 ok; best J 0.821 (gap_iou max 0.232)
+  batch of 48 at N=128: 104 s, 48 ok; best J 0.599 (gap_iou max 0.205)
+  batch of 48 at N=128: 102 s, 48 ok; best J 0.680 (gap_iou max 0.244)
+  batch of 17 at N=128: 66 s, 17 ok; best J 0.588 (gap_iou max 0.187)
+stage B (refine): 64 runs at N=128
+  batch of 48 at N=128: 94 s, 48 ok; best J 0.879 (gap_iou max 0.357)
+  batch of 16 at N=128: 44 s, 16 ok; best J 0.710 (gap_iou max 0.222)
+stage C (confirm): 12 runs at N=256
+  batch of 12 at N=256: 142 s, 12 ok; best J 0.814 (gap_iou max 0.293)
+tulip: 333 runs (0 failed); verdict: does not open
+  S1 (N=128): IoU 0.328 gap 0.056
+  S1 (N=256): IoU 0.319 gap 0.050
+  C_B02_00: IoU 0.521 gap 0.293  B_dep 1.44e+03 p_dep 2.47 kappa_r 0.0598 kappa_Q 2.65 cp 1.63 beta 0.388 kappa_t 0.431 kappa_c 0.0674
+  C_A0006: IoU 0.569 gap 0.234  B_dep 1.05e+03 p_dep 6.81 kappa_r 0.127 kappa_Q 4.39 cp 1.72 beta 0.398 kappa_t 0.324 kappa_c 0.288
+  C_A0140: IoU 0.600 gap 0.196  B_dep 1.47e+03 p_dep 5.08 kappa_r 0.0131 kappa_Q 4.38 cp 0.875 beta 0.738 kappa_t 0.57 kappa_c 0.276
+  C_B01_00: IoU 0.579 gap 0.211  B_dep 1.1e+03 p_dep 6.55 kappa_r 0.136 kappa_Q 4.95 cp 1.49 beta 0.433 kappa_t 0.422 kappa_c 0.264
+  C_B01_03: IoU 0.563 gap 0.195  B_dep 1.17e+03 p_dep 7.07 kappa_r 0.165 kappa_Q 4.57 cp 1.71 beta 0.366 kappa_t 0.409 kappa_c 0.108
+  C_B00_05: IoU 0.509 gap 0.240  B_dep 1.09e+03 p_dep 4.7 kappa_r 0.0128 kappa_Q 3.78 cp 0.868 beta 0.762 kappa_t 0.573 kappa_c 0.235
+  sensitivity (Spearman, stage A) gap / IoU: B_dep +0.52/+0.77, p_dep -0.26/-0.09, kappa_r -0.02/-0.01, kappa_Q -0.06/+0.37, cp +0.04/+0.02, beta -0.22/+0.12, kappa_t +0.20/-0.08, kappa_c -0.03/-0.02
+  -> results/tulip_feas/summary.json, sheet.png, scatter.png

@@ -1,0 +1,111 @@
+{
+ "cmd": "run",
+ "out": "results/tulip_feas",
+ "pattern": "tulip",
+ "backend": "cuda",
+ "N": 128,
+ "N_fig": 256,
+ "n": 256,
+ "top": 8,
+ "per": 8,
+ "confirm": 11,
+ "batch": 48,
+ "seed": 0,
+ "space": {
+  "B_dep": [
+   300.0,
+   6000.0,
+   "log"
+  ],
+  "p_dep": [
+   1.0,
+   8.0,
+   "lin"
+  ],
+  "kappa_r": [
+   0.005,
+   0.2,
+   "log"
+  ],
+  "kappa_Q": [
+   0.7,
+   5.0,
+   "log"
+  ],
+  "cp": [
+   0.68,
+   2.07,
+   "log"
+  ],
+  "beta": [
+   0.12,
+   7.5,
+   "log"
+  ],
+  "kappa_t": [
+   0.0,
+   1.0,
+   "lin"
+  ],
+  "kappa_c": [
+   0.0,
+   1.0,
+   "lin"
+  ]
+ },
+ "s1": {
+  "B_dep": 1617.8960968517451,
+  "p_dep": 7.0,
+  "kappa_r": 0.036982430119419096,
+  "kappa_Q": 2.0,
+  "cp": 1.36,
+  "beta": 3.0,
+  "kappa_t": 0.79,
+  "kappa_c": 1.0
+ },
+ "inlet": {
+  "pattern": "tulip",
+  "flow": "pitcher",
+  "V0_mL": 120.22709404085771,
+  "on_target": null,
+  "T_pour": 13.257000000000003,
+  "L_m": 0.09000628794919198,
+  "R_disc_mm": 44.103081095104066,
+  "observed_on_frac": 0.85931960473712,
+  "stream_on_frac_when_obs_on": 0.9699789325842697,
+  "stream_on_frac_when_obs_off": 0.0,
+  "poured_mL": 118.98945220998152,
+  "spill_pitcher_mL": 0.0,
+  "assumptions": {
+   "pitcher": "NX CAD stand-in (s1_forward.geometry(0)), spout tip anchored at the measured tip",
+   "law": "ForwardLaw() defaults (C_d 0.6, C_v 1, H = max head, projected widths)",
+   "fill": "smallest V0 with Q >= 1 mL/s on >= min(98%, f(500 mL) - 1%) of the observed-on time",
+   "observed_on": "axis tilt >= running max over 1.0 s - 6.0 deg",
+   "scale": "cup radius 0.49 D <-> median disc radius; positions, velocities / L, flows / L^3",
+   "smoothing": "poses sigma 0.04 s, disc sigma 0.15 s",
+   "tail_s": 1.0,
+   "closure": "S1 parameters (latte_imex/data/s1_forward), Params defaults (visc symmetric, offcup account)"
+  },
+  "n_out": 14257,
+  "V_cup_mL": 118.9894522099815,
+  "Q_mean_on_mLs": 10.756252695442463,
+  "Q_max_mLs": 28.054872963593432,
+  "U_exit_mean": 0.36999922301520877,
+  "U_perp_mean": 0.8818163120010946,
+  "tip_z_mm": [
+   11.567925063593343,
+   37.43410510248754,
+   59.88698914984192
+  ],
+  "foot_minus_tip_mm": 2.2488929009546315,
+  "tilt_cad_deg": [
+   59.06544517763937,
+   87.05074241449135
+  ],
+  "roll_cad_deg": [
+   -63.40571683925422,
+   11.362284396686817
+  ],
+  "wall_s": 21.476395845413208
+ }
+}
