@@ -23,8 +23,8 @@ import warp as wp
 wp.config.quiet = True
 F = wp.float64
 PARAMS = ("cp", "beta", "nu", "D", "kappa_Q", "kappa_c", "kappa_t", "kappa_r", "B_dep", "p_dep", "kappa_M", "eps_f",
-          "kappa_w", "tau_s", "mu_s", "xi_X", "tau_f")
-CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW, TS, MS, XX, TF = range(17)
+          "kappa_w", "tau_s", "mu_s", "xi_X", "tau_f", "alpha_u")
+CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW, TS, MS, XX, TF, AU = range(18)
 YIELD_EPS, NU_MAX = 0.02, 0.5      # solver.Params.yield_eps, nu_max (Bingham foam raft, tau_f > 0)
 SCHED = ("x", "y", "Q", "ux", "uy", "U", "d", "r1", "r2", "phi")
 A2 = wp.array2d(dtype=F)
@@ -85,7 +85,7 @@ def k_kernel_raw(xc: A2, yc: A2, mask: I2, S: A1, Sy: A1, Sux: A1, Suy: A1, P: A
 @wp.kernel
 def k_fields(Kraw: A2, sums: A1, Kd: A2, sumsd: A1, mask: I2, xc: A2, yc: A2, P: A1, Sx: A1, Sy: A1, SQ: A1, Sux: A1,
              Suy: A1, SU: A1, Sd: A1, Sr1: A1, Sr2: A1, kq: wp.array(dtype=wp.int32), area: F, v05: int, up: int,
-             s: A2, Lam: A2, vsx: A2, vsy: A2, sm: A2):
+             l0: A2, m0: A2, s: A2, Lam: A2, vsx: A2, vsy: A2, sm: A2):
     """Solver.inlet_fields (closure 'chi', offcup 'account'): sm = chi S Z K_d (new milk, surfacing at the deposit kernel
     K_d, tau_s u_in ahead of the landing point; the landing kernel K if K_d misses the cup), s = sm (V0.5) or
     sm + (1 - chi) S Z K (up: the dived part resurfaces at the landing point as base material),
@@ -115,11 +115,14 @@ def k_fields(Kraw: A2, sums: A1, Kd: A2, sumsd: A1, mask: I2, xc: A2, yc: A2, P:
     zc = U * U / (P[BDEP] * d)
     chi = F(1.0) / (F(1.0) + wp.pow(zc, P[PDEP]))
     S_rec = P[KQ] * SQ[k] * Z
-    sm[j, i] = chi * S_rec * Kdn
+    smv = chi * S_rec * Kdn
+    if P[AU] > F(0.0) and mask[j, i] != 0:          # underplating (Solver.inlet_fields): x (1 - alpha_u c), frame-start c
+        smv = smv * (F(1.0) - P[AU] * wp.min(wp.max(m0[j, i] / l0[j, i], F(0.0)), F(1.0)))
+    sm[j, i] = smv
     if up != 0:
-        s[j, i] = chi * S_rec * Kdn + (F(1.0) - chi) * S_rec * Kn
+        s[j, i] = smv + (F(1.0) - chi) * S_rec * Kn
     else:
-        s[j, i] = chi * S_rec * Kdn
+        s[j, i] = smv
     Lam[j, i] = P[KC] * (F(1.0) - chi) * S_rec * Kn
     dx = xc[j, i] - Sx[k]
     dy = yc[j, i] - Sy[k]
@@ -1405,7 +1408,8 @@ class WSolver:
         return x
 
     # ------------------------------------------------------------------ recorded path: inlet fields, sub-step, frame
-    def fields(self, P, S, k, q, active):
+    def fields(self, P, S, k, q, active, st):
+        """Inlet fields of frame k (k_fields); st: the state at the start of the frame (underplating reads its colour)."""
         g = self.g
         out = [self.new() for _ in range(5)]
         self.set_kq(k, q)
@@ -1417,7 +1421,7 @@ class WSolver:
             self.L(k_kernel_raw, [g.xc, g.yc, g.mask, S["x"], S["y"], S["ux"], S["uy"], P, F(dep), S["r1"], S["r2"],
                                   S["phi"], self.kq, F(g.h)], [K_, s_])
         self.L(k_fields, [Kraw, sums, Kd, sumsd, g.mask, g.xc, g.yc, P, S["x"], S["y"], S["Q"], S["ux"], S["uy"], S["U"],
-                          S["d"], S["r1"], S["r2"], self.kq, F(g.h * g.h), self.v05, self.up], out)
+                          S["d"], S["r1"], S["r2"], self.kq, F(g.h * g.h), self.v05, self.up, st["l"], st["m"]], out)
         return out
 
     def substep(self, st, fl, P, nu_on, mix_on):
@@ -1501,7 +1505,7 @@ class WSolver:
 
     def frame(self, st, P, Pnp, S, k, fdt, q, active, nsub=None):
         """Recorded-path frame; nsub None: CFL count + retries; given: replay with that count."""
-        fl = self.fields(P, S, k, q, active)
+        fl = self.fields(P, S, k, q, active, st)
         nu_on = Pnp[NU] > 0
         if nsub is None:
             nsub = self.n_substeps_host(st, fl, fdt, active)
@@ -1560,8 +1564,8 @@ class WSolver:
             self.L(k_kernel_raw, [g.xc, g.yc, g.mask, S["x"], S["y"], S["ux"], S["uy"], P, F(dep), S["r1"], S["r2"],
                                   S["phi"], self.kq, F(g.h)], [fb[K_], fb[s_]], record=False)
         self.L(k_fields, [fb["Kraw"], fb["sums"], fb["Kd"], fb["sumsd"], g.mask, g.xc, g.yc, P, S["x"], S["y"], S["Q"],
-                          S["ux"], S["uy"], S["U"], S["d"], S["r1"], S["r2"], self.kq, F(g.h * g.h), self.v05, self.up],
-               [fb["s"], fb["Lam"], fb["vsx"], fb["vsy"], fb["sm"]], record=False)
+                          S["ux"], S["uy"], S["U"], S["d"], S["r1"], S["r2"], self.kq, F(g.h * g.h), self.v05, self.up,
+                          fb["l"], fb["m"]], [fb["s"], fb["Lam"], fb["vsx"], fb["vsy"], fb["sm"]], record=False)
 
     def _g_zero_fields(self):
         for k in ("s", "Lam", "vsx", "vsy", "sm"):

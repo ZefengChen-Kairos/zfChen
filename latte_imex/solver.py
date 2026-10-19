@@ -43,6 +43,10 @@ class Params:
     kappa_M: float = 0.0    # surface current driven by the stream's momentum (circulation.py): the film is dragged towards
                             # kappa_M U, gains upwelled water kappa_M sigma+ and goes down at kappa_M sigma-; 0 = V1 (at rest)
     eps_f: float = 0.0      # ... fraction of the foam going down with it (buoyant microfoam: ~0; 1: non-selective)
+    alpha_u: float = 0.0    # closure "chi": underplating -- share of the new foam that, surfacing under an existing white
+                            # raft, thickens it instead of spreading it: the new-milk source is x (1 - alpha_u c) with c the
+                            # local colour at the start of the frame (white-area budget: on existing white the video gains
+                            # 0.43-0.56 of the area per deposited volume that the film model gives; V2_SURFACE_MODEL.md 10)
     tau_f: float = 0.0      # closure "chi": yield stress / density of the foam raft [D_L^2/s^2] (Bingham film): the symmetric
                             # viscosity becomes nu_eff = min(nu + tau_f c / (2 |D|_e + yield_eps), nu_max) per cell, lagged
                             # on the velocity before the step; foam surfacing under a raft then thickens it instead of
@@ -453,6 +457,9 @@ class Solver:
             except ValueError:                # misses the cup: surfaces at the landing point
                 Kd = K
         self._s_milk = chi * S_rec * Kd      # new milk (wsolver sm)
+        if P.alpha_u > 0:                     # underplating: foam surfacing under an existing raft thickens it
+            cl = np.clip(np.where(g.mask, self.m / np.where(g.mask, self.l, 1.0), 0.0), 0.0, 1.0)
+            self._s_milk = self._s_milk * (1.0 - P.alpha_u * cl)
         s = self._s_milk + ((1.0 - chi) * S_rec * K if P.upwell else 0.0)
         Lam = P.kappa_c * (1.0 - chi) * S_rec * K
         # target velocity
