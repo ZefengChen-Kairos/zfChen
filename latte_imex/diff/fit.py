@@ -40,15 +40,21 @@ SP = dict(SPACE)
 KEYS = tuple(SPACE)
 
 
-CIRC_SPACE = {"kappa_M": (0.0, 30.0, "lin"),       # surface current driven by the stream's momentum (circulation.py)
+CIRC_SPACE = {"kappa_M": (0.0, 8.0, "lin"),        # surface current driven by the stream's momentum (circulation.py)
               "eps_f": (0.0, 1.0, "lin"),          # fraction of the foam going down with the current
-              "kappa_w": (0.0, 3.0, "lin")}        # the received flow's area going down with the current
-CIRC_START = {"kappa_M": 10.0, "eps_f": 0.0, "kappa_w": 1.0}   # kappa_M: the measured mean surface current (tulip, leaf, heart, push_heart)
+              "kappa_w": (0.0, 2.0, "lin")}        # the received flow's area going down with the current
+# start: kappa_M = 1.5 (the time-mean surface current of the optical flow, 0.04 D/s, needs ~10 in total, but most of it
+# is the pattern pushed by the jet itself, which the inlet already models; forward runs at S1: tulip best at 1-2)
+CIRC_START = {"kappa_M": 1.5, "eps_f": 0.0, "kappa_w": 0.0}
+# the foam surfaces tau_s u_in ahead of the landing point (u_in ~ 1 D/s: tau_s = 0.05 s ~ 4 mm; the real deposits grow
+# forward of the measured stream foot)
+DEP_SPACE = {"tau_s": (0.0, 0.2, "lin")}
+DEP_START = {"tau_s": 0.05}
 
 
-def use_foot(on, circ=False):
+def use_foot(on, circ=False, dep=True):
     global KEYS, SP
-    SP = dict(SPACE, **(FOOT_SPACE if on else {}), **(CIRC_SPACE if circ else {}))
+    SP = dict(SPACE, **(FOOT_SPACE if on else {}), **(CIRC_SPACE if circ else {}), **(DEP_SPACE if dep else {}))
     KEYS = tuple(SP)
 
 
@@ -281,6 +287,8 @@ def main(argv=None):
                     help="video loss scales [cup radii] (run.py): blurred residual terms, 0 = per pixel; '0' = pixel term only")
     ap.add_argument("--w-flow", dest="w_flow", type=float, default=0.0,
                     help="weight of the surface-velocity term (optical flow of the real pour, rig/video_flow.py)")
+    ap.add_argument("--no-dep", dest="dep", action="store_false",
+                    help="foam surfaces at the landing point (tau_s = 0, V0.5) instead of fitting tau_s")
     ap.add_argument("--circ", action="store_true",
                     help="surface current driven by the stream's momentum (circulation.py: fit kappa_M, eps_f, kappa_w; use with "
                          "--upwell)")
@@ -305,7 +313,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
     os.makedirs(os.path.join(a.out, "fields"), exist_ok=True)
     log = lambda *x: print(*x, flush=True)
-    use_foot(a.foot, a.circ)
+    use_foot(a.foot, a.circ, a.dep)
     cal = a.cal.split(",")
     kw = dict(N=a.N, device=a.device, w_gap=a.w_gap, tau=a.tau0, T_max=a.T, loss=a.loss, w_final=a.w_final,
               scales=tuple(float(x) for x in a.scales.split(",")), e0=a.e0, upwell=a.upwell,
@@ -314,7 +322,7 @@ def main(argv=None):
     pours = {p: Pour(p, kw, process=workers > 0) for p in cal}
     log(f"{len(cal)} calibration pours, {'one worker process each' if workers > 0 else 'in-process'}")
     base = dict(pours[cal[0]].s1, **({"foot_a": 0.0, "foot_b": 0.0} if a.foot else {}),
-                **(CIRC_START if a.circ else {}))
+                **(CIRC_START if a.circ else {}), **(DEP_START if a.dep else {}))
     if a.init:
         base.update({k: float(v) for k, v in json.load(open(a.init)).items() if k in base})
         log(f"start: {a.init}")
@@ -327,6 +335,8 @@ def main(argv=None):
     if not a.circ:
         for k in ("kappa_M", "eps_f", "kappa_w"):
             base[k] = 0.0
+    if not a.dep:
+        base["tau_s"] = 0.0
     u = to_unit(base)
     m1, m2 = np.zeros_like(u), np.zeros_like(u)
     b1, b2, eps = 0.9, 0.999, 1e-8

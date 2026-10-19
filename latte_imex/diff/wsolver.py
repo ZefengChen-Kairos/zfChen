@@ -23,8 +23,8 @@ import warp as wp
 wp.config.quiet = True
 F = wp.float64
 PARAMS = ("cp", "beta", "nu", "D", "kappa_Q", "kappa_c", "kappa_t", "kappa_r", "B_dep", "p_dep", "kappa_M", "eps_f",
-          "kappa_w")
-CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW = range(13)
+          "kappa_w", "tau_s")
+CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW, TS = range(14)
 SCHED = ("x", "y", "Q", "ux", "uy", "U", "d", "r1", "r2", "phi")
 A2 = wp.array2d(dtype=F)
 I2 = wp.array2d(dtype=wp.int32)
@@ -53,12 +53,15 @@ def vl(r: F):
 
 # ============================================================================ inlet fields
 @wp.kernel
-def k_kernel_raw(xc: A2, yc: A2, mask: I2, S: A1, Sy: A1, Sr1: A1, Sr2: A1, Sphi: A1, kq: wp.array(dtype=wp.int32), h: F,
-                 Kraw: A2, sums: A1):
-    """Unnormalised footprint kernel (1 - a^2 - b^2)_+^2, q x q sub-cell quadrature; sums = [inside cup, all cells]."""
+def k_kernel_raw(xc: A2, yc: A2, mask: I2, S: A1, Sy: A1, Sux: A1, Suy: A1, P: A1, dep: F, Sr1: A1, Sr2: A1, Sphi: A1,
+                 kq: wp.array(dtype=wp.int32), h: F, Kraw: A2, sums: A1):
+    """Unnormalised footprint kernel (1 - a^2 - b^2)_+^2, q x q sub-cell quadrature; sums = [inside cup, all cells].
+    Centred at the landing point (dep = 0) or where the foam surfaces, tau_s u_in ahead of it (dep = 1)."""
     j, i = wp.tid()
     k = kq[0]
     q = kq[1]
+    x0 = S[k] + dep * P[TS] * Sux[k]
+    y0 = Sy[k] + dep * P[TS] * Suy[k]
     r1 = wp.max(Sr1[k], F(1.5) * h)
     r2 = wp.max(Sr2[k], F(1.5) * h)
     cph = wp.cos(Sphi[k])
@@ -66,8 +69,8 @@ def k_kernel_raw(xc: A2, yc: A2, mask: I2, S: A1, Sy: A1, Sr1: A1, Sr2: A1, Sphi
     acc = F(0.0)
     for ox in range(q):
         for oy in range(q):
-            dx = xc[j, i] + ((F(ox) + F(0.5)) / F(q) - F(0.5)) * h - S[k]
-            dy = yc[j, i] + ((F(oy) + F(0.5)) / F(q) - F(0.5)) * h - Sy[k]
+            dx = xc[j, i] + ((F(ox) + F(0.5)) / F(q) - F(0.5)) * h - x0
+            dy = yc[j, i] + ((F(oy) + F(0.5)) / F(q) - F(0.5)) * h - y0
             a = (cph * dx + sph * dy) / r1
             b = (-sph * dx + cph * dy) / r2
             w = wp.max(F(0.0), F(1.0) - a * a - b * b)
@@ -79,12 +82,13 @@ def k_kernel_raw(xc: A2, yc: A2, mask: I2, S: A1, Sy: A1, Sr1: A1, Sr2: A1, Sphi
 
 
 @wp.kernel
-def k_fields(Kraw: A2, sums: A1, mask: I2, xc: A2, yc: A2, P: A1, Sx: A1, Sy: A1, SQ: A1, Sux: A1, Suy: A1, SU: A1,
-             Sd: A1, Sr1: A1, Sr2: A1, kq: wp.array(dtype=wp.int32), area: F, v05: int, up: int,
+def k_fields(Kraw: A2, sums: A1, Kd: A2, sumsd: A1, mask: I2, xc: A2, yc: A2, P: A1, Sx: A1, Sy: A1, SQ: A1, Sux: A1,
+             Suy: A1, SU: A1, Sd: A1, Sr1: A1, Sr2: A1, kq: wp.array(dtype=wp.int32), area: F, v05: int, up: int,
              s: A2, Lam: A2, vsx: A2, vsy: A2, sm: A2):
-    """Solver.inlet_fields (closure 'chi', offcup 'account'): sm = chi S Z K (new milk), s = sm (V0.5) or S Z K (up: the
-    whole received volume reaches the surface, the dived part resurfacing as base material), Lam = kappa_c (1 - chi) S Z K,
-    target v*."""
+    """Solver.inlet_fields (closure 'chi', offcup 'account'): sm = chi S Z K_d (new milk, surfacing at the deposit kernel
+    K_d, tau_s u_in ahead of the landing point; the landing kernel K if K_d misses the cup), s = sm (V0.5) or
+    sm + (1 - chi) S Z K (up: the dived part resurfaces at the landing point as base material),
+    Lam = kappa_c (1 - chi) S Z K, target v*."""
     j, i = wp.tid()
     k = kq[0]
     tot = sums[1]
@@ -98,18 +102,23 @@ def k_fields(Kraw: A2, sums: A1, mask: I2, xc: A2, yc: A2, P: A1, Sx: A1, Sy: A1
         return
     Z = ins / tot
     Kn = F(0.0)
+    Kdn = F(0.0)
     if mask[j, i] != 0:
         Kn = Kraw[j, i] / (ins * area)
+        if sumsd[0] > F(0.0):
+            Kdn = Kd[j, i] / (sumsd[0] * area)
+        else:
+            Kdn = Kn
     d = wp.max(Sd[k], F(1e-6))
     U = SU[k]
     zc = U * U / (P[BDEP] * d)
     chi = F(1.0) / (F(1.0) + wp.pow(zc, P[PDEP]))
     S_rec = P[KQ] * SQ[k] * Z
-    sm[j, i] = chi * S_rec * Kn
+    sm[j, i] = chi * S_rec * Kdn
     if up != 0:
-        s[j, i] = S_rec * Kn
+        s[j, i] = chi * S_rec * Kdn + (F(1.0) - chi) * S_rec * Kn
     else:
-        s[j, i] = chi * S_rec * Kn
+        s[j, i] = chi * S_rec * Kdn
     Lam[j, i] = P[KC] * (F(1.0) - chi) * S_rec * Kn
     dx = xc[j, i] - Sx[k]
     dy = yc[j, i] - Sy[k]
@@ -1341,12 +1350,13 @@ class WSolver:
         self.set_kq(k, q)
         if not active:
             return out
-        Kraw = self.new()
-        sums = self.new1()
-        self.L(k_kernel_raw, [g.xc, g.yc, g.mask, S["x"], S["y"], S["r1"], S["r2"], S["phi"], self.kq, F(g.h)],
-               [Kraw, sums])
-        self.L(k_fields, [Kraw, sums, g.mask, g.xc, g.yc, P, S["x"], S["y"], S["Q"], S["ux"], S["uy"], S["U"], S["d"],
-                          S["r1"], S["r2"], self.kq, F(g.h * g.h), self.v05, self.up], out)
+        Kraw, Kd = self.new(), self.new()
+        sums, sumsd = self.new1(), self.new1()
+        for dep, K_, s_ in ((0.0, Kraw, sums), (1.0, Kd, sumsd)):
+            self.L(k_kernel_raw, [g.xc, g.yc, g.mask, S["x"], S["y"], S["ux"], S["uy"], P, F(dep), S["r1"], S["r2"],
+                                  S["phi"], self.kq, F(g.h)], [K_, s_])
+        self.L(k_fields, [Kraw, sums, Kd, sumsd, g.mask, g.xc, g.yc, P, S["x"], S["y"], S["Q"], S["ux"], S["uy"], S["U"],
+                          S["d"], S["r1"], S["r2"], self.kq, F(g.h * g.h), self.v05, self.up], out)
         return out
 
     def substep(self, st, fl, P, nu_on, mix_on):
@@ -1459,10 +1469,11 @@ class WSolver:
         g = self.g
         if self.fb is None:
             z = lambda: wp.zeros((g.N, g.N), dtype=F, device=g.dev)
-            names = ("l qx qy m l0 qx0 qy0 m0 Kraw s Lam vsx vsy sm ls ux uy c Fxqx Fxqy Fyqx Fyqy ax ay coef Gex Gey "
+            names = ("l qx qy m l0 qx0 qy0 m0 Kraw Kd s Lam vsx vsy sm ls ux uy c Fxqx Fxqy Fyqx Fyqy ax ay coef Gex Gey "
                      "Gx Gy l2 qxn qyn cfx cfy qx3 qy3 m3 qx4 qy4 m4").split()
             self.fb = {k: z() for k in names}
             self.fb["sums"] = wp.zeros(2, dtype=F, device=g.dev)
+            self.fb["sumsd"] = wp.zeros(2, dtype=F, device=g.dev)
             self.fb["rows"] = wp.zeros(g.N, dtype=F, device=g.dev)
             self.fb["rows2"] = wp.zeros(g.N, dtype=F, device=g.dev)
             self.fb["red"] = wp.zeros(16, dtype=F, device=g.dev)      # [0:8] frame acceptance, [8:16] CFL speed
@@ -1482,11 +1493,12 @@ class WSolver:
     def _g_fields(self):
         g, fb = self.g, self.fb
         S, P = fb["S"], fb["P"]
-        wp.launch(k_zero1, dim=2, inputs=[fb["sums"]], device=g.dev, record_tape=False)
-        self.L(k_kernel_raw, [g.xc, g.yc, g.mask, S["x"], S["y"], S["r1"], S["r2"], S["phi"], self.kq, F(g.h)],
-               [fb["Kraw"], fb["sums"]], record=False)
-        self.L(k_fields, [fb["Kraw"], fb["sums"], g.mask, g.xc, g.yc, P, S["x"], S["y"], S["Q"], S["ux"], S["uy"], S["U"],
-                          S["d"], S["r1"], S["r2"], self.kq, F(g.h * g.h), self.v05, self.up],
+        for dep, K_, s_ in ((0.0, "Kraw", "sums"), (1.0, "Kd", "sumsd")):
+            wp.launch(k_zero1, dim=2, inputs=[fb[s_]], device=g.dev, record_tape=False)
+            self.L(k_kernel_raw, [g.xc, g.yc, g.mask, S["x"], S["y"], S["ux"], S["uy"], P, F(dep), S["r1"], S["r2"],
+                                  S["phi"], self.kq, F(g.h)], [fb[K_], fb[s_]], record=False)
+        self.L(k_fields, [fb["Kraw"], fb["sums"], fb["Kd"], fb["sumsd"], g.mask, g.xc, g.yc, P, S["x"], S["y"], S["Q"],
+                          S["ux"], S["uy"], S["U"], S["d"], S["r1"], S["r2"], self.kq, F(g.h * g.h), self.v05, self.up],
                [fb["s"], fb["Lam"], fb["vsx"], fb["vsy"], fb["sm"]], record=False)
 
     def _g_zero_fields(self):

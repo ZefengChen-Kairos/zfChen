@@ -44,6 +44,8 @@ class Params:
                             # kappa_M U, gains upwelled water kappa_M sigma+ and goes down at kappa_M sigma-; 0 = V1 (at rest)
     eps_f: float = 0.0      # ... fraction of the foam going down with it (buoyant microfoam: ~0; 1: non-selective)
     kappa_w: float = 0.0    # ... and the received flow's area kappa_w kappa_Q abar going down where the current converges
+    tau_s: float = 0.0      # closure "chi": the deposited foam surfaces tau_s u_in ahead of the landing point (carried by the
+                            # plunging stream's horizontal velocity for its rise time; the deposit kernel K_d), [s]
     upwell: bool = False    # closure "chi": the whole received volume reaches the surface (s = S K); chi only decides whether
                             # it is new milk (m source chi S K) or dived milk resurfacing as base material
     closure: str = "chi"    # "chi": original single-layer closure ; "skin" ; "twolayer": the layer (l, q, m) is the floating
@@ -367,6 +369,7 @@ class Solver:
     def inlet_fields(self, inlet: Inlet):
         P = self.P
         g = self.g
+        self._s_milk = None                  # new-milk source when it differs from s (closure "chi")
         if not inlet.active or inlet.S_eff <= 0:
             z = np.zeros((g.N, g.N))
             self.foam_src = None; self._SE = 0.0; self._S = 0.0; self._Lam_jet = None
@@ -429,8 +432,16 @@ class Solver:
             self.tau_cur = P.tau_d
         zc = inlet.U_perp ** 2 / (P.B_dep * d)
         chi = 1.0 / (1.0 + zc ** P.p_dep)
-        s = (1.0 if P.upwell else chi) * S_rec * K
-        self._milk_frac = chi if P.upwell else 1.0
+        Kd = K
+        if P.tau_s:                           # deposit kernel: the foam surfaces tau_s u_in ahead of the landing point
+            from dataclasses import replace as _rp
+            sh = _rp(inlet, x_hit=(inlet.x_hit[0] + P.tau_s * inlet.u_in[0], inlet.x_hit[1] + P.tau_s * inlet.u_in[1]))
+            try:
+                Kd, _ = self.kernel(sh)
+            except ValueError:                # misses the cup: surfaces at the landing point
+                Kd = K
+        self._s_milk = chi * S_rec * Kd      # new milk (wsolver sm)
+        s = self._s_milk + ((1.0 - chi) * S_rec * K if P.upwell else 0.0)
         Lam = P.kappa_c * (1.0 - chi) * S_rec * K
         # target velocity
         dx = g.x - inlet.x_hit[0]
@@ -460,9 +471,9 @@ class Solver:
         # ---- delay closure: impact momentum now, white later --------------------
         s_mom = s
         self._s_base = None
-        if getattr(self, "_milk_frac", 1.0) != 1.0:
+        if P.upwell and getattr(self, "_s_milk", None) is not None:
             # only the new milk arrives with the jet target v*; the base material with the film velocity (wsolver.k_stepA_B)
-            s_mom = s * self._milk_frac
+            s_mom = self._s_milk
             self._s_base = s - s_mom
         s_l = None             # film mass source when it differs from the milk source (two-layer surface cell)
         brown_rate = 0.0
@@ -614,7 +625,7 @@ class Solver:
             else:
                 Gx_m, Gy_m = Gx, Gy
         else:
-            s_m = s * getattr(self, "_milk_frac", 1.0)
+            s_m = s if getattr(self, "_s_milk", None) is None else self._s_milk
             Gx_m, Gy_m = Gx, Gy
         m_new = m + dt * s_m - dt * g.div(Gx_m * cfx, Gy_m * cfy)
         # boundedness guard (should be inactive under the material CFL)
