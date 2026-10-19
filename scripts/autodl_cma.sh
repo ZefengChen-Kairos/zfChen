@@ -3,7 +3,7 @@
 # (latte_imex/diff/score.py) and the robust cup-frame E0 replay; calibration tulip + leaf, frozen-closure test on heart,
 # push_heart, swan; then the movies of the best model (runs in the background; log results/cma.log).
 #   bash scripts/autodl_cma.sh                  -> prints the log path and returns
-#   MODELS="v05 dm c:0.2 c:0.4 cdm:0.2 cu:0.2"  (default; model letters as diff/cmafit.py, ':L' = surface-current
+#   MODELS="v05 dm c cdm cu c:0.25"         (default; model letters as diff/cmafit.py, ':L' = surface-current
 #                                                spreading length circ_L)
 #   N=48  GENS=16  POP=12  W_IOU=0.25  E0=world  RENDER=1 (render the model with the best held-out objective)
 # Send back: results/cma_results.tar.gz
@@ -26,10 +26,10 @@ python -c "import warp" 2>/dev/null || python -m pip install -q warp-lang
 python -c "import cma" 2>/dev/null || python -m pip install -q cma
 python -c "import cv2, matplotlib.pyplot, imageio" 2>/dev/null || \
   python -m pip install -q "numpy<2" "opencv-python-headless==4.10.0.84" imageio imageio-ffmpeg
-MODELS=${MODELS:-"v05 dm c:0.2 c:0.4 cdm:0.2 cu:0.2"}
+MODELS=${MODELS:-"v05 dm c cdm cu c:0.25"}
 N=${N:-48}; GENS=${GENS:-16}; POP=${POP:-12}; W_IOU=${W_IOU:-0.25}; E0=${E0:-world}
 echo "===== $(date '+%F %T') self-test: forward parity with the numpy solver (GPU, N=64, 200 frames, surface current with a short spreading length) ====="
-python -m latte_imex.diff.test_parity --N 64 --frames 200 --device cuda:0 --circ 2,0,0.5 --set tau_s=0.05,mu_s=0.5,circ_L=0.2
+python -m latte_imex.diff.test_parity --N 64 --frames 200 --device cuda:0 --circ 2,0,0.5 --set tau_s=0.05,mu_s=0.5,circ_L=0.25,xi_X=0.5
 TARS=""
 for m in $MODELS; do
   model=${m%%:*}; L=0.4; [ "$m" != "$model" ] && L=${m#*:}
