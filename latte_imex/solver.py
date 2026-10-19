@@ -458,6 +458,11 @@ class Solver:
 
         # ---- delay closure: impact momentum now, white later --------------------
         s_mom = s
+        self._s_base = None
+        if getattr(self, "_milk_frac", 1.0) != 1.0 or getattr(self, "_s_circ", None) is not None:
+            # only the new milk arrives with the jet target v*; the base material with the film velocity (wsolver.k_stepA_B)
+            s_mom = (s if self._s_circ is None else s - self._s_circ) * self._milk_frac
+            self._s_base = s - s_mom
         s_l = None             # film mass source when it differs from the milk source (two-layer surface cell)
         brown_rate = 0.0
         msub_new = None
@@ -541,6 +546,10 @@ class Solver:
         # ---- B: implicit mass + pressure + drag/traction --------------------
         a_x = np.empty((N, N)); a_y = np.empty((N, N)); coef = np.empty((N, N))
         K.stepB_prepare(qx_s, qy_s, s_mom, Lam, vsx, vsy, lsafe, beta_B, P.cp ** 2, dt, a_x, a_y, coef)
+        if self._s_base is not None:
+            th = 1.0 + dt * (beta_B + Lam / lsafe)
+            a_x += dt * self._s_base * ux / th
+            a_y += dt * self._s_base * uy / th
         if getattr(self, "_Vb", None) is not None and P.kappa_o:   # drag towards the circulation
             th = 1.0 + dt * (beta_B + Lam / lsafe)
             gb = dt * beta_B * lsafe * P.kappa_o
@@ -922,9 +931,10 @@ class Solver:
                 from .circulation import CircField
                 self.circ = CircField(g.x, g.y, g.mask, g.h)
             act = bool(inlet.active and inlet.S_eff > 0)
-            Vb, Kb = self.circ.step(frame_dt, act, inlet.S_eff / self.P.kappa_Q if act else 0.0, inlet.x_hit, inlet.u_in)
+            Zr = getattr(self, "last_Z", 1.0) if self.P.offcup == "account" else 1.0
+            Vb, Kb = self.circ.step(frame_dt, act, inlet.S_eff * Zr / self.P.kappa_Q if act else 0.0, inlet.x_hit, inlet.u_in)
             self._Vb = Vb
-            self._sink = self.P.kappa_w * self.circ.Wsink                      # film carried down along the wall
+            self._sink = self.P.kappa_w * self.P.kappa_Q * self.circ.Wsink     # film carried down along the wall
             self._s_circ = np.where(g.mask, self.P.kappa_s * Kb, 0.0)   # base material: layer only, not milk
             s = s + self._s_circ
         else:

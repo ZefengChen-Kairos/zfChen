@@ -312,15 +312,18 @@ def main(argv=None):
     log(f"{len(cal)} calibration pours, {'one worker process each' if workers > 0 else 'in-process'}")
     base = dict(pours[cal[0]].s1, **({"foot_a": 0.0, "foot_b": 0.0} if a.foot else {}),
                 **({"kappa_w": 2.0} if a.circ else {}))
-    if a.e0:
-        base["e0"] = 1.0
-    if a.upwell:
-        base["upwell"] = 1.0                                  # carried into best_closure.json -> the render uses E0 too
     if a.init:
         base.update({k: float(v) for k, v in json.load(open(a.init)).items() if k in base})
         log(f"start: {a.init}")
     for k, v in (x.split("=") for x in a.set.split(",") if x):
         base[k] = float(v)
+    # the closure is the single source of the model switches: the render (real_program) reads them back
+    base["e0"], base["upwell"], base["circ"] = float(a.e0), float(a.upwell), float(a.circ)
+    if not a.circ and any(base.get(k, 0.0) for k in ("kappa_o", "kappa_s", "kappa_w")):
+        log("no --circ: kappa_o, kappa_s, kappa_w of the start closure set to 0")
+    if not a.circ:
+        for k in ("kappa_o", "kappa_s", "kappa_w"):
+            base[k] = 0.0
     u = to_unit(base)
     m1, m2 = np.zeros_like(u), np.zeros_like(u)
     b1, b2, eps = 0.9, 0.999, 1e-8

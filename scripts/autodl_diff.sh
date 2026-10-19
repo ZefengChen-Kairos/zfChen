@@ -3,6 +3,7 @@
 # then the movies with the result (runs in the background; log results/diff.log).
 #   bash scripts/autodl_diff.sh                 -> prints the log path and returns
 #   FITS="A:tulip AB:tulip,leaf" (default, V1 plan 5.1)  N=128  ITERS=60  INIT=<closure json> (default: S1)
+#   FIT_ARGS="--upwell --circ" (extra diff.fit flags, e.g. the area-conserving film)
 # Send back: results/diff_results.tar.gz
 # If the CUDA-graph capture fails on this driver: LATTE_NO_GRAPHS=1 bash scripts/autodl_diff.sh
 cd "$(dirname "$0")/.."
@@ -44,7 +45,7 @@ TARS=""
 for f in $FITS; do
   tag=${f%%:*}; cal=${f#*:}; OUT=results/diff_fit_$tag
   echo "===== $(date '+%F %T') gradient fit $tag: calibration $cal, N=${N:-128}, ${ITERS:-60} iterations, start ${INIT:-S1} ====="
-  python -m latte_imex.diff.fit --out "$OUT" --cal "$cal" --N ${N:-128} --iters ${ITERS:-60} ${INIT:+--init "$INIT"} --device cuda:0
+  python -m latte_imex.diff.fit --out "$OUT" --cal "$cal" --N ${N:-128} --iters ${ITERS:-60} ${INIT:+--init "$INIT"} ${FIT_ARGS:-} --device cuda:0
   echo "===== $(date '+%F %T') render $tag with the fitted closure (N=256) ====="
   python -m latte_imex.rig.fit_pipeline render --out "$OUT" --jobs ${JOBS:-5}
   TARS="$TARS $OUT/records.jsonl $OUT/best_closure.json $OUT/test.json $OUT/progress.png $OUT/sheet.png $OUT/video_strip.png $OUT/fields $OUT/render"

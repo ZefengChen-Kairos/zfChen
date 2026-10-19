@@ -130,18 +130,20 @@ def k_fields(Kraw: A2, sums: A1, mask: I2, xc: A2, yc: A2, P: A1, Sx: A1, Sy: A1
 def k_circ_src(s: A2, Kb: A2, P: A1, mask: I2, out: A2):
     """out = s + kappa_s K_b (film source of the upwelled base material, circulation.py)."""
     j, i = wp.tid()
-    out[j, i] = s[j, i]
+    v = s[j, i]
     if mask[j, i] != 0:
-        out[j, i] = s[j, i] + P[KS] * Kb[j, i]
+        v = v + P[KS] * Kb[j, i]
+    out[j, i] = v                                        # one store (an overwrite would double the adjoint on old Warp)
 
 
 @wp.kernel
 def k_wall_sink(l: A2, qx: A2, qy: A2, m: A2, Wf: A2, P: A1, dta: A1, mask: I2, lo: A2, qxo: A2, qyo: A2, mo: A2):
-    """Film carried down along the wall: l, q, m decay by exp(-dt kappa_w W_s) (circulation.py)."""
+    """Film carried down along the wall: l, q, m decay by exp(-dt kappa_w kappa_Q W_s) (circulation.py; W_s carries the
+    received flow Q Z, so kappa_w = 1 removes the area the inlet adds)."""
     j, i = wp.tid()
     f = F(1.0)
     if mask[j, i] != 0:
-        f = wp.exp(-dta[0] * P[KW] * Wf[j, i])
+        f = wp.exp(-dta[0] * P[KW] * P[KQ] * Wf[j, i])
     lo[j, i] = l[j, i] * f
     qxo[j, i] = qx[j, i] * f
     qyo[j, i] = qy[j, i] * f
@@ -189,19 +191,22 @@ def k_rusanov(qx: A2, qy: A2, ux: A2, uy: A2, fx: I2, fy: I2, Fxqx: A2, Fxqy: A2
 
 @wp.kernel
 def k_stepA_B(qx: A2, qy: A2, Fxqx: A2, Fxqy: A2, Fyqx: A2, Fyqy: A2, s: A2, Lam: A2, vsx: A2, vsy: A2, ls: A2,
-              P: A1, dta: A1, inv_h: F, N: int, Vbx: A2, Vby: A2, ax: A2, ay: A2, coef: A2):
+              P: A1, dta: A1, inv_h: F, N: int, Vbx: A2, Vby: A2, sm: A2, ux: A2, uy: A2, ax: A2, ay: A2, coef: A2):
     """q* = q - dt div(F) (step A), then stepB_prepare: theta = 1 + dt (beta + Lam/l),
-    a = (q* + dt (s+Lam) v* + dt beta l kappa_o V_b)/theta, coef = cp^2 l / theta."""
+    a = (q* + dt (sm+Lam) v* + dt (s-sm) u + dt beta l kappa_o V_b)/theta, coef = cp^2 l / theta: the new milk sm
+    arrives with the jet target v*, the base material s - sm (dived milk resurfacing, upwelled coffee) with the film's
+    own velocity u (V0.5: s = sm)."""
     j, i = wp.tid()
     dt = dta[0]
     qxs = qx[j, i] - dt * divF(Fxqx, Fyqx, j, i, N, inv_h)
     qys = qy[j, i] - dt * divF(Fxqy, Fyqy, j, i, N, inv_h)
     L = ls[j, i]
     theta = F(1.0) + dt * (P[BETA] + Lam[j, i] / L)
-    f = dt * (s[j, i] + Lam[j, i])
+    f = dt * (sm[j, i] + Lam[j, i])
+    fb = dt * (s[j, i] - sm[j, i])
     g = dt * P[BETA] * L * P[KO]                         # drag towards the circulation (circulation.py; 0: at rest)
-    ax[j, i] = (qxs + f * vsx[j, i] + g * Vbx[j, i]) / theta
-    ay[j, i] = (qys + f * vsy[j, i] + g * Vby[j, i]) / theta
+    ax[j, i] = (qxs + f * vsx[j, i] + fb * ux[j, i] + g * Vbx[j, i]) / theta
+    ay[j, i] = (qys + f * vsy[j, i] + fb * uy[j, i] + g * Vby[j, i]) / theta
     coef[j, i] = P[CP] * P[CP] * L / theta
 
 
@@ -1366,7 +1371,8 @@ class WSolver:
         Fs = [self.new() for _ in range(4)]
         self.L(k_rusanov, [st["qx"], st["qy"], ux, uy, g.fx, g.fy], Fs)
         ax, ay, coef = self.new(), self.new(), self.new()
-        self.L(k_stepA_B, [st["qx"], st["qy"], *Fs, s, Lam, vsx, vsy, ls, P, dt, ih, N, self.Vbx, self.Vby], [ax, ay, coef])
+        self.L(k_stepA_B, [st["qx"], st["qy"], *Fs, s, Lam, vsx, vsy, ls, P, dt, ih, N, self.Vbx, self.Vby, sm, ux, uy],
+               [ax, ay, coef])
         Gex, Gey = self.new(), self.new()
         self.L(k_massflux, [ax, ay, st["l"], ls, g.fx, g.fy], [Gex, Gey])
         kx, ky, diag = self.new(), self.new(), self.new()
@@ -1534,7 +1540,8 @@ class WSolver:
         R(k_prim, [fb["l"], fb["qx"], fb["qy"], fb["m"], g.mask], [fb["ls"], fb["ux"], fb["uy"], fb["c"]])
         R(k_rusanov, [fb["qx"], fb["qy"], fb["ux"], fb["uy"], g.fx, g.fy], [fb["Fxqx"], fb["Fxqy"], fb["Fyqx"], fb["Fyqy"]])
         R(k_stepA_B, [fb["qx"], fb["qy"], fb["Fxqx"], fb["Fxqy"], fb["Fyqx"], fb["Fyqy"], fb["s"], fb["Lam"], fb["vsx"],
-                      fb["vsy"], fb["ls"], P, dt, ih, N, self.Vbx, self.Vby], [fb["ax"], fb["ay"], fb["coef"]])
+                      fb["vsy"], fb["ls"], P, dt, ih, N, self.Vbx, self.Vby, fb["sm"], fb["ux"], fb["uy"]],
+          [fb["ax"], fb["ay"], fb["coef"]])
         R(k_massflux, [fb["ax"], fb["ay"], fb["l"], fb["ls"], g.fx, g.fy], [fb["Gex"], fb["Gey"]])
         R(k_facecoef, [fb["coef"], g.fx, g.fy, dt], [M.c["kx"], M.c["ky"]])
         R(k_massdiag, [M.c["kx"], M.c["ky"], dt, ih2, N], [M.d[0]])

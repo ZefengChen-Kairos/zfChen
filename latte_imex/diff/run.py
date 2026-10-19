@@ -175,16 +175,42 @@ def blur_np(a, sig):
 FLOW_EXCL = 0.12        # [solver units] no velocity supervision this close to the landing point
 
 
-def circ_fields(S, geo):
-    """Unit circulation fields of every frame of the arrival record S (circulation.CircField), float32."""
+def kernel_inside(S, geo, x, y):
+    """Fraction of the footprint kernel inside the cup per frame (k_kernel_raw's sums[0] / sums[1], q x q quadrature)."""
+    h, m = geo.h, geo.mask_np
+    Z = np.ones(S["n"])
+    for k in range(S["n"]):
+        if not S["active"][k]:
+            continue
+        q = int(S["q"][k])
+        r1, r2 = max(float(S["r1"][k]), 1.5 * h), max(float(S["r2"][k]), 1.5 * h)
+        c, s = np.cos(float(S["phi"][k])), np.sin(float(S["phi"][k]))
+        acc = np.zeros_like(geo.x_np)
+        for ox in range(q):
+            for oy in range(q):
+                dx = geo.x_np + ((ox + 0.5) / q - 0.5) * h - x[k]
+                dy = geo.y_np + ((oy + 0.5) / q - 0.5) * h - y[k]
+                a, b = (c * dx + s * dy) / r1, (-s * dx + c * dy) / r2
+                acc += np.maximum(0.0, 1.0 - a * a - b * b) ** 2
+        tot = acc.sum()
+        Z[k] = acc[m].sum() / tot if tot > 0 else 0.0
+    return Z
+
+
+def circ_fields(S, geo, x=None, y=None):
+    """Unit circulation fields of every frame of the arrival record S (circulation.CircField), float32; driven by the
+    received flow Q Z (Z: kernel_inside) at the landing points x, y (default S's)."""
     from ..circulation import CircField
+    x = S["x"] if x is None else x
+    y = S["y"] if y is None else y
+    Z = kernel_inside(S, geo, x, y)
     C = CircField(geo.x_np, geo.y_np, geo.mask_np, geo.h)
     n, N = S["n"], geo.N
     V = np.zeros((n, 2, N, N), np.float32)
     K = np.zeros((n, N, N), np.float32)
     Ws = np.zeros((n, N, N), np.float32)
     for k in range(n):
-        v, kk = C.step(float(S["fdt"][k]), bool(S["active"][k]), float(S["Q"][k]), (S["x"][k], S["y"][k]),
+        v, kk = C.step(float(S["fdt"][k]), bool(S["active"][k]), float(S["Q"][k] * Z[k]), (x[k], y[k]),
                        (S["ux"][k], S["uy"][k]))
         V[k], K[k], Ws[k] = v, kk, C.Wsink
     return V, K, Ws
@@ -244,6 +270,7 @@ class DiffPour:
         self.sol = W.WSolver(self.geo, v05=self.S["return_law"] == "v05", check_every=check_every, graphs=graphs, up=upwell)
         dev = self.geo.dev
         self.Sw = {k: wp.array(self.S[k], dtype=F, device=dev, requires_grad=True) for k in W.SCHED}
+        self.circ = circ
         if circ:                                         # jet-driven overturning circulation (circulation.py)
             self.sol.set_circ(*circ_fields(self.S, self.geo))
         self.foot_dir = SC.foot_dirs(self.S["ux"], self.S["uy"])
@@ -342,6 +369,8 @@ class DiffPour:
             x, y = SC.foot_shift(self.S["x"], self.S["y"], self.S["ux"], self.S["uy"], *ab)
             self.Sw["x"].assign(x)
             self.Sw["y"].assign(y)
+            if self.circ:                                # the circulation follows the landing point
+                self.sol.set_circ(*circ_fields(self.S, self.geo, x, y))
             self._foot = ab
 
     def _P(self, P, rec):
