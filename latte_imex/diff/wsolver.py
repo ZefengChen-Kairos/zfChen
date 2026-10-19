@@ -24,7 +24,7 @@ wp.config.quiet = True
 F = wp.float64
 PARAMS = ("cp", "beta", "nu", "D", "kappa_Q", "kappa_c", "kappa_t", "kappa_r", "B_dep", "p_dep", "kappa_M", "eps_f",
           "kappa_w", "tau_s", "mu_s", "xi_X", "tau_f", "alpha_u", "kappa_e", "kappa_tc", "vj", "e_F", "tau_b")
-CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW, TS, MS, XX, TF, AU, KJ, KTC, VJ, EF, TB = range(23)
+CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW, TS, MS, XX, TF, AU, KJ, KTC, VJ, EF, YB = range(23)
 YIELD_EPS, NU_MAX = 0.02, 0.5      # solver.Params.yield_eps, nu_max (Bingham foam raft, tau_f > 0)
 SCHED = ("x", "y", "Q", "ux", "uy", "U", "d", "r1", "r2", "phi", "vjx", "vjy")
 A2 = wp.array2d(dtype=F)
@@ -452,7 +452,7 @@ def k_visc_nu(qx3: A2, qy3: A2, l3: A2, m3: A2, mask: I2, fx: I2, fy: I2, P: A1,
     tau_f = tau_b = 0."""
     j, i = wp.tid()
     nuc[j, i] = P[NU]
-    if mask[j, i] != 0 and P[TF] + P[TB] > F(0.0):
+    if mask[j, i] != 0 and P[TF] + P[YB] > F(0.0):
         L = l3[j, i]
         u = qx3[j, i] / L
         v = qy3[j, i] / L
@@ -488,7 +488,7 @@ def k_visc_nu(qx3: A2, qy3: A2, l3: A2, m3: A2, mask: I2, fx: I2, fy: I2, P: A1,
         d = dy / (wp.max(ny, F(1.0)) / inv_h)
         De = wp.sqrt(a * a + d * d + a * d + F(0.25) * (b + c) * (b + c) + F(1e-24))
         cl = wp.min(wp.max(m3[j, i] / L, F(0.0)), F(1.0))
-        nuc[j, i] = wp.min(P[NU] + (P[TB] * (F(1.0) - cl) + P[TF] * cl) / (F(2.0) * De + F(YIELD_EPS)), F(NU_MAX))
+        nuc[j, i] = wp.min(P[NU] + (P[YB] * (F(1.0) - cl) + P[TF] * cl) / (F(2.0) * De + F(YIELD_EPS)), F(NU_MAX))
 
 
 @wp.kernel
@@ -499,7 +499,7 @@ def k_visc_coefs(l3: A2, fx: I2, fy: I2, cm: I2, geo: A2, P: A1, nuc: A2, N: int
     wx[j, i] = F(0.0)
     wy[j, i] = F(0.0)
     wc[j, i] = F(0.0)
-    if P[TF] + P[TB] > F(0.0):
+    if P[TF] + P[YB] > F(0.0):
         if fx[j, i] != 0:
             wx[j, i] = F(2.0) * (F(0.5) * (nuc[j, i] + nuc[j, i + 1])) * (F(0.5) * (l3[j, i] + l3[j, i + 1]))
         if fy[j, i] != 0:
