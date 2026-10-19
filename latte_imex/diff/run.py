@@ -214,19 +214,33 @@ def circ_fields(S, geo, x=None, y=None, dtype=np.float32):
     return U, up, dn, Wn
 
 
+EXPOSURE_TOL = 0.15     # frames whose median lightness departs from its +-1 s running median by more than this are not
+                        # observed: the camera exposure drops when the pitcher is lifted and the whiteness classifier
+                        # inflates the white fraction by 10-60 % for 0.3-0.4 s (tulip 5 %, push_heart 6 %, swan 2 % of
+                        # the frames; none in heart, leaf).  None: keep every frame
+
+
+def exposure_transients(t, L, valid, tol=EXPOSURE_TOL):
+    """Boolean mask of the video frames with an exposure transient (see EXPOSURE_TOL)."""
+    med = np.array([np.median(L[j][valid[j]]) if valid[j].any() else np.nan for j in range(len(t))])
+    run = np.array([np.nanmedian(med[np.abs(t - tt) <= 1.0]) for tt in t])
+    return np.abs(med - run) > tol * run
+
+
 def video_on_grid(p, geo, t_end):
     """Whole-video observations (raw_data/rig/video_obs/<p>.npz) on the solver cells: list of (frame index, time
-    weight, w, v) for the frames inside the simulated time."""
+    weight, w, v) for the frames inside the simulated time (exposure transients dropped, EXPOSURE_TOL)."""
     import os
     from ..rig.real_program import CUP_R, REPO
     Z = np.load(os.path.join(REPO, "raw_data", "rig", "video_obs", f"{p}.npz"))
     t, Wo, Vo, ex = Z["t"], Z["w"].astype(float) / 255.0, Z["valid"], float(Z["extent"])
+    bad = exposure_transients(t, Z["L"].astype(float), Vo) if EXPOSURE_TOL else np.zeros(len(t), bool)
     n = Wo.shape[1]
     U, V = geo.x_np / CUP_R, -geo.y_np / CUP_R
     col = np.clip(np.round((U + ex) / (2 * ex) * (n - 1)).astype(int), 0, n - 1)
     row = np.clip(np.round((V + ex) / (2 * ex) * (n - 1)).astype(int), 0, n - 1)
     inside = (U ** 2 + V ** 2 <= 1.0) & geo.mask_np
-    keep = [j for j in range(len(t)) if t[j] <= t_end[-1] + 0.02 and (Vo[j][row, col] & inside).sum() > 50]
+    keep = [j for j in range(len(t)) if t[j] <= t_end[-1] + 0.02 and (Vo[j][row, col] & inside).sum() > 50 and not bad[j]]
     tk = t[keep]
     mid = 0.5 * (tk[1:] + tk[:-1])
     dt = np.diff(np.r_[tk[0], mid, tk[-1]]) if len(tk) > 1 else np.ones(1)
