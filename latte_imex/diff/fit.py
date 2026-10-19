@@ -276,6 +276,8 @@ def main(argv=None):
     ap.add_argument("--loss", default="video", choices=["video", "final"])
     ap.add_argument("--scales", default="0.3,0.15,0",
                     help="video loss scales [cup radii] (run.py): blurred residual terms, 0 = per pixel; '0' = pixel term only")
+    ap.add_argument("--w-flow", dest="w_flow", type=float, default=0.0,
+                    help="weight of the surface-velocity term (optical flow of the real pour, rig/video_flow.py)")
     ap.add_argument("--circ", action="store_true",
                     help="area-conserving film (circulation.py): the film goes down along the wall (fit kappa_w; use with "
                          "--upwell)")
@@ -304,7 +306,7 @@ def main(argv=None):
     cal = a.cal.split(",")
     kw = dict(N=a.N, device=a.device, w_gap=a.w_gap, tau=a.tau0, T_max=a.T, loss=a.loss, w_final=a.w_final,
               scales=tuple(float(x) for x in a.scales.split(",")), e0=a.e0, upwell=a.upwell,
-              circ=a.circ)
+              circ=a.circ, w_flow=a.w_flow)
     workers = a.workers if a.workers >= 0 else (len(cal) if (a.device or "cuda").startswith("cuda") else 0)
     pours = {p: Pour(p, kw, process=workers > 0) for p in cal}
     log(f"{len(cal)} calibration pours, {'one worker process each' if workers > 0 else 'in-process'}")

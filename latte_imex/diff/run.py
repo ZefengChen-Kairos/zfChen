@@ -126,6 +126,19 @@ def k_ms0(sum0: A1, frac: F, sums: A1):
 
 
 @wp.kernel
+def k_ou(l: A2, qx: A2, qy: A2, o: A2, mask: I2, ox: A2, oy: A2):
+    """o * u (film velocity on the trusted optical-flow pixels)."""
+    j, i = wp.tid()
+    ox[j, i] = F(0.0)
+    oy[j, i] = F(0.0)
+    if mask[j, i] != 0:
+        w = o[j, i]
+        if w != F(0.0):
+            ox[j, i] = w * qx[j, i] / l[j, i]
+            oy[j, i] = w * qy[j, i] / l[j, i]
+
+
+@wp.kernel
 def k_wsum(sums: A1, wgt: F, out: A1):
     out[0] = wgt * sums[0]
 
@@ -150,6 +163,9 @@ def blur_np(a, sig):
             pad += w[d] * (src * (ok[None, :] if ax == 1 else ok[:, None]))
         a = pad
     return a
+
+
+FLOW_EXCL = 0.12        # [solver units] no velocity supervision this close to the landing point
 
 
 def circ_fields(S, geo):
@@ -208,7 +224,8 @@ def target_on_grid(p, geo):
 
 class DiffPour:
     def __init__(self, p, N=128, device=None, T_max=None, w_gap=2.0, tau=0.05, check_every=None, graphs=True,
-                 loss="video", w_final=0.0, scales=(0.0,), e0=False, upwell=False, circ=False, log=print):
+                 loss="video", w_final=0.0, scales=(0.0,), e0=False, upwell=False, circ=False, w_flow=0.0,
+                 flow_scale=0.15, flow_u0=0.05, log=print):
         self.p, self.N, self.log = p, N, log
         wp.init()
         script, pour = SC.pour_script(p, N, e0=e0)
@@ -256,6 +273,8 @@ class DiffPour:
                                          Bw=wp.array(Bw, dtype=F, device=dev), iBv=wp.array(iBv, dtype=F, device=dev),
                                          coef=1.0 / (len(self.scales) * max(Bv[keep].sum(), 1e-30))))
                 self.obs.append(ob)
+            if w_flow > 0:
+                self._flow_terms(p, w_flow, flow_scale, flow_u0)
             # reference: the loss of a simulation with no white at all (p = 0) -- a fit must get well below it
             self.L_brown = 0.0
             for ob in self.obs:
@@ -268,6 +287,45 @@ class DiffPour:
             + (", landing point: E0 measured stream foot" if e0 else "")
             + (f" ({len(self.obs)} observed frames, scales {self.scales} R; no-white reference loss "
                f"{self.L_brown:.4f})" if self.obs else ""))
+
+    def _flow_terms(self, p, w_flow, scale, u0):
+        """Surface-velocity supervision (rig/video_flow.py): per observed frame the film velocity u on the trusted
+        optical-flow pixels o, compared after a Gaussian blur of width scale R,
+            w_flow / u0^2 * sum (G*(o u) - G*(o u_obs))^2 / G*o / sum G*o   (both components),
+        added to the frame's term (same time weight).  Caution: the frame-to-frame flow of the rectified view is noise
+        dominated (trusted-pixel speeds 0.2-0.3 /s per frame against ~0.04 /s time-mean: registration jitter, exposure
+        flicker, foam glints), so per-frame supervision is off by default (w_flow = 0)."""
+        import os
+        from ..rig.real_program import CUP_R, REPO
+        Z = np.load(os.path.join(REPO, "raw_data", "rig", "video_obs", f"{p}_flow.npz"))
+        tf, Uo, Vo, OK, ex = Z["t"], Z["u"].astype(float), Z["v"].astype(float), Z["ok"], float(Z["extent"])
+        g, dev, N = self.geo, self.geo.dev, self.N
+        n = Uo.shape[1]
+        U, V = g.x_np / CUP_R, -g.y_np / CUP_R
+        col = np.clip(np.round((U + ex) / (2 * ex) * (n - 1)).astype(int), 0, n - 1)
+        row = np.clip(np.round((V + ex) / (2 * ex) * (n - 1)).astype(int), 0, n - 1)
+        inside = (U ** 2 + V ** 2 <= 1.0) & g.mask_np
+        sig = scale * CUP_R * N
+        wts, r = gauss_w(sig)
+        wd = wp.array(wts, dtype=F, device=dev)
+        for ob in self.obs:
+            j = int(np.argmin(np.abs(tf - ob["t"])))
+            if abs(tf[j] - ob["t"]) > 0.06:
+                continue
+            o = OK[j][row, col] & inside
+            k = ob["k"]
+            if self.S["active"][k]:                      # the stream's impact zone: the flow there is not trusted
+                o &= np.hypot(g.x_np - self.S["x"][k], g.y_np - self.S["y"][k]) > FLOW_EXCL
+            o = o.astype(float)
+            if o.sum() < 20:
+                continue
+            Bo = blur_np(o, sig)
+            keep = Bo > 0.05
+            ob["fl"] = dict(o=wp.array(o, dtype=F, device=dev), w=wd, r=r,
+                            Bx=wp.array(blur_np(o * Uo[j][row, col], sig), dtype=F, device=dev),
+                            By=wp.array(blur_np(o * Vo[j][row, col], sig), dtype=F, device=dev),
+                            iBo=wp.array(np.where(keep, 1.0 / np.maximum(Bo, 1e-30), 0.0), dtype=F, device=dev),
+                            coef=w_flow / (u0 * u0 * max(Bo[keep].sum(), 1e-30)))
 
     # ------------------------------------------------------------------ pieces
     def _apply_foot(self, P):
@@ -323,6 +381,16 @@ class DiffPour:
                     Lt(k_blur, [vp, t["w"], t["r"], g.N, 0, bx])
                     Lt(k_blur, [bx, t["w"], t["r"], g.N, 1, by])
                     Lt(k_ms, [by, t["Bw"], t["iBv"], F(t["coef"]), sums])
+                if "fl" in ob:                           # surface-velocity supervision (_flow_terms)
+                    fl = ob["fl"]
+                    z = lambda: wp.zeros((g.N, g.N), dtype=F, device=g.dev, requires_grad=rec)
+                    ox, oy = z(), z()
+                    Lt(k_ou, [S["l"], S["qx"], S["qy"], fl["o"], g.mask, ox, oy])
+                    for comp, Bo_ in ((ox, fl["Bx"]), (oy, fl["By"])):
+                        bx, by = z(), z()
+                        Lt(k_blur, [comp, fl["w"], fl["r"], g.N, 0, bx])
+                        Lt(k_blur, [bx, fl["w"], fl["r"], g.N, 1, by])
+                        Lt(k_ms, [by, Bo_, fl["iBo"], F(fl["coef"]), sums])
                 Lt(k_wsum, [sums, F(ob["wt"]), out], 1)
         if rec:
             tape = wp.Tape()
