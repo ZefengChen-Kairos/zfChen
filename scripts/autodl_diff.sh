@@ -3,7 +3,9 @@
 # then the movies with the result (runs in the background; log results/diff.log).
 #   bash scripts/autodl_diff.sh                 -> prints the log path and returns
 #   FITS="A:tulip AB:tulip,leaf" (default, V1 plan 5.1)  N=128  ITERS=60  INIT=<closure json> (default: S1)
-#   FIT_ARGS="--upwell --circ" (extra diff.fit flags, e.g. the area-conserving film)
+#   FIT_ARGS="--dep" (extra diff.fit flags; --dep: foam surfaces tau_s u_in ahead of the landing point with the share
+#   mu_s of the jet momentum lost, the model that generalises best on the held-out pours, V2_SURFACE_MODEL.md;
+#   e.g. FITS="AB:tulip,leaf" FIT_ARGS="--dep" INIT=latte_imex/data/closures/dep_AB_cmaes_N48.json)
 # Send back: results/diff_results.tar.gz
 # If the CUDA-graph capture fails on this driver: LATTE_NO_GRAPHS=1 bash scripts/autodl_diff.sh
 cd "$(dirname "$0")/.."

@@ -1,0 +1,21 @@
+{
+ "cp": 1.443435112665269,
+ "beta": 3.615758333887487,
+ "nu": 0.001,
+ "D": 1e-07,
+ "kappa_Q": 2.402585026036897,
+ "kappa_c": 0.943099214845779,
+ "kappa_t": 0.9743404589593399,
+ "kappa_r": 0.03158005451845682,
+ "B_dep": 3005.784031077539,
+ "p_dep": 7.90363286403608,
+ "kappa_M": 0.0,
+ "eps_f": 0.0,
+ "kappa_w": 0.0,
+ "tau_s": 0.08102640378526765,
+ "mu_s": 0.868412286512792,
+ "upwell": 0.0,
+ "circ": 0.0,
+ "e0": 1.0,
+ "_note": "CMA-ES on the whole-video IoU of tulip + leaf (V1 plan A+B), N=48, E0 landing points, multi-scale loss; V0.5 + foam surfacing ahead of the plunge point (tau_s, mu_s); see V2_SURFACE_MODEL.md section 5"
+}

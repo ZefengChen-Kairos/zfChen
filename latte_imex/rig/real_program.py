@@ -332,7 +332,7 @@ def real_program(p, N=256, flow="pitcher", V0=None, log=print, closure=None):
     meta = phases_meta(p, C, R, T)
     foot, e0 = (0.0, 0.0), False
     if closure:
-        closure = dict(closure)
+        closure = {k: v for k, v in closure.items() if not k.startswith("_")}     # "_note" etc.: comments
         foot = (float(closure.pop("foot_a", 0.0)), float(closure.pop("foot_b", 0.0)))
         e0 = bool(closure.pop("e0", 0))
         if not closure.pop("circ", 1):                 # fitted without the surface current (diff/fit.py --circ off)
