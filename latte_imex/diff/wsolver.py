@@ -23,8 +23,8 @@ import warp as wp
 wp.config.quiet = True
 F = wp.float64
 PARAMS = ("cp", "beta", "nu", "D", "kappa_Q", "kappa_c", "kappa_t", "kappa_r", "B_dep", "p_dep", "kappa_M", "eps_f",
-          "kappa_w", "tau_s", "mu_s", "kappa_p")
-CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW, TS, MS, KP = range(16)
+          "kappa_w", "tau_s", "mu_s")
+CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW, TS, MS = range(15)
 SCHED = ("x", "y", "Q", "ux", "uy", "U", "d", "r1", "r2", "phi")
 A2 = wp.array2d(dtype=F)
 I2 = wp.array2d(dtype=wp.int32)
@@ -88,8 +88,7 @@ def k_fields(Kraw: A2, sums: A1, Kd: A2, sumsd: A1, mask: I2, xc: A2, yc: A2, P:
     """Solver.inlet_fields (closure 'chi', offcup 'account'): sm = chi S Z K_d (new milk, surfacing at the deposit kernel
     K_d, tau_s u_in ahead of the landing point; the landing kernel K if K_d misses the cup), s = sm (V0.5) or
     sm + (1 - chi) S Z K (up: the dived part resurfaces at the landing point as base material),
-    Lam = kappa_c (1 - chi) chi_p S Z K with chi_p = 1 / (1 + (kappa_p zc)^p_dep) (a deep-plunging stream takes its
-    horizontal momentum down instead of dragging the surface; kappa_p = 0: V0.5), target v*."""
+    Lam = kappa_c (1 - chi) S Z K, target v*."""
     j, i = wp.tid()
     k = kq[0]
     tot = sums[1]
@@ -120,10 +119,7 @@ def k_fields(Kraw: A2, sums: A1, Kd: A2, sumsd: A1, mask: I2, xc: A2, yc: A2, P:
         s[j, i] = chi * S_rec * Kdn + (F(1.0) - chi) * S_rec * Kn
     else:
         s[j, i] = chi * S_rec * Kdn
-    chip = F(1.0)
-    if P[KP] > F(0.0):                                   # (pow(0, p) has a NaN derivative in p)
-        chip = F(1.0) / (F(1.0) + wp.pow(P[KP] * zc, P[PDEP]))
-    Lam[j, i] = P[KC] * (F(1.0) - chi) * chip * S_rec * Kn
+    Lam[j, i] = P[KC] * (F(1.0) - chi) * S_rec * Kn
     dx = xc[j, i] - Sx[k]
     dy = yc[j, i] - Sy[k]
     Rdep = wp.sqrt(wp.max(Sr1[k] * Sr2[k], F(1e-12)))

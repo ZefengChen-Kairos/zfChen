@@ -48,8 +48,6 @@ class Params:
                             # plunging stream's horizontal velocity for its rise time; the deposit kernel K_d), [s]
     mu_s: float = 0.0       # closure "chi": share of the jet momentum the surfacing foam has lost (it arrives with the film
                             # velocity instead of the jet target v*); 0 = V0.5
-    kappa_p: float = 0.0    # closure "chi": deep-plunge cutoff of the traction, Lam x 1 / (1 + (kappa_p zc)^p_dep), zc =
-                            # U_perp^2 / (B_dep d): a stream that plunges deep drags the surface less; 0 = V0.5
     upwell: bool = False    # closure "chi": the whole received volume reaches the surface (s = S K); chi only decides whether
                             # it is new milk (m source chi S K) or dived milk resurfacing as base material
     closure: str = "chi"    # "chi": original single-layer closure ; "skin" ; "twolayer": the layer (l, q, m) is the floating
@@ -446,8 +444,7 @@ class Solver:
                 Kd = K
         self._s_milk = chi * S_rec * Kd      # new milk (wsolver sm)
         s = self._s_milk + ((1.0 - chi) * S_rec * K if P.upwell else 0.0)
-        chip = 1.0 / (1.0 + (P.kappa_p * zc) ** P.p_dep) if P.kappa_p else 1.0
-        Lam = P.kappa_c * (1.0 - chi) * chip * S_rec * K
+        Lam = P.kappa_c * (1.0 - chi) * S_rec * K
         # target velocity
         dx = g.x - inlet.x_hit[0]
         dy = g.y - inlet.x_hit[1]
