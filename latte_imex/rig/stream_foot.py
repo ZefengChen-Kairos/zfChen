@@ -134,15 +134,21 @@ def run(p, every=1, sheet_n=12, log=print):
     ct = json.load(open(f"{SCR}/{p}/cup_track.json"))
     C = cup_poses(p)
     t0, L = C["t0_abs"], C["L"]
-    D = [d for d in json.load(open(os.path.join(RES, p, "disc.json"))) if d.get("fit_ok", True)]
+    D = json.load(open(os.path.join(RES, p, "disc.json")))
+    registered = bool(D and D[0].get("source") == "cup_register.py")
+    if not registered:                                    # old free per-frame circles: only the accepted fits
+        D = [d for d in D if d.get("fit_ok", True)]
     dt_ = np.array([d["t"] for d in D])
     dc = np.array([d["disc_centre"] for d in D])
     dR = np.array([d["disc_R"] for d in D])
+    dz_ = np.array([d["surf_z"] for d in D])
     M = model_landing(p)
     out, keep = [], []
     for fi in range(0, len(ct), every):
         o = ct[fi]
-        tip, zs = np.array(o["tip"]), float(o["surf_z_board"])
+        tip = np.array(o["tip"])
+        # liquid surface: the registered plane (multi-view consistent, cup_register.py); else the raw depth surface
+        zs = float(np.interp(o["t"], dt_, dz_)) if registered else float(o["surf_z_board"])
         A, foot, views = track(rig, o["t"], tip, zs)
         if A is None:
             continue
@@ -153,7 +159,7 @@ def run(p, every=1, sheet_n=12, log=print):
         top = float(np.hypot(A[0, 1] - tip[0], A[0, 2] - tip[1]))
         trusted = bool(q > Q_OK and rms <= RMS_OK and slope <= SLOPE_OK and top <= TOP_OK)
         cx, cy = np.interp(o["t"], dt_, dc[:, 0]), np.interp(o["t"], dt_, dc[:, 1])
-        Rr = float(np.interp(o["t"], dt_, dR))
+        Rr = L * CUP_R if registered else float(np.interp(o["t"], dt_, dR))   # one length unit with the sim (L: m per D)
         u, v = (foot[0] - cx) / Rr, (foot[1] - cy) / Rr
         xs, ys = (foot[0] - cx) / L, -(foot[1] - cy) / L
         ts = o["t"] - t0

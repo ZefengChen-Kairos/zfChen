@@ -17,7 +17,7 @@ M = cv2.getRotationMatrix2D((S / 2 - 0.5, S / 2 - 0.5), rot, 1.0)
 s = np.linspace(-EXT, EXT, S); U, V = np.meshgrid(s, s); outside = U ** 2 + V ** 2 > 1.0
 def real_frame(fi):
     Z = np.load(f"{SCR}/{p}/top/{fi:04d}.npz"); img, c0, PX, HALF = Z["img"], Z["c0"], float(Z["px"]), float(Z["half"])
-    cen = np.array(D[fi]["disc_centre"]); R = D[fi]["disc_R"]
+    cen = np.array(D[fi]["disc_centre"]); R = D[fi].get("L_m") or D[fi]["disc_R"]   # one length unit with the sim
     mx = ((cen[0] + U * R - c0[0] + HALF) / PX - 0.5).astype(np.float32); my = ((cen[1] + V * R - c0[1] + HALF) / PX - 0.5).astype(np.float32)
     out = cv2.remap(img, mx, my, cv2.INTER_LINEAR); out[outside] = 0
     return cv2.warpAffine(out, M, (S, S))

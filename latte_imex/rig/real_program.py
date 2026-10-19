@@ -12,7 +12,9 @@ Pipeline (no fitted physics; every constant below is an assumption, listed in `A
  1. Poses on the pitcher model's 1 ms grid: rotations slerped (scipy Slerp) from the irregular ~13-20 fps samples and
     smoothed (gaussian, sigma POSE_SIGMA, on the sign-aligned quaternion components, renormalised); the pitcher origin
     linearly interpolated and smoothed the same way.  The disc centre and surface height (cup frame) are interpolated
-    and smoothed with the wider DISC_SIGMA (cup moves slowly, the disc fit is noisy).
+    from disc.json, which since cup_register.py is already the rigid-cup track every consumer shares (centre robustly
+    smoothed, R(t) from the cup's flare, plane from multi-view consistency); DISC_SIGMA smooths only the old free
+    per-frame fits (disc_fit.py), which also need their fit_ok frames picked.
  2. Cup frame: origin = disc centre on the liquid surface, axes F = (x_b, -y_b, -z_b) (board x / y, up; a proper
     rotation of the board frame, so the pitcher pose is not mirrored).  The spout tip = R tip_p + pos is expressed in
     this frame; it is the pose's anchor: the CAD stand-in pitcher (NX, s1_forward.geometry(0)) is placed with ITS
@@ -69,7 +71,7 @@ PATTERNS = ("heart", "push_heart", "leaf", "swan", "tulip")
 CUP_R = 0.49                 # Numerics.cup_radius [D]
 DT = 1e-3                    # pitcher / table step [s]
 POSE_SIGMA = 0.04            # [s] gaussian smoothing of the interpolated poses
-DISC_SIGMA = 0.15            # [s] gaussian smoothing of the disc centre / surface height
+DISC_SIGMA = 0.15            # [s] gaussian smoothing of the disc centre / surface height (old disc_fit.py tracks only)
 ON_WIN = 1.0                 # [s] running-max window of the tilt envelope
 ON_DTILT = 6.0               # [deg] tilt below the envelope that counts as 'stream off'
 ON_FRAC = 0.98               # fraction of the observed-on time the calibrated pitcher must stream
@@ -104,7 +106,11 @@ def load_take(p):
     z = np.load(os.path.join(RES, p, "pitcher_pose.npz"))
     P = {k: z[k] for k in ("t", "rotvec", "pos", "tip_p")}
     with open(os.path.join(RES, p, "disc.json")) as f:
-        D = [d for d in json.load(f) if d.get("fit_ok", True)]
+        D = json.load(f)
+    P["registered"] = bool(D and D[0].get("source") == "cup_register.py")
+    if not P["registered"]:                               # old free per-frame circles: only the accepted fits
+        D = [d for d in D if d.get("fit_ok", True)]
+    P["L_m"] = D[0].get("L_m") if P["registered"] else None
     P["disc_t"] = np.array([d["t"] for d in D])
     P["disc_c"] = np.array([d["disc_centre"] for d in D])
     P["disc_z"] = np.array([d["surf_z"] for d in D])
@@ -157,22 +163,23 @@ def cup_poses(p, dt=DT):
     Rb = Rotation.from_quat(q).as_matrix()                 # pitcher -> board
     pos = _smooth(np.stack([np.interp(tg, t_abs, P["pos"][:, k]) for k in range(3)], 1), POSE_SIGMA, dt)
     tip_b = np.einsum("nij,j->ni", Rb, tip_p) + pos
-    cx = _smooth(np.interp(tg, P["disc_t"], P["disc_c"][:, 0]), DISC_SIGMA, dt)
-    cy = _smooth(np.interp(tg, P["disc_t"], P["disc_c"][:, 1]), DISC_SIGMA, dt)
-    cz = _smooth(np.interp(tg, P["disc_t"], P["disc_z"]), DISC_SIGMA, dt)
+    ds = 0.0 if P["registered"] else DISC_SIGMA           # the registered track is shared as it is
+    cx = _smooth(np.interp(tg, P["disc_t"], P["disc_c"][:, 0]), ds, dt)
+    cy = _smooth(np.interp(tg, P["disc_t"], P["disc_c"][:, 1]), ds, dt)
+    cz = _smooth(np.interp(tg, P["disc_t"], P["disc_z"]), ds, dt)
     rel = tip_b - np.stack([cx, cy, cz], 1)
     tip = rel @ S_FLIP.T
     Rc = S_FLIP @ Rb @ M_CAD                               # CAD body -> cup frame
     eul = Rotation.from_matrix(Rc).as_euler("ZYX")         # R = Rz(yaw) Ry(tilt) Rx(roll)
     axis = Rb[:, :, 2]
     axis_tilt = np.degrees(np.arccos(np.clip(-axis[:, 2], -1, 1)))
-    Rd = float(np.median(P["disc_R"]))
+    Rd = float(P["L_m"] if P["L_m"] else np.median(P["disc_R"]))
     # raw samples (for the figures): tip in disc units, image orientation (x, +y board)
     rb_raw = rots.as_matrix()
     tipr = np.einsum("nij,j->ni", rb_raw, P["tip_p"]) + P["pos"]
     m = (t_abs >= t0) & (t_abs <= t1)
     crx = np.interp(t_abs[m], P["disc_t"], P["disc_c"][:, 0]); cry = np.interp(t_abs[m], P["disc_t"], P["disc_c"][:, 1])
-    Rr = np.interp(t_abs[m], P["disc_t"], P["disc_R"])
+    Rr = np.full(int(m.sum()), Rd) if P["registered"] else np.interp(t_abs[m], P["disc_t"], P["disc_R"])
     raw_uv = np.stack([(tipr[m, 0] - crx) / Rr, (tipr[m, 1] - cry) / Rr], 1)
     return dict(t=tg - t0, tip=tip, yaw=eul[:, 0], tilt=eul[:, 1], roll=eul[:, 2], axis_tilt_deg=axis_tilt,
                 L=Rd / CUP_R, R_disc=Rd, t0_abs=float(t0), dt=dt, raw_t=t_abs[m] - t0, raw_uv=raw_uv)
