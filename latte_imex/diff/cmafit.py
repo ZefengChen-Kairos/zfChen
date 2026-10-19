@@ -26,7 +26,8 @@ import numpy as np
 
 from ..v05_adapter import SPACE
 from . import schedule as SC
-from .fit import CIRC_SPACE, CIRC_START, DEP_SPACE, DEP_START, RAFT_SPACE, RAFT_START
+from .fit import (CIRC_SPACE, CIRC_START, DEP_SPACE, DEP_START, KIN_SPACE, MECH_START, RAFT_SPACE, RAFT_START, SINK_SPACE,
+                  VJ_SPACE, YIELD_SPACE)
 from . import score as SS
 
 PATTERNS = ("tulip", "leaf", "heart", "push_heart", "swan")
@@ -43,7 +44,18 @@ def model_space(model):
         SP["mu_s"] = DEP_SPACE["mu_s"]
     if "a" in f:
         SP.update(RAFT_SPACE)
-    return SP, dict(circ="c" in f, upwell="u" in f)
+    fix = {}
+    if "e" in f:                                     # entrainment sink of the diving stream
+        SP.update(SINK_SPACE)
+    if "j" in f:                                     # traction towards the landing point's velocity V_j
+        SP.update(VJ_SPACE)
+        fix["vj"] = 1.0
+    if "k" in f:                                     # kinematic deposition + landing crater
+        SP.update(KIN_SPACE)
+        fix["mu_s"] = 1.0
+    if "y" in f:                                     # yield stress of the floating layer
+        SP.update(YIELD_SPACE)
+    return SP, dict(circ="c" in f, upwell="u" in f, fix=fix)
 
 
 def to_unit(P, SP):
@@ -138,9 +150,10 @@ def main(argv=None):
     from .run import DiffPour
     base = dict(DiffPour(cal[0], N=16, device="cpu", log=lambda *x: None).s1)
     base.update(CIRC_START if sw["circ"] else {"kappa_M": 0.0, "eps_f": 0.0, "kappa_w": 0.0})
-    base.update({k: v for k, v in dict(DEP_START, **RAFT_START).items() if k in SP})
+    base.update({k: v for k, v in dict(DEP_START, **RAFT_START, **MECH_START).items() if k in SP})
     if a.init:
         base.update({k: float(v) for k, v in json.load(open(a.init)).items() if isinstance(v, (int, float)) and not k.startswith("_")})
+    base.update(sw.pop("fix"))                       # switches of the model letters (vj, mu_s = 1)
     for k, v in (x.split("=") for x in a.set.split(",") if x):
         base[k] = float(v)
     for k in SP:                                     # start inside the box

@@ -10,7 +10,7 @@ import numpy as np
 
 from ..solver import Numerics
 
-SCHED = ("x", "y", "Q", "ux", "uy", "U", "d", "r1", "r2", "phi")
+SCHED = ("x", "y", "Q", "ux", "uy", "U", "d", "r1", "r2", "phi", "vjx", "vjy")   # = wsolver.SCHED (vjx, vjy: landing-point velocity)
 
 
 def build(script, N, num=None, T_max=None):
@@ -38,10 +38,34 @@ def build(script, N, num=None, T_max=None):
         inlets.append(inl)
         t += fdt
     A = np.array(rows, float)
-    out = {k: A[:, i].copy() for i, k in enumerate(SCHED)}
-    out.update(active=A[:, 10] > 0, fdt=A[:, 11], q=A[:, 12].astype(int), inlets=inlets, kQ=kQ, T=T,
+    nb = len(SCHED) - 2                                    # the per-frame inlet columns; vjx, vjy follow
+    out = {k: A[:, i].copy() for i, k in enumerate(SCHED[:nb])}
+    out["vjx"], out["vjy"] = foot_velocity(A[:, 0], A[:, 1], A[:, nb], A[:, nb + 1])
+    for inl, vx, vy in zip(inlets, out["vjx"], out["vjy"]):
+        inl.v_hit = (float(vx), float(vy))
+    out.update(active=A[:, nb] > 0, fdt=A[:, nb + 1], q=A[:, nb + 2].astype(int), inlets=inlets, kQ=kQ, T=T,
                return_law=script.params.get("return_law", "v1"), n=len(rows))
     return out
+
+
+V_FOOT_TAU = 0.15        # [s] smoothing time of the landing-point velocity V_j (filters the frame-to-frame E0 jitter)
+
+
+def foot_velocity(x, y, active, fdt, tau=V_FOOT_TAU):
+    """V_j: velocity of the landing point itself (exponential moving average of its frame-to-frame displacement over
+    tau, between consecutive active frames; reset to 0 when the stream is off), the speed at which the stream column
+    moves through the surface (solver.Params.vj)."""
+    vx, vy = np.zeros(len(x)), np.zeros(len(x))
+    v = np.zeros(2)
+    for k in range(1, len(x)):
+        if active[k] > 0 and active[k - 1] > 0:
+            raw = np.array([x[k] - x[k - 1], y[k] - y[k - 1]]) / max(fdt[k - 1], 1e-6)
+            a = min(1.0, fdt[k - 1] / tau)
+            v = (1.0 - a) * v + a * raw
+        else:
+            v = np.zeros(2)
+        vx[k], vy[k] = v
+    return vx, vy
 
 
 FOOT = ("foot_a", "foot_b")     # global landing-point correction [cup diameters]: along / across the jet direction

@@ -6,8 +6,9 @@ Per frame of the pattern phase (cup_track.json frames, the top-view clock):
   cue        the stream is a thin bright line, near vertical in every camera: per camera a horizontal white top-hat
              of LAB lightness (structuring element 19 px), scaled to [0, 1] -- wide white (the foam pattern, the
              pitcher) is suppressed, the stream column kept
-  slices     horizontal planes every 1 mm from 4 mm below the spout tip down to 2 mm above the liquid surface
-             (surface height from cup_track.json); on each a 0.5 mm grid +-30 mm around the tip; a point scores the mean
+  slices     horizontal planes every 1 mm from 2 mm below the spout tip down to 1 mm above the liquid surface (the
+             registered plane of cup_register.py; at least MIN_SLICES, so that low pours with the lip 7-12 mm above
+             the surface are tracked); on each a 0.5 mm grid +-30 mm around the tip; a point scores the mean
              over the cameras that see it unoccluded (camera depth not nearer than the point by > 15 mm) of 2 r - 1
              (r = top-hat response at its projection), at least two cameras
   path       best continuous path through the slices (Viterbi, <= 1.5 mm per slice, small curvature penalty, start
@@ -42,6 +43,8 @@ STEP_MAX = 3                                      # cells (1.5 mm) per 1 mm slic
 TOPHAT_W, TOPHAT_S = 19, 25.0
 OCC = 0.015
 LOW = 0.010                                       # [m] fitted part of the path above the surface
+SLICE_TOP, SLICE_BOT = 0.002, 0.001               # [m] slices from below the lip down to just above the liquid
+MIN_SLICES = 4                                    # a low pour (lip 7-12 mm above the registered plane) still gets a path
 Q_OK = 0.35
 RMS_OK = 0.0025          # [m]
 SLOPE_OK = 0.8
@@ -72,8 +75,8 @@ def track(rig, t_abs, tip, zs):
     views = [(c, ridge(tk.color(c, k)), tk.depth(c, k).astype(float) * 1e-3) for c, k, _ in tk.sync(i)]
     GX, GY = np.meshgrid(GRID, GRID)
     n = len(GRID)
-    zsl = np.arange(tip[2] + 0.004, zs - 0.002, 0.001)          # board z points down
-    if len(zsl) < 6:
+    zsl = np.arange(tip[2] + SLICE_TOP, zs - SLICE_BOT, 0.001)  # board z points down
+    if len(zsl) < MIN_SLICES:
         return None, None, views
     S = []
     for z in zsl:

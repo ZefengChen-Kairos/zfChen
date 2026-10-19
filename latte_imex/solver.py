@@ -58,6 +58,16 @@ class Params:
     circ_L: float = 0.4     # surface current: momentum spreading length sqrt(nu / r) (circulation.L_C) and radius of the
     circ_rf: float = 0.06   # momentum kernel (circulation.R_F) [D_L]; a short L_C keeps the stream's forward current near the
                             # landing point, where it parts sideways and fans the new foam out
+    kappa_e: float = 0.0    # closure "chi": entrainment sink of the diving stream -- the plunging (1 - chi) part drags the brown
+                            # surface down with it at the area flux kappa_e (1 - chi) S_rec K (1 - c); the buoyant foam stays
+                            # (it goes at eps_f of that rate) and is gathered into the stream's wake (V2_SURFACE_MODEL.md 10.2)
+    vj: bool = False        # closure "chi": the diving stream's traction pulls the film towards the landing point's own velocity
+    kappa_tc: float = 0.3   # V_j (Inlet.v_hit) plus kappa_tc (u_in - V_j) instead of kappa_t u_in: the column moving through the
+                            # surface drags it; its own horizontal momentum goes down with the dived milk
+    e_F: float = 0.0        # closure "chi": the landing crater's fountain -- brown surface e_F chi S_rec K at the landing point
+                            # (film, no milk), joining at the film velocity; keeps successive layers apart (with mu_s = 1)
+    tau_b: float = 0.0      # yield stress of the brown floating layer (crema) [D_L^2/s^2]: the Bingham viscosity of tau_f
+                            # becomes nu + (tau_b (1 - c) + tau_f c) / (2 |D|_e + yield_eps)
     tau_s: float = 0.0      # closure "chi": the deposited foam surfaces tau_s u_in ahead of the landing point (carried by the
                             # plunging stream's horizontal velocity for its rise time; the deposit kernel K_d), [s]
     mu_s: float = 0.0       # closure "chi": share of the jet momentum the surfacing foam has lost (it arrives with the film
@@ -137,6 +147,7 @@ class Inlet:
     r2: float = 0.04
     phi: float = 0.0               # footprint orientation [rad]
     scan_speed: float = 0.0        # bound on the hit-point speed [D_L/s] (limits the control-frame length)
+    v_hit: tuple = (0.0, 0.0)      # velocity of the hit point itself V_j [D_L/s] (schedule.foot_velocity)
 
 
 # --------------------------------------------------------------------------- grid
@@ -386,6 +397,7 @@ class Solver:
         P = self.P
         g = self.g
         self._s_milk = None                  # new-milk source when it differs from s (closure "chi")
+        self._ej = None                      # diving flux (1 - chi) S_rec K (entrainment sink)
         if not inlet.active or inlet.S_eff <= 0:
             z = np.zeros((g.N, g.N))
             self.foam_src = None; self._SE = 0.0; self._S = 0.0; self._Lam_jet = None
@@ -461,7 +473,10 @@ class Solver:
             cl = np.clip(np.where(g.mask, self.m / np.where(g.mask, self.l, 1.0), 0.0), 0.0, 1.0)
             self._s_milk = self._s_milk * (1.0 - P.alpha_u * cl)
         s = self._s_milk + ((1.0 - chi) * S_rec * K if P.upwell else 0.0)
+        if P.e_F:                             # landing crater: brown surface from the fountain (film, no milk)
+            s = s + P.e_F * chi * S_rec * K
         Lam = P.kappa_c * (1.0 - chi) * S_rec * K
+        self._ej = (1.0 - chi) * S_rec * K    # diving flux: drives the entrainment sink kappa_e (substep)
         # target velocity
         dx = g.x - inlet.x_hit[0]
         dy = g.y - inlet.x_hit[1]
@@ -475,6 +490,14 @@ class Solver:
             rad = chi * P.kappa_r * inlet.U_perp
         vsx = P.kappa_t * inlet.u_in[0] + rad * dx / den
         vsy = P.kappa_t * inlet.u_in[1] + rad * dy / den
+        if P.vj:                              # the traction part pulls towards V_j + kappa_tc (u_in - V_j)
+            vj = inlet.v_hit
+            ws = (1.0 - P.mu_s) * self._s_milk
+            w = ws + Lam
+            lx = vj[0] + P.kappa_tc * (inlet.u_in[0] - vj[0])
+            ly = vj[1] + P.kappa_tc * (inlet.u_in[1] - vj[1])
+            vsx = np.where(w > 0, (ws * vsx + Lam * lx) / np.where(w > 0, w, 1.0), vsx)
+            vsy = np.where(w > 0, (ws * vsy + Lam * ly) / np.where(w > 0, w, 1.0), vsy)
         return s, Lam, vsx, vsy, chi
 
     # ----- one sub-step --------------------------------------------------------
@@ -490,7 +513,7 @@ class Solver:
         # ---- delay closure: impact momentum now, white later --------------------
         s_mom = s
         self._s_base = None
-        if getattr(self, "_s_milk", None) is not None and (P.upwell or P.mu_s):
+        if getattr(self, "_s_milk", None) is not None and (P.upwell or P.mu_s or P.e_F):
             # only the new milk arrives with the jet target v* (less the share mu_s that surfaces with the film velocity);
             # the base material with the film velocity (wsolver.k_stepA_B)
             s_mom = (1.0 - P.mu_s) * self._s_milk
@@ -720,11 +743,16 @@ class Solver:
             self.stats["cg_mix"] += it3
             m_new = np.where(mask, lsn * np.clip(c_new, 0.0, 1.0), 0.0)
 
-        if getattr(self, "_sink", None) is not None:          # vertical exchange with the surface current
+        jet = P.kappa_e > 0 and getattr(self, "_ej", None) is not None
+        if getattr(self, "_sink", None) is not None or jet:   # vertical exchange: surface current, entrainment sink
             Ls = np.where(mask, l_new, 1.0)
             cc = np.clip(m_new / Ls, 0.0, 1.0)
-            fm = np.where(mask, np.exp(-dt * P.eps_f * self._sink), 1.0)    # foam (buoyant: eps_f ~ 0)
-            b = (Ls - m_new) * np.exp(-dt * self._sink) + dt * self._up * (1.0 - cc)    # brown: down + upwelled water
+            W = self._sink if getattr(self, "_sink", None) is not None else np.zeros_like(Ls)
+            if jet:
+                W = W + P.kappa_e * self._ej / Ls             # brown area flux kappa_e (1 - chi) S_rec K (1 - c)
+            up = self._up if getattr(self, "_up", None) is not None else np.zeros_like(Ls)
+            fm = np.where(mask, np.exp(-dt * P.eps_f * W), 1.0)    # foam (buoyant: eps_f ~ 0)
+            b = (Ls - m_new) * np.exp(-dt * W) + dt * up * (1.0 - cc)    # brown: down + upwelled water
             fl = np.where(mask, (b + m_new * fm) / Ls, 1.0)
             l_new, qx_new, qy_new, m_new = l_new * fl, qx_new * fl, qy_new * fl, m_new * fm
         # accept only finite, positive-layer states; otherwise the frame is retried with a smaller step
@@ -782,7 +810,8 @@ class Solver:
         a, b, cc, d = d_dx(ux), d_dy(ux), d_dx(uy), d_dy(uy)
         De = np.sqrt(a * a + d * d + a * d + 0.25 * (b + cc) ** 2 + 1e-24)
         cl = np.clip(c, 0.0, 1.0)
-        return np.where(g.mask, np.minimum(P.nu + P.tau_f * cl / (2.0 * De + P.yield_eps), P.nu_max), P.nu)
+        tau = P.tau_b * (1.0 - cl) + P.tau_f * cl
+        return np.where(g.mask, np.minimum(P.nu + tau / (2.0 * De + P.yield_eps), P.nu_max), P.nu)
 
     def sym_visc_operator(self, lsn, dt, nuc=None):
         """(apply, diag) of A = L + dt K on stacked velocities X = [u; v] of shape (2N, N); identity outside the cup."""
@@ -811,7 +840,7 @@ class Solver:
         """Backward Euler step of l du/dt = div(2 nu l S(u)) with l frozen: (L + dt K) u+ = L u-, PCG (SPD).  With the
         foam yield stress (tau_f > 0, colour c) nu is the per-cell nu_eff of yield_visc, lagged on u-."""
         g = self.g; N = g.N; mask = g.mask
-        nuc = self.yield_visc(ux, uy, c) if (self.P.tau_f > 0 and c is not None) else None
+        nuc = self.yield_visc(ux, uy, c) if ((self.P.tau_f > 0 or self.P.tau_b > 0) and c is not None) else None
         apply, diag = self.sym_visc_operator(lsn, dt, nuc)
         X0 = np.concatenate([np.where(mask, ux, 0.0), np.where(mask, uy, 0.0)])
         L2 = np.concatenate([np.where(mask, lsn, 1.0), np.where(mask, lsn, 1.0)])

@@ -57,6 +57,14 @@ DEP_START = {"tau_s": 0.05, "mu_s": 0.0}
 # underplating: share of the new foam that thickens an existing raft instead of spreading (solver.Params.alpha_u)
 RAFT_SPACE = {"alpha_u": (0.0, 0.9, "lin")}
 RAFT_START = {"alpha_u": 0.3}
+# pull-through and deposition mechanisms (V2_SURFACE_MODEL.md 10.2; solver.Params): entrainment sink of the diving stream,
+# traction towards the landing point's own velocity, kinematic deposition (mu_s = 1, foam surfaces tau_s u_in ahead) with
+# the landing crater's brown fountain e_F, and the yield stress of the whole floating layer (crema tau_b, foam tau_f)
+SINK_SPACE = {"kappa_e": (0.0, 3.0, "lin")}
+VJ_SPACE = {"kappa_tc": (0.0, 1.0, "lin")}
+KIN_SPACE = {"tau_s": (0.0, 0.15, "lin"), "e_F": (0.0, 0.6, "lin")}
+YIELD_SPACE = {"tau_b": (0.0, 0.06, "lin"), "tau_f": (0.0, 0.1, "lin")}
+MECH_START = {"kappa_e": 0.5, "kappa_tc": 0.3, "tau_s": 0.08, "e_F": 0.3, "tau_b": 0.02, "tau_f": 0.02}
 
 
 def use_foot(on, circ=False, dep=False):

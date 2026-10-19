@@ -23,10 +23,10 @@ import warp as wp
 wp.config.quiet = True
 F = wp.float64
 PARAMS = ("cp", "beta", "nu", "D", "kappa_Q", "kappa_c", "kappa_t", "kappa_r", "B_dep", "p_dep", "kappa_M", "eps_f",
-          "kappa_w", "tau_s", "mu_s", "xi_X", "tau_f", "alpha_u")
-CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW, TS, MS, XX, TF, AU = range(18)
+          "kappa_w", "tau_s", "mu_s", "xi_X", "tau_f", "alpha_u", "kappa_e", "kappa_tc", "vj", "e_F", "tau_b")
+CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW, TS, MS, XX, TF, AU, KJ, KTC, VJ, EF, TB = range(23)
 YIELD_EPS, NU_MAX = 0.02, 0.5      # solver.Params.yield_eps, nu_max (Bingham foam raft, tau_f > 0)
-SCHED = ("x", "y", "Q", "ux", "uy", "U", "d", "r1", "r2", "phi")
+SCHED = ("x", "y", "Q", "ux", "uy", "U", "d", "r1", "r2", "phi", "vjx", "vjy")
 A2 = wp.array2d(dtype=F)
 I2 = wp.array2d(dtype=wp.int32)
 A1 = wp.array(dtype=F)
@@ -84,12 +84,14 @@ def k_kernel_raw(xc: A2, yc: A2, mask: I2, S: A1, Sy: A1, Sux: A1, Suy: A1, P: A
 
 @wp.kernel
 def k_fields(Kraw: A2, sums: A1, Kd: A2, sumsd: A1, mask: I2, xc: A2, yc: A2, P: A1, Sx: A1, Sy: A1, SQ: A1, Sux: A1,
-             Suy: A1, SU: A1, Sd: A1, Sr1: A1, Sr2: A1, kq: wp.array(dtype=wp.int32), area: F, v05: int, up: int,
-             l0: A2, m0: A2, s: A2, Lam: A2, vsx: A2, vsy: A2, sm: A2):
+             Suy: A1, SU: A1, Sd: A1, Sr1: A1, Sr2: A1, Svjx: A1, Svjy: A1, kq: wp.array(dtype=wp.int32), area: F,
+             v05: int, up: int, l0: A2, m0: A2, s: A2, Lam: A2, vsx: A2, vsy: A2, sm: A2, ej: A2):
     """Solver.inlet_fields (closure 'chi', offcup 'account'): sm = chi S Z K_d (new milk, surfacing at the deposit kernel
     K_d, tau_s u_in ahead of the landing point; the landing kernel K if K_d misses the cup), s = sm (V0.5) or
-    sm + (1 - chi) S Z K (up: the dived part resurfaces at the landing point as base material),
-    Lam = kappa_c (1 - chi) S Z K, target v*."""
+    sm + (1 - chi) S Z K (up: the dived part resurfaces at the landing point as base material), + e_F chi S Z K (the
+    landing crater's fountain: brown surface, no milk), Lam = kappa_c (1 - chi) S Z K, target v* (with vj: the
+    traction part pulls towards V_j + kappa_tc (u_in - V_j), V_j the landing point's own velocity), ej = (1 - chi) S Z K
+    (the diving flux, drives the entrainment sink kappa_e in k_exchange)."""
     j, i = wp.tid()
     k = kq[0]
     tot = sums[1]
@@ -99,6 +101,7 @@ def k_fields(Kraw: A2, sums: A1, Kd: A2, sumsd: A1, mask: I2, xc: A2, yc: A2, P:
     vsx[j, i] = F(0.0)
     vsy[j, i] = F(0.0)
     sm[j, i] = F(0.0)
+    ej[j, i] = F(0.0)
     if tot <= F(0.0) or ins <= F(0.0):
         return
     Z = ins / tot
@@ -119,11 +122,13 @@ def k_fields(Kraw: A2, sums: A1, Kd: A2, sumsd: A1, mask: I2, xc: A2, yc: A2, P:
     if P[AU] > F(0.0) and mask[j, i] != 0:          # underplating (Solver.inlet_fields): x (1 - alpha_u c), frame-start c
         smv = smv * (F(1.0) - P[AU] * wp.min(wp.max(m0[j, i] / l0[j, i], F(0.0)), F(1.0)))
     sm[j, i] = smv
+    sv = smv + P[EF] * chi * S_rec * Kn
     if up != 0:
-        s[j, i] = smv + (F(1.0) - chi) * S_rec * Kn
-    else:
-        s[j, i] = smv
-    Lam[j, i] = P[KC] * (F(1.0) - chi) * S_rec * Kn
+        sv = sv + (F(1.0) - chi) * S_rec * Kn
+    s[j, i] = sv
+    lam = P[KC] * (F(1.0) - chi) * S_rec * Kn
+    Lam[j, i] = lam
+    ej[j, i] = (F(1.0) - chi) * S_rec * Kn
     dx = xc[j, i] - Sx[k]
     dy = yc[j, i] - Sy[k]
     Rdep = wp.sqrt(wp.max(Sr1[k] * Sr2[k], F(1e-12)))
@@ -135,18 +140,29 @@ def k_fields(Kraw: A2, sums: A1, Kd: A2, sumsd: A1, mask: I2, xc: A2, yc: A2, P:
         rad = P[KR] * VR
     else:
         rad = chi * P[KR] * U
-    vsx[j, i] = P[KT] * Sux[k] + rad * dx / den
-    vsy[j, i] = P[KT] * Suy[k] + rad * dy / den
+    tx = P[KT] * Sux[k] + rad * dx / den
+    ty = P[KT] * Suy[k] + rad * dy / den
+    if P[VJ] > F(0.0):
+        ws = (F(1.0) - P[MS]) * smv
+        if ws + lam > F(0.0):
+            lx = Svjx[k] + P[KTC] * (Sux[k] - Svjx[k])
+            ly = Svjy[k] + P[KTC] * (Suy[k] - Svjy[k])
+            tx = (ws * tx + lam * lx) / (ws + lam)
+            ty = (ws * ty + lam * ly) / (ws + lam)
+    vsx[j, i] = tx
+    vsy[j, i] = ty
 
 
 @wp.kernel
-def k_exchange(l: A2, qx: A2, qy: A2, m: A2, Kb: A2, Db: A2, Wf: A2, P: A1, dta: A1, mask: I2,
+def k_exchange(l: A2, qx: A2, qy: A2, m: A2, Kb: A2, Db: A2, Wf: A2, ej: A2, P: A1, dta: A1, mask: I2,
                lo: A2, qxo: A2, qyo: A2, mo: A2):
     """Vertical exchange of the film with the surface current (circulation.py), after each sub-step: the brown part
     b = l - m goes down at W = k_X sigma- + kappa_w kappa_Q W_n and is resupplied by the upwelled water k_X sigma+
     where the surface is brown (fraction 1 - c: the water surfaces beside the buoyant foam raft, not under it); the
     foam goes down at eps_f W.  k_X = (1 - xi_X) kappa_M: xi_X the share of the current's divergence taken up by the
-    floating layer instead of exchanging it with the bulk (0: V2).  Exchanged material moves with the film."""
+    floating layer instead of exchanging it with the bulk (0: V2).  Exchanged material moves with the film.
+    Entrainment sink of the diving stream: the brown part also goes down at kappa_e ej / l (ej = (1 - chi) S Z K), i.e.
+    the brown area flux kappa_e ej (1 - c); the buoyant foam goes at eps_f of that rate."""
     j, i = wp.tid()
     fl = F(1.0)
     fm = F(1.0)
@@ -154,7 +170,7 @@ def k_exchange(l: A2, qx: A2, qy: A2, m: A2, Kb: A2, Db: A2, Wf: A2, P: A1, dta:
         L = l[j, i]
         c = wp.min(wp.max(m[j, i] / L, F(0.0)), F(1.0))
         kX = (F(1.0) - P[XX]) * P[KM]
-        W = kX * Db[j, i] + P[KW] * P[KQ] * Wf[j, i]
+        W = kX * Db[j, i] + P[KW] * P[KQ] * Wf[j, i] + P[KJ] * ej[j, i] / L
         fm = wp.exp(-dta[0] * P[KE] * W)
         b = (L - m[j, i]) * wp.exp(-dta[0] * W) + dta[0] * kX * Kb[j, i] * (F(1.0) - c)
         fl = (b + m[j, i] * fm) / L
@@ -431,11 +447,12 @@ def k_milk(m: A2, sm: A2, Gx: A2, Gy: A2, cfx: A2, cfy: A2, l2: A2, qxn: A2, qyn
 # ---------------------------------------------------------------------------- symmetric viscosity (kernels.sym_*)
 @wp.kernel
 def k_visc_nu(qx3: A2, qy3: A2, l3: A2, m3: A2, mask: I2, fx: I2, fy: I2, P: A1, inv_h: F, N: int, nuc: A2):
-    """Solver.yield_visc: per-cell viscosity of the Bingham foam raft, nu + tau_f c / (2 |D|_e + eps) capped at nu_max,
-    from the velocity before the step (mean of the available one-sided differences); nu where tau_f = 0."""
+    """Solver.yield_visc: per-cell viscosity of the Bingham floating layer, nu + (tau_b (1 - c) + tau_f c) / (2 |D|_e + eps)
+    capped at nu_max, from the velocity before the step (mean of the available one-sided differences); nu where
+    tau_f = tau_b = 0."""
     j, i = wp.tid()
     nuc[j, i] = P[NU]
-    if mask[j, i] != 0 and P[TF] > F(0.0):
+    if mask[j, i] != 0 and P[TF] + P[TB] > F(0.0):
         L = l3[j, i]
         u = qx3[j, i] / L
         v = qy3[j, i] / L
@@ -471,18 +488,18 @@ def k_visc_nu(qx3: A2, qy3: A2, l3: A2, m3: A2, mask: I2, fx: I2, fy: I2, P: A1,
         d = dy / (wp.max(ny, F(1.0)) / inv_h)
         De = wp.sqrt(a * a + d * d + a * d + F(0.25) * (b + c) * (b + c) + F(1e-24))
         cl = wp.min(wp.max(m3[j, i] / L, F(0.0)), F(1.0))
-        nuc[j, i] = wp.min(P[NU] + P[TF] * cl / (F(2.0) * De + F(YIELD_EPS)), F(NU_MAX))
+        nuc[j, i] = wp.min(P[NU] + (P[TB] * (F(1.0) - cl) + P[TF] * cl) / (F(2.0) * De + F(YIELD_EPS)), F(NU_MAX))
 
 
 @wp.kernel
 def k_visc_coefs(l3: A2, fx: I2, fy: I2, cm: I2, geo: A2, P: A1, nuc: A2, N: int, wx: A2, wy: A2, wc: A2, ww: A2):
-    """Solver.sym_visc_coefs: constant nu (tau_f = 0) or the per-cell nuc averaged to faces and corners."""
+    """Solver.sym_visc_coefs: constant nu (tau_f = tau_b = 0) or the per-cell nuc averaged to faces and corners."""
     j, i = wp.tid()
     nu = P[NU]
     wx[j, i] = F(0.0)
     wy[j, i] = F(0.0)
     wc[j, i] = F(0.0)
-    if P[TF] > F(0.0):
+    if P[TF] + P[TB] > F(0.0):
         if fx[j, i] != 0:
             wx[j, i] = F(2.0) * (F(0.5) * (nuc[j, i] + nuc[j, i + 1])) * (F(0.5) * (l3[j, i] + l3[j, i + 1]))
         if fy[j, i] != 0:
@@ -1255,6 +1272,7 @@ class WSolver:
         self.kq = wp.zeros(2, dtype=wp.int32, device=dev)
         self.Vbx, self.Vby, self.Kb, self.Db, self.Wf = (wp.zeros((geo.N, geo.N), dtype=F, device=dev) for _ in range(5))
         self.circ, self._ck = None, None     # unit surface-current fields of the frames (set_circ)
+        self.ex_on = False                   # vertical exchange step on (surface current or entrainment sink; set_ex)
         self._dt = None
         self._kq = None
         import os
@@ -1327,6 +1345,10 @@ class WSolver:
         self._ck = None
         for a in (self.Vbx, self.Vby, self.Kb, self.Db, self.Wf):
             a.zero_()
+
+    def set_ex(self, Pnp):
+        """The end-of-sub-step exchange runs with the surface current or the entrainment sink (kappa_e > 0)."""
+        self.ex_on = bool(self.circ is not None or Pnp[KJ] > 0)
 
     def set_kq(self, k, q):
         if self.circ is not None and self._ck != k:
@@ -1411,7 +1433,7 @@ class WSolver:
     def fields(self, P, S, k, q, active, st):
         """Inlet fields of frame k (k_fields); st: the state at the start of the frame (underplating reads its colour)."""
         g = self.g
-        out = [self.new() for _ in range(5)]
+        out = [self.new() for _ in range(6)]
         self.set_kq(k, q)
         if not active:
             return out
@@ -1421,7 +1443,8 @@ class WSolver:
             self.L(k_kernel_raw, [g.xc, g.yc, g.mask, S["x"], S["y"], S["ux"], S["uy"], P, F(dep), S["r1"], S["r2"],
                                   S["phi"], self.kq, F(g.h)], [K_, s_])
         self.L(k_fields, [Kraw, sums, Kd, sumsd, g.mask, g.xc, g.yc, P, S["x"], S["y"], S["Q"], S["ux"], S["uy"], S["U"],
-                          S["d"], S["r1"], S["r2"], self.kq, F(g.h * g.h), self.v05, self.up, st["l"], st["m"]], out)
+                          S["d"], S["r1"], S["r2"], S["vjx"], S["vjy"], self.kq, F(g.h * g.h), self.v05, self.up, st["l"],
+                          st["m"]], out)
         return out
 
     def substep(self, st, fl, P, nu_on, mix_on):
@@ -1429,7 +1452,7 @@ class WSolver:
         N, h = g.N, g.h
         ih, ih2 = F(1.0 / h), F(1.0 / (h * h))
         dt = self.dta
-        s, Lam, vsx, vsy, sm = fl
+        s, Lam, vsx, vsy, sm, ej = fl
         ls, ux, uy, c = self.new(), self.new(), self.new(), self.new()
         self.L(k_prim, [st["l"], st["qx"], st["qy"], st["m"], g.mask], [ls, ux, uy, c])
         Fs = [self.new() for _ in range(4)]
@@ -1483,9 +1506,9 @@ class WSolver:
             m4 = self.new()
             self.L(k_mix, [m3, l3, g.fx, g.fy, g.mask, P, dt, ih2, N], [m4])
         self.stats["substeps"] += 1
-        if self.circ is not None:
+        if self.ex_on:
             lo, qxo, qyo, mo = self.new(), self.new(), self.new(), self.new()
-            self.L(k_exchange, [l3, qx4, qy4, m4, self.Kb, self.Db, self.Wf, P, dt, g.mask], [lo, qxo, qyo, mo])
+            self.L(k_exchange, [l3, qx4, qy4, m4, self.Kb, self.Db, self.Wf, ej, P, dt, g.mask], [lo, qxo, qyo, mo])
             return dict(l=lo, qx=qxo, qy=qyo, m=mo)
         return dict(l=l3, qx=qx4, qy=qy4, m=m4)
 
@@ -1505,6 +1528,7 @@ class WSolver:
 
     def frame(self, st, P, Pnp, S, k, fdt, q, active, nsub=None):
         """Recorded-path frame; nsub None: CFL count + retries; given: replay with that count."""
+        self.set_ex(Pnp)
         fl = self.fields(P, S, k, q, active, st)
         nu_on = Pnp[NU] > 0
         if nsub is None:
@@ -1535,7 +1559,7 @@ class WSolver:
         g = self.g
         if self.fb is None:
             z = lambda: wp.zeros((g.N, g.N), dtype=F, device=g.dev)
-            names = ("l qx qy m l0 qx0 qy0 m0 Kraw Kd s Lam vsx vsy sm ls ux uy c Fxqx Fxqy Fyqx Fyqy ax ay coef Gex Gey "
+            names = ("l qx qy m l0 qx0 qy0 m0 Kraw Kd s Lam vsx vsy sm ej ls ux uy c Fxqx Fxqy Fyqx Fyqy ax ay coef Gex Gey "
                      "Gx Gy l2 qxn qyn cfx cfy qx3 qy3 m3 qx4 qy4 m4 nuc").split()
             self.fb = {k: z() for k in names}
             self.fb["sums"] = wp.zeros(2, dtype=F, device=g.dev)
@@ -1564,11 +1588,12 @@ class WSolver:
             self.L(k_kernel_raw, [g.xc, g.yc, g.mask, S["x"], S["y"], S["ux"], S["uy"], P, F(dep), S["r1"], S["r2"],
                                   S["phi"], self.kq, F(g.h)], [fb[K_], fb[s_]], record=False)
         self.L(k_fields, [fb["Kraw"], fb["sums"], fb["Kd"], fb["sumsd"], g.mask, g.xc, g.yc, P, S["x"], S["y"], S["Q"],
-                          S["ux"], S["uy"], S["U"], S["d"], S["r1"], S["r2"], self.kq, F(g.h * g.h), self.v05, self.up,
-                          fb["l"], fb["m"]], [fb["s"], fb["Lam"], fb["vsx"], fb["vsy"], fb["sm"]], record=False)
+                          S["ux"], S["uy"], S["U"], S["d"], S["r1"], S["r2"], S["vjx"], S["vjy"], self.kq, F(g.h * g.h),
+                          self.v05, self.up, fb["l"], fb["m"]], [fb["s"], fb["Lam"], fb["vsx"], fb["vsy"], fb["sm"], fb["ej"]],
+               record=False)
 
     def _g_zero_fields(self):
-        for k in ("s", "Lam", "vsx", "vsy", "sm"):
+        for k in ("s", "Lam", "vsx", "vsy", "sm", "ej"):
             self.L(k_set0, [self.fb[k]], record=False)
 
     def _g_speed(self, active):
@@ -1641,8 +1666,8 @@ class WSolver:
         else:
             self.cp(fb["m3"], fb["m"])
         self.cp(V.c["l3"], fb["l"])
-        if self.circ is not None:
-            R(k_exchange, [fb["l"], fb["qx"], fb["qy"], fb["m"], self.Kb, self.Db, self.Wf, fb["P"], self.dta, g.mask],
+        if self.ex_on:
+            R(k_exchange, [fb["l"], fb["qx"], fb["qy"], fb["m"], self.Kb, self.Db, self.Wf, fb["ej"], fb["P"], self.dta, g.mask],
               [fb["l"], fb["qx"], fb["qy"], fb["m"]])
 
     def cg_iterations(self):
@@ -1667,21 +1692,21 @@ class WSolver:
         R = self.runner
         if self.fused and self.opM.mode == "device" and self.opV.mode == "device":
             try:
-                R(f"sub{int(nu_on)}{int(mix_on)}", lambda: self._substep_launches(nu_on, mix_on))
+                R(f"sub{int(nu_on)}{int(mix_on)}{int(self.ex_on)}", lambda: self._substep_launches(nu_on, mix_on))
                 self.stats["substeps"] += 1
                 return
             except Exception as e:
                 if not R.use:
                     raise
                 print(f"[wsolver] fused sub-step graph unavailable ({type(e).__name__}: {e}); piecewise graphs", flush=True)
-                R.graphs.pop(f"sub{int(nu_on)}{int(mix_on)}", None)
+                R.graphs.pop(f"sub{int(nu_on)}{int(mix_on)}{int(self.ex_on)}", None)
                 self.fused = False
         R("pre", self._g_pre)
         self.opM.run(self.cg_tol, self.cg_maxiter)
         R(f"mid{int(nu_on)}", lambda: self._g_mid(nu_on))
         if nu_on:
             self.opV.run(self.visc_tol, self.cg_maxiter)
-        R(f"post{int(nu_on)}{int(mix_on)}", lambda: self._g_post(nu_on, mix_on))
+        R(f"post{int(nu_on)}{int(mix_on)}{int(self.ex_on)}", lambda: self._g_post(nu_on, mix_on))
         self.stats["substeps"] += 1
 
     def fast_forward(self, P, Pnp, S, sched, keep=True, nsub=None, frames=None, snap=()):
@@ -1693,6 +1718,7 @@ class WSolver:
         self.snaps = {}
         snap = set(snap)
         self._fast_setup(P, S)
+        self.set_ex(Pnp)
         R, fb = self.runner, self.fb
         R("init", lambda: self.L(k_init_state, [], [fb["l"], fb["qx"], fb["qy"], fb["m"]], record=False))
         nu_on = Pnp[NU] > 0
