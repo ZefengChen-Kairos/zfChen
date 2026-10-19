@@ -1,5 +1,7 @@
 """Checkpointed forward / backward of one pour with the Warp solver, and the differentiable loss.
 
+Loss 'video_iou': per observed frame 1 - soft IoU (sum v p w / sum v (p + w - p w)) of the visible area, frames
+averaged with the same time weights -- the smooth counterpart of the whole-video IoU used to evaluate fits.
 Loss 'video' (default; whole-video supervision): every rectified top-view frame of the real pour (video_obs.py:
 soft whiteness w and the observation mask v, fixed by the observation) is compared with the simulation at the frame
 end nearest to its time, on the visible cup surface only; per frame the squared whiteness residual is normalised by
@@ -74,6 +76,11 @@ def k_obs(l: A2, m: A2, wo: A2, vo: A2, mask: I2, tau: F, sums: A1):
     d = p - wo[j, i]
     wp.atomic_add(sums, 0, v * d * d)
     wp.atomic_add(sums, 1, v)
+
+
+@wp.kernel
+def k_iou_loss(sums: A1, wgt: F, out: A1):
+    out[0] = wgt * (F(1.0) - sums[0] / (sums[1] + F(1e-30)))
 
 
 @wp.kernel
@@ -257,7 +264,7 @@ class DiffPour:
         self.obs = []
         self.scales = tuple(float(x) for x in scales)
         from ..rig.real_program import CUP_R
-        if loss == "video":
+        if loss in ("video", "video_iou"):
             t_end = np.cumsum(self.S["fdt"])
             for k, wt, wo, vo, tj in video_on_grid(p, self.geo, t_end):
                 ob = dict(k=k, wt=wt, t=tj, wo=wp.array(wo, dtype=F, device=dev),
@@ -362,6 +369,10 @@ class DiffPour:
                 wp.launch(k_softiou, dim=(g.N, g.N), inputs=[S["l"], S["m"], self.tw, self.ww, g.mask, F(self.tau), sums],
                           device=g.dev)
                 wp.launch(k_loss, dim=1, inputs=[sums, out], device=g.dev)
+            elif self.mode == "video_iou":             # 1 - soft IoU of the frame on its visible area
+                wp.launch(k_softiou, dim=(g.N, g.N), inputs=[S["l"], S["m"], ob["wo"], ob["vo"], g.mask, F(self.tau), sums],
+                          device=g.dev)
+                wp.launch(k_iou_loss, dim=1, inputs=[sums, F(ob["wt"]), out], device=g.dev)
             elif self.scales == (0.0,):
                 wp.launch(k_obs, dim=(g.N, g.N), inputs=[S["l"], S["m"], ob["wo"], ob["vo"], g.mask, F(self.tau), sums],
                           device=g.dev)

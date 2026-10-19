@@ -21,10 +21,12 @@ def main():
     ap.add_argument("--scales", default="0", help="video loss scales (run.DiffPour)")
     ap.add_argument("--upwell", action="store_true", help="volume-conserving surface source (wsolver.k_fields)")
     ap.add_argument("--w-flow", dest="w_flow", type=float, default=0.0)
+    ap.add_argument("--loss", default="video")
     ap.add_argument("--circ", default="", help="kappa_o,kappa_s[,kappa_w]: circulation (circulation.py)")
     a = ap.parse_args()
     D = DiffPour(a.pattern, N=a.N, device=a.device, T_max=a.T, tau=0.1, scales=[float(x) for x in a.scales.split(",")],
-                 upwell=a.upwell, circ=bool(a.circ), w_flow=a.w_flow)
+                 upwell=a.upwell, circ=bool(a.circ), w_flow=a.w_flow,
+                 loss=a.loss)
     P = dict(D.s1, foot_a=0.05, foot_b=-0.02)
     if a.circ:
         for k, x in zip(("kappa_o", "kappa_s", "kappa_w"), a.circ.split(",")):

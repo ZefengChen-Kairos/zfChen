@@ -273,7 +273,7 @@ def main(argv=None):
     ap.add_argument("--tau0", type=float, default=0.10)
     ap.add_argument("--tau1", type=float, default=0.03)
     ap.add_argument("--w-gap", dest="w_gap", type=float, default=2.0)
-    ap.add_argument("--loss", default="video", choices=["video", "final"])
+    ap.add_argument("--loss", default="video", choices=["video", "video_iou", "final"])
     ap.add_argument("--scales", default="0.3,0.15,0",
                     help="video loss scales [cup radii] (run.py): blurred residual terms, 0 = per pixel; '0' = pixel term only")
     ap.add_argument("--w-flow", dest="w_flow", type=float, default=0.0,
@@ -379,7 +379,7 @@ def main(argv=None):
             save("start")
         # best iterate: video loss -> highest whole-video IoU (the loss itself changes with the annealed tau, so its
         # values are not comparable across iterations); final loss -> highest final J
-        better = best is None or ((vI > best["viou"]) if a.loss == "video" else (J > best["J"]))
+        better = best is None or ((vI > best["viou"]) if a.loss.startswith("video") else (J > best["J"]))
         if best is None or better:
             best = rec
             save("best")
