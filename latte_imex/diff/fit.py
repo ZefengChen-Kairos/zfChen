@@ -40,9 +40,13 @@ SP = dict(SPACE)
 KEYS = tuple(SPACE)
 
 
-def use_foot(on):
+CIRC_SPACE = {"kappa_o": (0.0, 20.0, "lin"),       # circulation drag reference strength (circulation.py)
+              "kappa_s": (0.0, 20.0, "lin")}       # upwelled base material
+
+
+def use_foot(on, circ=False):
     global KEYS, SP
-    SP = dict(SPACE, **(FOOT_SPACE if on else {}))
+    SP = dict(SPACE, **(FOOT_SPACE if on else {}), **(CIRC_SPACE if circ else {}))
     KEYS = tuple(SP)
 
 
@@ -273,11 +277,17 @@ def main(argv=None):
     ap.add_argument("--loss", default="video", choices=["video", "final"])
     ap.add_argument("--scales", default="0.3,0.15,0",
                     help="video loss scales [cup radii] (run.py): blurred residual terms, 0 = per pixel; '0' = pixel term only")
+    ap.add_argument("--circ", action="store_true",
+                    help="jet-driven overturning circulation (circulation.py): also fit kappa_o, kappa_s")
+    ap.add_argument("--upwell", action="store_true",
+                    help="volume-conserving surface source: the whole received volume reaches the surface, chi decides "
+                         "whether it is new milk or resurfacing base material (wsolver.k_fields)")
     ap.add_argument("--no-e0", dest="e0", action="store_false",
                     help="landing point from the pitcher model alone (default: E0, corrected by the measured stream foot, "
                          "rig/stream_foot.py)")
     ap.add_argument("--w-final", dest="w_final", type=float, default=0.0, help="extra final-frame soft-IoU term (video loss)")
     ap.add_argument("--init", default=None, help="closure json to start from (default: S1)")
+    ap.add_argument("--set", default="", help="start values overriding the start closure, e.g. beta=0.5,kappa_t=1")
     ap.add_argument("--device", default=None)
     ap.add_argument("--T", type=float, default=None, help="simulate only the first T seconds (tests)")
     ap.add_argument("--foot", action="store_true",
@@ -290,19 +300,25 @@ def main(argv=None):
     a = ap.parse_args(argv)
     os.makedirs(os.path.join(a.out, "fields"), exist_ok=True)
     log = lambda *x: print(*x, flush=True)
-    use_foot(a.foot)
+    use_foot(a.foot, a.circ)
     cal = a.cal.split(",")
     kw = dict(N=a.N, device=a.device, w_gap=a.w_gap, tau=a.tau0, T_max=a.T, loss=a.loss, w_final=a.w_final,
-              scales=tuple(float(x) for x in a.scales.split(",")), e0=a.e0)
+              scales=tuple(float(x) for x in a.scales.split(",")), e0=a.e0, upwell=a.upwell,
+              circ=a.circ)
     workers = a.workers if a.workers >= 0 else (len(cal) if (a.device or "cuda").startswith("cuda") else 0)
     pours = {p: Pour(p, kw, process=workers > 0) for p in cal}
     log(f"{len(cal)} calibration pours, {'one worker process each' if workers > 0 else 'in-process'}")
-    base = dict(pours[cal[0]].s1, **({"foot_a": 0.0, "foot_b": 0.0} if a.foot else {}))
+    base = dict(pours[cal[0]].s1, **({"foot_a": 0.0, "foot_b": 0.0} if a.foot else {}),
+                **({"kappa_o": 2.0, "kappa_s": 2.0} if a.circ else {}))
     if a.e0:
-        base["e0"] = 1.0                                  # carried into best_closure.json -> the render uses E0 too
+        base["e0"] = 1.0
+    if a.upwell:
+        base["upwell"] = 1.0                                  # carried into best_closure.json -> the render uses E0 too
     if a.init:
         base.update({k: float(v) for k, v in json.load(open(a.init)).items() if k in base})
         log(f"start: {a.init}")
+    for k, v in (x.split("=") for x in a.set.split(",") if x):
+        base[k] = float(v)
     u = to_unit(base)
     m1, m2 = np.zeros_like(u), np.zeros_like(u)
     b1, b2, eps = 0.9, 0.999, 1e-8

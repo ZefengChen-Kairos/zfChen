@@ -40,6 +40,10 @@ class Params:
     # "push first, whiten later": the deposited milk enters a sub-surface reservoir and surfaces after tau_d
     # (its impact momentum acts immediately); tau_d = 0 reproduces the instantaneous closure
     # ---- closure "skin" (bulk + submerged foam + surface foam), replaces chi-splitting, kappa_r, return law and delay
+    kappa_o: float = 0.0    # jet-driven overturning circulation (circulation.py): the film is dragged towards kappa_o V_b
+    kappa_s: float = 0.0    # ... and receives the upwelled base material kappa_s K_b; 0, 0 = lower layer at rest (V1)
+    upwell: bool = False    # closure "chi": the whole received volume reaches the surface (s = S K); chi only decides whether
+                            # it is new milk (m source chi S K) or dived milk resurfacing as base material
     closure: str = "chi"    # "chi": original single-layer closure ; "skin" ; "twolayer": the layer (l, q, m) is the floating
                             # foam/crema film, dragged (beta) by a coffee layer below that is driven by the poured volume and
                             # by the entrainment cell of the plunging jet; foam reaches the film after the fountain rise time
@@ -423,7 +427,8 @@ class Solver:
             self.tau_cur = P.tau_d
         zc = inlet.U_perp ** 2 / (P.B_dep * d)
         chi = 1.0 / (1.0 + zc ** P.p_dep)
-        s = chi * S_rec * K
+        s = (1.0 if P.upwell else chi) * S_rec * K
+        self._milk_frac = chi if P.upwell else 1.0
         Lam = P.kappa_c * (1.0 - chi) * S_rec * K
         # target velocity
         dx = g.x - inlet.x_hit[0]
@@ -535,6 +540,11 @@ class Solver:
         # ---- B: implicit mass + pressure + drag/traction --------------------
         a_x = np.empty((N, N)); a_y = np.empty((N, N)); coef = np.empty((N, N))
         K.stepB_prepare(qx_s, qy_s, s_mom, Lam, vsx, vsy, lsafe, beta_B, P.cp ** 2, dt, a_x, a_y, coef)
+        if getattr(self, "_Vb", None) is not None and P.kappa_o:   # drag towards the circulation
+            th = 1.0 + dt * (beta_B + Lam / lsafe)
+            gb = dt * beta_B * lsafe * P.kappa_o
+            a_x += gb * self._Vb[0] / th
+            a_y += gb * self._Vb[1] / th
         if msub_new is not None and P.sub_pressure > 0:
             # bathymetry-like push of the submerged mound (explicit, known field): a -= dt (c_p^2 l/theta) grad(m_sub)
             gbx, gby = g.cell_grad(msub_new)
@@ -593,7 +603,7 @@ class Solver:
             else:
                 Gx_m, Gy_m = Gx, Gy
         else:
-            s_m = s
+            s_m = (s if getattr(self, "_s_circ", None) is None else s - self._s_circ) * getattr(self, "_milk_frac", 1.0)
             Gx_m, Gy_m = Gx, Gy
         m_new = m + dt * s_m - dt * g.div(Gx_m * cfx, Gy_m * cfy)
         # boundedness guard (should be inactive under the material CFL)
@@ -903,6 +913,17 @@ class Solver:
             frame_dt = min(frame_dt, max(lim, 1e-4))
         s, Lam, vsx, vsy, chi = self.inlet_fields(inlet)
         g = self.g
+        if self.P.kappa_o or self.P.kappa_s:                  # circulation fields of this frame (circulation.py)
+            if getattr(self, "circ", None) is None:
+                from .circulation import CircField
+                self.circ = CircField(g.x, g.y, g.mask, g.h)
+            act = bool(inlet.active and inlet.S_eff > 0)
+            Vb, Kb = self.circ.step(frame_dt, act, inlet.S_eff / self.P.kappa_Q if act else 0.0, inlet.x_hit, inlet.u_in)
+            self._Vb = Vb
+            self._s_circ = np.where(g.mask, self.P.kappa_s * Kb, 0.0)   # base material: layer only, not milk
+            s = s + self._s_circ
+        else:
+            self._Vb = self._s_circ = None
         if self.P.closure == "skin":
             self._entrainment_flow()
         if self.P.closure in ("twolayer", "v2"):
@@ -916,6 +937,8 @@ class Solver:
             umax = max(umax, float(max(np.abs(self.Ge[0]).max(), np.abs(self.Ge[1]).max())))
         if getattr(self, "Ub", None) is not None:
             umax = max(umax, float(np.hypot(*self.Ub).max()), float(np.hypot(*self.Ud).max()))
+        if self._Vb is not None:
+            umax = max(umax, float(np.max(abs(self.P.kappa_o) * np.hypot(*self._Vb))))
         self.stats["max_u"] = max(self.stats["max_u"], umax)
         dt_cfl = self.num.cfl * g.h / (2.0 * max(umax, 1e-9))
         nsub = int(math.ceil(frame_dt / dt_cfl))

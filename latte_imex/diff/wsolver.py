@@ -22,8 +22,8 @@ import warp as wp
 
 wp.config.quiet = True
 F = wp.float64
-PARAMS = ("cp", "beta", "nu", "D", "kappa_Q", "kappa_c", "kappa_t", "kappa_r", "B_dep", "p_dep")
-CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP = range(10)
+PARAMS = ("cp", "beta", "nu", "D", "kappa_Q", "kappa_c", "kappa_t", "kappa_r", "B_dep", "p_dep", "kappa_o", "kappa_s")
+CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KO, KS = range(12)
 SCHED = ("x", "y", "Q", "ux", "uy", "U", "d", "r1", "r2", "phi")
 A2 = wp.array2d(dtype=F)
 I2 = wp.array2d(dtype=wp.int32)
@@ -79,9 +79,11 @@ def k_kernel_raw(xc: A2, yc: A2, mask: I2, S: A1, Sy: A1, Sr1: A1, Sr2: A1, Sphi
 
 @wp.kernel
 def k_fields(Kraw: A2, sums: A1, mask: I2, xc: A2, yc: A2, P: A1, Sx: A1, Sy: A1, SQ: A1, Sux: A1, Suy: A1, SU: A1,
-             Sd: A1, Sr1: A1, Sr2: A1, kq: wp.array(dtype=wp.int32), area: F, v05: int,
-             s: A2, Lam: A2, vsx: A2, vsy: A2):
-    """Solver.inlet_fields (closure 'chi', offcup 'account'): s = chi S Z K, Lam = kappa_c (1 - chi) S Z K, target v*."""
+             Sd: A1, Sr1: A1, Sr2: A1, kq: wp.array(dtype=wp.int32), area: F, v05: int, up: int,
+             s: A2, Lam: A2, vsx: A2, vsy: A2, sm: A2):
+    """Solver.inlet_fields (closure 'chi', offcup 'account'): sm = chi S Z K (new milk), s = sm (V0.5) or S Z K (up: the
+    whole received volume reaches the surface, the dived part resurfacing as base material), Lam = kappa_c (1 - chi) S Z K,
+    target v*."""
     j, i = wp.tid()
     k = kq[0]
     tot = sums[1]
@@ -90,6 +92,7 @@ def k_fields(Kraw: A2, sums: A1, mask: I2, xc: A2, yc: A2, P: A1, Sx: A1, Sy: A1
     Lam[j, i] = F(0.0)
     vsx[j, i] = F(0.0)
     vsy[j, i] = F(0.0)
+    sm[j, i] = F(0.0)
     if tot <= F(0.0) or ins <= F(0.0):
         return
     Z = ins / tot
@@ -101,7 +104,11 @@ def k_fields(Kraw: A2, sums: A1, mask: I2, xc: A2, yc: A2, P: A1, Sx: A1, Sy: A1
     zc = U * U / (P[BDEP] * d)
     chi = F(1.0) / (F(1.0) + wp.pow(zc, P[PDEP]))
     S_rec = P[KQ] * SQ[k] * Z
-    s[j, i] = chi * S_rec * Kn
+    sm[j, i] = chi * S_rec * Kn
+    if up != 0:
+        s[j, i] = S_rec * Kn
+    else:
+        s[j, i] = chi * S_rec * Kn
     Lam[j, i] = P[KC] * (F(1.0) - chi) * S_rec * Kn
     dx = xc[j, i] - Sx[k]
     dy = yc[j, i] - Sy[k]
@@ -116,6 +123,15 @@ def k_fields(Kraw: A2, sums: A1, mask: I2, xc: A2, yc: A2, P: A1, Sx: A1, Sy: A1
         rad = chi * P[KR] * U
     vsx[j, i] = P[KT] * Sux[k] + rad * dx / den
     vsy[j, i] = P[KT] * Suy[k] + rad * dy / den
+
+
+@wp.kernel
+def k_circ_src(s: A2, Kb: A2, P: A1, mask: I2, out: A2):
+    """out = s + kappa_s K_b (film source of the upwelled base material, circulation.py)."""
+    j, i = wp.tid()
+    out[j, i] = s[j, i]
+    if mask[j, i] != 0:
+        out[j, i] = s[j, i] + P[KS] * Kb[j, i]
 
 
 # ============================================================================ sub-step kernels (solver.substep)
@@ -159,9 +175,9 @@ def k_rusanov(qx: A2, qy: A2, ux: A2, uy: A2, fx: I2, fy: I2, Fxqx: A2, Fxqy: A2
 
 @wp.kernel
 def k_stepA_B(qx: A2, qy: A2, Fxqx: A2, Fxqy: A2, Fyqx: A2, Fyqy: A2, s: A2, Lam: A2, vsx: A2, vsy: A2, ls: A2,
-              P: A1, dta: A1, inv_h: F, N: int, ax: A2, ay: A2, coef: A2):
-    """q* = q - dt div(F) (step A), then stepB_prepare: theta = 1 + dt (beta + Lam/l), a = (q* + dt (s+Lam) v*)/theta,
-    coef = cp^2 l / theta."""
+              P: A1, dta: A1, inv_h: F, N: int, Vbx: A2, Vby: A2, ax: A2, ay: A2, coef: A2):
+    """q* = q - dt div(F) (step A), then stepB_prepare: theta = 1 + dt (beta + Lam/l),
+    a = (q* + dt (s+Lam) v* + dt beta l kappa_o V_b)/theta, coef = cp^2 l / theta."""
     j, i = wp.tid()
     dt = dta[0]
     qxs = qx[j, i] - dt * divF(Fxqx, Fyqx, j, i, N, inv_h)
@@ -169,8 +185,9 @@ def k_stepA_B(qx: A2, qy: A2, Fxqx: A2, Fxqy: A2, Fyqx: A2, Fyqy: A2, s: A2, Lam
     L = ls[j, i]
     theta = F(1.0) + dt * (P[BETA] + Lam[j, i] / L)
     f = dt * (s[j, i] + Lam[j, i])
-    ax[j, i] = (qxs + f * vsx[j, i]) / theta
-    ay[j, i] = (qys + f * vsy[j, i]) / theta
+    g = dt * P[BETA] * L * P[KO]                         # drag towards the circulation (circulation.py; 0: at rest)
+    ax[j, i] = (qxs + f * vsx[j, i] + g * Vbx[j, i]) / theta
+    ay[j, i] = (qys + f * vsy[j, i] + g * Vby[j, i]) / theta
     coef[j, i] = P[CP] * P[CP] * L / theta
 
 
@@ -347,7 +364,7 @@ def k_limit(c: A2, Gx: A2, Gy: A2, fx: I2, fy: I2, N: int, cfx: A2, cfy: A2):
 
 
 @wp.kernel
-def k_milk(m: A2, s: A2, Gx: A2, Gy: A2, cfx: A2, cfy: A2, l2: A2, qxn: A2, qyn: A2, mask: I2, dta: A1, inv_h: F, N: int,
+def k_milk(m: A2, sm: A2, Gx: A2, Gy: A2, cfx: A2, cfy: A2, l2: A2, qxn: A2, qyn: A2, mask: I2, dta: A1, inv_h: F, N: int,
            l3: A2, qx3: A2, qy3: A2, m3: A2):
     """Step C (milk with the same face flux, clipped to [0, l]) and the outside-cup reference state."""
     j, i = wp.tid()
@@ -361,7 +378,7 @@ def k_milk(m: A2, s: A2, Gx: A2, Gy: A2, cfx: A2, cfy: A2, l2: A2, qxn: A2, qyn:
         v += Gy[j, i] * cfy[j, i]
     if j > 0:
         v -= Gy[j - 1, i] * cfy[j - 1, i]
-    mn = m[j, i] + dt * s[j, i] - dt * v * inv_h
+    mn = m[j, i] + dt * sm[j, i] - dt * v * inv_h
     L = l2[j, i]
     mn = wp.min(wp.max(mn, F(0.0)), L)
     if mask[j, i] != 0:
@@ -629,7 +646,8 @@ def k_zero1(a: A1):
 
 
 @wp.kernel
-def k_rowmax_speed(qx: A2, qy: A2, l: A2, s: A2, Lam: A2, vsx: A2, vsy: A2, mask: I2, N: int, active: int, rows: A1):
+def k_rowmax_speed(qx: A2, qy: A2, l: A2, s: A2, Lam: A2, vsx: A2, vsy: A2, mask: I2, N: int, active: int,
+                   Vbx: A2, Vby: A2, P: A1, rows: A1):
     """CFL speed per row: max |q| / l_safe, and the inlet target speed where s + Lam > 0 (Solver.advance_frame)."""
     j = wp.tid()
     acc = F(0.0)
@@ -638,6 +656,7 @@ def k_rowmax_speed(qx: A2, qy: A2, l: A2, s: A2, Lam: A2, vsx: A2, vsy: A2, mask
         if mask[j, i] != 0:
             ls = l[j, i]
         acc = wp.max(acc, wp.sqrt(qx[j, i] * qx[j, i] + qy[j, i] * qy[j, i]) / ls)
+        acc = wp.max(acc, wp.abs(P[KO]) * wp.sqrt(Vbx[j, i] * Vbx[j, i] + Vby[j, i] * Vby[j, i]))
         if active != 0:
             if s[j, i] + Lam[j, i] > F(0.0):
                 acc = wp.max(acc, wp.sqrt(vsx[j, i] * vsx[j, i] + vsy[j, i] * vsy[j, i]))
@@ -1129,18 +1148,22 @@ class WSolver:
     rec: allocate gradients and register the adjoints of the PCG solves on `tape` (set by the caller)."""
 
     def __init__(self, geo, cfl=0.5, max_substeps=64, cg_tol=1e-10, visc_tol=1e-8, cg_maxiter=500,
-                 kernel_quadrature=3, explicit_mixing_limit=0.05, l_floor=1e-3, v05=True, check_every=1, graphs=True):
+                 kernel_quadrature=3, explicit_mixing_limit=0.05, l_floor=1e-3, v05=True, check_every=1, graphs=True,
+                 up=False):
         self.g = geo
         self.cfl, self.max_substeps = cfl, max_substeps
         self.cg_tol, self.visc_tol, self.cg_maxiter = cg_tol, visc_tol, cg_maxiter
         self.kq_default, self.mix_lim, self.l_floor, self.v05 = kernel_quadrature, explicit_mixing_limit, l_floor, int(v05)
         self.check_every = check_every
+        self.up = int(up)                    # volume-conserving surface source (k_fields)
         self.tape = None
         self.rec = False
         self.stats = dict(cg_mass=0, cg_visc=0, cg_adj=0, substeps=0, frames=0)
         dev = geo.dev
         self.dta = wp.zeros(1, dtype=F, device=dev)
         self.kq = wp.zeros(2, dtype=wp.int32, device=dev)
+        self.Vbx, self.Vby, self.Kb = (wp.zeros((geo.N, geo.N), dtype=F, device=dev) for _ in range(3))
+        self.circ, self._ck = None, None     # circulation unit fields of the frames (set_circ)
         self._dt = None
         self._kq = None
         import os
@@ -1206,7 +1229,19 @@ class WSolver:
             self.dta.assign(np.array([dt], np.float64))
             self._dt = dt
 
+    def set_circ(self, V, K):
+        """Circulation unit fields per frame (circulation.CircField, host arrays (n, 2, N, N), (n, N, N)) or None."""
+        self.circ = None if V is None else (V, K)
+        self._ck = None
+        self.Vbx.zero_(); self.Vby.zero_(); self.Kb.zero_()
+
     def set_kq(self, k, q):
+        if self.circ is not None and self._ck != k:
+            V, K = self.circ
+            self.Vbx.assign(np.ascontiguousarray(V[k, 0], np.float64))
+            self.Vby.assign(np.ascontiguousarray(V[k, 1], np.float64))
+            self.Kb.assign(np.ascontiguousarray(K[k], np.float64))
+            self._ck = k
         if self._kq != (k, q):
             self.kq.assign(np.array([k, q], np.int32))
             self._kq = (k, q)
@@ -1283,30 +1318,38 @@ class WSolver:
     # ------------------------------------------------------------------ recorded path: inlet fields, sub-step, frame
     def fields(self, P, S, k, q, active):
         g = self.g
-        out = [self.new() for _ in range(4)]
-        if not active:
-            return out
+        out = [self.new() for _ in range(5)]
         self.set_kq(k, q)
+        if not active:
+            return self._circ_src(out, P)
         Kraw = self.new()
         sums = self.new1()
         self.L(k_kernel_raw, [g.xc, g.yc, g.mask, S["x"], S["y"], S["r1"], S["r2"], S["phi"], self.kq, F(g.h)],
                [Kraw, sums])
         self.L(k_fields, [Kraw, sums, g.mask, g.xc, g.yc, P, S["x"], S["y"], S["Q"], S["ux"], S["uy"], S["U"], S["d"],
-                          S["r1"], S["r2"], self.kq, F(g.h * g.h), self.v05], out)
-        return out
+                          S["r1"], S["r2"], self.kq, F(g.h * g.h), self.v05, self.up], out)
+        return self._circ_src(out, P)
+
+    def _circ_src(self, out, P):
+        """Film source of the upwelled base material of the circulation (recorded)."""
+        if self.circ is None:
+            return out
+        s2 = self.new()
+        self.L(k_circ_src, [out[0], self.Kb, P, self.g.mask], [s2])
+        return [s2] + out[1:]
 
     def substep(self, st, fl, P, nu_on, mix_on):
         g = self.g
         N, h = g.N, g.h
         ih, ih2 = F(1.0 / h), F(1.0 / (h * h))
         dt = self.dta
-        s, Lam, vsx, vsy = fl
+        s, Lam, vsx, vsy, sm = fl
         ls, ux, uy, c = self.new(), self.new(), self.new(), self.new()
         self.L(k_prim, [st["l"], st["qx"], st["qy"], st["m"], g.mask], [ls, ux, uy, c])
         Fs = [self.new() for _ in range(4)]
         self.L(k_rusanov, [st["qx"], st["qy"], ux, uy, g.fx, g.fy], Fs)
         ax, ay, coef = self.new(), self.new(), self.new()
-        self.L(k_stepA_B, [st["qx"], st["qy"], *Fs, s, Lam, vsx, vsy, ls, P, dt, ih, N], [ax, ay, coef])
+        self.L(k_stepA_B, [st["qx"], st["qy"], *Fs, s, Lam, vsx, vsy, ls, P, dt, ih, N, self.Vbx, self.Vby], [ax, ay, coef])
         Gex, Gey = self.new(), self.new()
         self.L(k_massflux, [ax, ay, st["l"], ls, g.fx, g.fy], [Gex, Gey])
         kx, ky, diag = self.new(), self.new(), self.new()
@@ -1328,7 +1371,7 @@ class WSolver:
         cfx, cfy = self.new(), self.new()
         self.L(k_limit, [c, Gx, Gy, g.fx, g.fy, N], [cfx, cfy])
         l3, qx3, qy3, m3 = self.new(), self.new(), self.new(), self.new()
-        self.L(k_milk, [st["m"], s, Gx, Gy, cfx, cfy, l2, qxn, qyn, g.mask, dt, ih, N], [l3, qx3, qy3, m3])
+        self.L(k_milk, [st["m"], sm, Gx, Gy, cfx, cfy, l2, qxn, qyn, g.mask, dt, ih, N], [l3, qx3, qy3, m3])
         qx4, qy4 = qx3, qy3
         if nu_on:
             wx, wy, wc, ww = self.new(), self.new(), self.new(), self.new()
@@ -1360,7 +1403,7 @@ class WSolver:
         ls = np.where(msk, st["l"].numpy(), 1.0)
         umax = float(np.max(np.hypot(st["qx"].numpy(), st["qy"].numpy()) / ls))
         if active:
-            s, Lam, vx, vy = (a.numpy() for a in fl)
+            s, Lam, vx, vy = (a.numpy() for a in fl[:4])
             umax = max(umax, float(np.max(np.hypot(vx, vy) * (s + Lam > 0))))
         return self._nsub(umax, fdt)
 
@@ -1400,7 +1443,7 @@ class WSolver:
         g = self.g
         if self.fb is None:
             z = lambda: wp.zeros((g.N, g.N), dtype=F, device=g.dev)
-            names = ("l qx qy m l0 qx0 qy0 m0 Kraw s Lam vsx vsy ls ux uy c Fxqx Fxqy Fyqx Fyqy ax ay coef Gex Gey "
+            names = ("l qx qy m l0 qx0 qy0 m0 Kraw s Lam vsx vsy sm ls ux uy c Fxqx Fxqy Fyqx Fyqy ax ay coef Gex Gey "
                      "Gx Gy l2 qxn qyn cfx cfy qx3 qy3 m3 qx4 qy4 m4").split()
             self.fb = {k: z() for k in names}
             self.fb["sums"] = wp.zeros(2, dtype=F, device=g.dev)
@@ -1427,17 +1470,25 @@ class WSolver:
         self.L(k_kernel_raw, [g.xc, g.yc, g.mask, S["x"], S["y"], S["r1"], S["r2"], S["phi"], self.kq, F(g.h)],
                [fb["Kraw"], fb["sums"]], record=False)
         self.L(k_fields, [fb["Kraw"], fb["sums"], g.mask, g.xc, g.yc, P, S["x"], S["y"], S["Q"], S["ux"], S["uy"], S["U"],
-                          S["d"], S["r1"], S["r2"], self.kq, F(g.h * g.h), self.v05],
-               [fb["s"], fb["Lam"], fb["vsx"], fb["vsy"]], record=False)
+                          S["d"], S["r1"], S["r2"], self.kq, F(g.h * g.h), self.v05, self.up],
+               [fb["s"], fb["Lam"], fb["vsx"], fb["vsy"], fb["sm"]], record=False)
+        self._g_circ_src()
 
     def _g_zero_fields(self):
-        for k in ("s", "Lam", "vsx", "vsy"):
+        for k in ("s", "Lam", "vsx", "vsy", "sm"):
             self.L(k_set0, [self.fb[k]], record=False)
+        self._g_circ_src()
+
+    def _g_circ_src(self):
+        if self.circ is not None:
+            fb = self.fb
+            self.L(k_circ_src, [fb["s"], self.Kb, fb["P"], self.g.mask], [fb["s"]], record=False)
 
     def _g_speed(self, active):
         g, fb = self.g, self.fb
         wp.launch(k_rowmax_speed, dim=g.N, inputs=[fb["qx"], fb["qy"], fb["l"], fb["s"], fb["Lam"], fb["vsx"], fb["vsy"],
-                                                   g.mask, g.N, int(active), fb["rows"]], device=g.dev, record_tape=False)
+                                                   g.mask, g.N, int(active), self.Vbx, self.Vby, fb["P"], fb["rows"]],
+                  device=g.dev, record_tape=False)
         wp.launch(k_rowreduce3, dim=1, inputs=[fb["rows"], fb["rows2"], g.N, fb["red_speed"]], device=g.dev, record_tape=False)
 
     def _g_check(self):
@@ -1462,7 +1513,7 @@ class WSolver:
         R(k_prim, [fb["l"], fb["qx"], fb["qy"], fb["m"], g.mask], [fb["ls"], fb["ux"], fb["uy"], fb["c"]])
         R(k_rusanov, [fb["qx"], fb["qy"], fb["ux"], fb["uy"], g.fx, g.fy], [fb["Fxqx"], fb["Fxqy"], fb["Fyqx"], fb["Fyqy"]])
         R(k_stepA_B, [fb["qx"], fb["qy"], fb["Fxqx"], fb["Fxqy"], fb["Fyqx"], fb["Fyqy"], fb["s"], fb["Lam"], fb["vsx"],
-                      fb["vsy"], fb["ls"], P, dt, ih, N], [fb["ax"], fb["ay"], fb["coef"]])
+                      fb["vsy"], fb["ls"], P, dt, ih, N, self.Vbx, self.Vby], [fb["ax"], fb["ay"], fb["coef"]])
         R(k_massflux, [fb["ax"], fb["ay"], fb["l"], fb["ls"], g.fx, g.fy], [fb["Gex"], fb["Gey"]])
         R(k_facecoef, [fb["coef"], g.fx, g.fy, dt], [M.c["kx"], M.c["ky"]])
         R(k_massdiag, [M.c["kx"], M.c["ky"], dt, ih2, N], [M.d[0]])
@@ -1479,7 +1530,7 @@ class WSolver:
                       N], [fb["l2"]])
         R(k_qgrad, [fb["ax"], fb["ay"], fb["coef"], fb["l2"], g.fx, g.fy, g.nfx, g.nfy, dt, ih, N], [fb["qxn"], fb["qyn"]])
         R(k_limit, [fb["c"], fb["Gx"], fb["Gy"], g.fx, g.fy, N], [fb["cfx"], fb["cfy"]])
-        R(k_milk, [fb["m"], fb["s"], fb["Gx"], fb["Gy"], fb["cfx"], fb["cfy"], fb["l2"], fb["qxn"], fb["qyn"], g.mask, dt, ih, N],
+        R(k_milk, [fb["m"], fb["sm"], fb["Gx"], fb["Gy"], fb["cfx"], fb["cfy"], fb["l2"], fb["qxn"], fb["qyn"], g.mask, dt, ih, N],
           [V.c["l3"], fb["qx3"], fb["qy3"], fb["m3"]])
         if nu_on:
             R(k_visc_coefs, [V.c["l3"], g.fx, g.fy, g.cm, g.geo, P, N], [V.c["wx"], V.c["wy"], V.c["wc"], V.c["ww"]])

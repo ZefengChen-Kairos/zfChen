@@ -19,9 +19,14 @@ def main():
     ap.add_argument("--sched", type=int, default=2, help="also check this many schedule entries (x, Q of active frames)")
     ap.add_argument("--device", default=None)
     ap.add_argument("--scales", default="0", help="video loss scales (run.DiffPour)")
+    ap.add_argument("--upwell", action="store_true", help="volume-conserving surface source (wsolver.k_fields)")
+    ap.add_argument("--circ", default="", help="kappa_o,kappa_s: jet-driven circulation (circulation.py)")
     a = ap.parse_args()
-    D = DiffPour(a.pattern, N=a.N, device=a.device, T_max=a.T, tau=0.1, scales=[float(x) for x in a.scales.split(",")])
+    D = DiffPour(a.pattern, N=a.N, device=a.device, T_max=a.T, tau=0.1, scales=[float(x) for x in a.scales.split(",")],
+                 upwell=a.upwell, circ=bool(a.circ))
     P = dict(D.s1, foot_a=0.05, foot_b=-0.02)
+    if a.circ:
+        P["kappa_o"], P["kappa_s"] = (float(x) for x in a.circ.split(","))
     L, g, _ = D.loss_grad(P)
     ns = D.nsub
     print(f"loss {L:.6f}; forward {D.timing['forward_s']:.1f} s, backward {D.timing['backward_s']:.1f} s; "

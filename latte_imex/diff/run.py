@@ -152,6 +152,20 @@ def blur_np(a, sig):
     return a
 
 
+def circ_fields(S, geo):
+    """Unit circulation fields of every frame of the arrival record S (circulation.CircField), float32."""
+    from ..circulation import CircField
+    C = CircField(geo.x_np, geo.y_np, geo.mask_np, geo.h)
+    n, N = S["n"], geo.N
+    V = np.zeros((n, 2, N, N), np.float32)
+    K = np.zeros((n, N, N), np.float32)
+    for k in range(n):
+        v, kk = C.step(float(S["fdt"][k]), bool(S["active"][k]), float(S["Q"][k]), (S["x"][k], S["y"][k]),
+                       (S["ux"][k], S["uy"][k]))
+        V[k], K[k] = v, kk
+    return V, K
+
+
 def video_on_grid(p, geo, t_end):
     """Whole-video observations (raw_data/rig/video_obs/<p>.npz) on the solver cells: list of (frame index, time
     weight, w, v) for the frames inside the simulated time."""
@@ -193,7 +207,7 @@ def target_on_grid(p, geo):
 
 class DiffPour:
     def __init__(self, p, N=128, device=None, T_max=None, w_gap=2.0, tau=0.05, check_every=None, graphs=True,
-                 loss="video", w_final=0.0, scales=(0.0,), e0=False, log=print):
+                 loss="video", w_final=0.0, scales=(0.0,), e0=False, upwell=False, circ=False, log=print):
         self.p, self.N, self.log = p, N, log
         wp.init()
         script, pour = SC.pour_script(p, N, e0=e0)
@@ -202,16 +216,18 @@ class DiffPour:
         self.geo = W.Geo(N, device=device)
         if check_every is None:                     # PCG convergence read back every 4 iterations on the GPU
             check_every = 4 if self.geo.dev.is_cuda else 1
-        self.sol = W.WSolver(self.geo, v05=self.S["return_law"] == "v05", check_every=check_every, graphs=graphs)
+        self.sol = W.WSolver(self.geo, v05=self.S["return_law"] == "v05", check_every=check_every, graphs=graphs, up=upwell)
         dev = self.geo.dev
         self.Sw = {k: wp.array(self.S[k], dtype=F, device=dev, requires_grad=True) for k in W.SCHED}
+        if circ:                                         # jet-driven overturning circulation (circulation.py)
+            self.sol.set_circ(*circ_fields(self.S, self.geo))
         self.foot_dir = SC.foot_dirs(self.S["ux"], self.S["uy"])
         self._foot = (0.0, 0.0)
         tw, valid, gaps, self.T = target_on_grid(p, self.geo)
         self.tw = wp.array(tw, dtype=F, device=dev)
         self.ww = wp.array(valid * (1.0 + w_gap * gaps), dtype=F, device=dev)
         self.tau = tau
-        self.s1 = {k: float(script.params[k]) for k in W.PARAMS}
+        self.s1 = {k: float(script.params.get(k, 0.0)) for k in W.PARAMS}
         self.nsub = None
         self.mode, self.w_final = loss, (1.0 if loss == "final" else w_final)
         # backward replay: persistent buffers (fixed addresses for the per-frame graphs)
@@ -263,7 +279,7 @@ class DiffPour:
             self._foot = ab
 
     def _P(self, P, rec):
-        Pnp = np.array([float(P[k]) for k in W.PARAMS], float)
+        Pnp = np.array([float(P.get(k, 0.0)) for k in W.PARAMS], float)
         return Pnp, wp.array(Pnp, dtype=F, device=self.geo.dev, requires_grad=rec)
 
     def forward(self, P, keep=True, nsub=None):
@@ -432,7 +448,7 @@ class DiffPour:
                 sol.cp(gfin[c], self._seed[c])
             else:
                 self._seed[c].zero_()
-        Pnp = np.array([float(P[k]) for k in W.PARAMS], float)
+        Pnp = np.array([float(P.get(k, 0.0)) for k in W.PARAMS], float)
         self._Pg.assign(Pnp)
         self._Pg.grad.zero_()
         for a in self.Sw.values():
