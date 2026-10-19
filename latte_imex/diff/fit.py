@@ -54,6 +54,9 @@ CIRC_START = {"kappa_M": 1.5, "eps_f": 0.0, "kappa_w": 0.0, "xi_X": 0.0}
 DEP_SPACE = {"tau_s": (0.0, 0.2, "lin"),
              "mu_s": (0.0, 1.0, "lin")}           # share of the jet momentum the surfacing foam has lost
 DEP_START = {"tau_s": 0.05, "mu_s": 0.0}
+# underplating: share of the new foam that thickens an existing raft instead of spreading (solver.Params.alpha_u)
+RAFT_SPACE = {"alpha_u": (0.0, 0.9, "lin")}
+RAFT_START = {"alpha_u": 0.3}
 
 
 def use_foot(on, circ=False, dep=False):

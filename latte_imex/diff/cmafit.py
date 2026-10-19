@@ -11,8 +11,8 @@ mechanism spaces of the chosen model).  After the fit the frozen closure is scor
         --gens 16 --pop 12 [--device cuda:0] [--workers 2] [--w-iou 0.25] [--init closure.json] [--set k=v,...]
 
 --model letters: d (tau_s: foam surfaces ahead of the landing point), m (mu_s: jet momentum the surfacing foam has
-lost), c (surface current driven by the stream's momentum: kappa_M, eps_f, kappa_w; its shape --circ-L, --circ-rf),
-u (upwell); 'v05' = none.
+lost), c (surface current driven by the stream's momentum: kappa_M, eps_f, kappa_w, xi_X; its shape --circ-L, --circ-rf),
+a (alpha_u: underplating, new foam surfacing under an existing raft thickens it), u (upwell); 'v05' = none.
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ import numpy as np
 
 from ..v05_adapter import SPACE
 from . import schedule as SC
-from .fit import CIRC_SPACE, CIRC_START, DEP_SPACE, DEP_START
+from .fit import CIRC_SPACE, CIRC_START, DEP_SPACE, DEP_START, RAFT_SPACE, RAFT_START
 from . import score as SS
 
 PATTERNS = ("tulip", "leaf", "heart", "push_heart", "swan")
@@ -41,6 +41,8 @@ def model_space(model):
         SP["tau_s"] = DEP_SPACE["tau_s"]
     if "m" in f:
         SP["mu_s"] = DEP_SPACE["mu_s"]
+    if "a" in f:
+        SP.update(RAFT_SPACE)
     return SP, dict(circ="c" in f, upwell="u" in f)
 
 
@@ -130,7 +132,7 @@ def main(argv=None):
     from .run import DiffPour
     base = dict(DiffPour(cal[0], N=16, device="cpu", log=lambda *x: None).s1)
     base.update(CIRC_START if sw["circ"] else {"kappa_M": 0.0, "eps_f": 0.0, "kappa_w": 0.0})
-    base.update({k: v for k, v in DEP_START.items() if k in SP})
+    base.update({k: v for k, v in dict(DEP_START, **RAFT_START).items() if k in SP})
     if a.init:
         base.update({k: float(v) for k, v in json.load(open(a.init)).items() if isinstance(v, (int, float)) and not k.startswith("_")})
     for k, v in (x.split("=") for x in a.set.split(",") if x):
