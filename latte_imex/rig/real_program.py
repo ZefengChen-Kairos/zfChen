@@ -333,13 +333,25 @@ def scaled_record(R, L):
 
 def real_program(p, N=256, flow="pitcher", V0=None, log=print, closure=None):
     """A latte_imex.run.run program (control 'v05') for the measured pour of pattern p.  Returns (prog, C, E, R, info).
-    closure: V0.5 parameters (v05_adapter.SPACE keys, nu, D) replacing the S1 values."""
-    C, E, R, info = build_inlet(p, flow, V0, log)
+    closure: V0.5 parameters (v05_adapter.SPACE keys, nu, D) replacing the S1 values; its switches e0 (0 / 1 jet /
+    2 world), exit_cal (the calibrated stream exit, EXIT_CAL), circ, upwell are applied as in the fit."""
+    global LAW_OVERRIDE
+    closure = {k: v for k, v in (closure or {}).items() if not k.startswith("_")}     # "_note" etc.: comments
+    exit_cal = bool(closure.pop("exit_cal", 0))
+    prev = LAW_OVERRIDE
+    if exit_cal:
+        LAW_OVERRIDE = EXIT_CAL
+        _FP.clear()
+    try:
+        C, E, R, info = build_inlet(p, flow, V0, log)
+    finally:
+        if exit_cal:
+            LAW_OVERRIDE = prev
+            _FP.clear()
     T = info["T_pour"] + TAIL
     meta = phases_meta(p, C, R, T)
     foot, e0 = (0.0, 0.0), False
     if closure:
-        closure = {k: v for k, v in closure.items() if not k.startswith("_")}     # "_note" etc.: comments
         foot = (float(closure.pop("foot_a", 0.0)), float(closure.pop("foot_b", 0.0)))
         e0 = closure.pop("e0", 0)
         if not closure.pop("circ", 1):                 # fitted without the surface current (diff/fit.py --circ off)
