@@ -23,8 +23,9 @@ import warp as wp
 wp.config.quiet = True
 F = wp.float64
 PARAMS = ("cp", "beta", "nu", "D", "kappa_Q", "kappa_c", "kappa_t", "kappa_r", "B_dep", "p_dep", "kappa_M", "eps_f",
-          "kappa_w", "tau_s", "mu_s", "xi_X")
-CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW, TS, MS, XX = range(16)
+          "kappa_w", "tau_s", "mu_s", "xi_X", "tau_f")
+CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW, TS, MS, XX, TF = range(17)
+YIELD_EPS, NU_MAX = 0.02, 0.5      # solver.Params.yield_eps, nu_max (Bingham foam raft, tau_f > 0)
 SCHED = ("x", "y", "Q", "ux", "uy", "U", "d", "r1", "r2", "phi")
 A2 = wp.array2d(dtype=F)
 I2 = wp.array2d(dtype=wp.int32)
@@ -426,19 +427,75 @@ def k_milk(m: A2, sm: A2, Gx: A2, Gy: A2, cfx: A2, cfy: A2, l2: A2, qxn: A2, qyn
 
 # ---------------------------------------------------------------------------- symmetric viscosity (kernels.sym_*)
 @wp.kernel
-def k_visc_coefs(l3: A2, fx: I2, fy: I2, cm: I2, geo: A2, P: A1, N: int, wx: A2, wy: A2, wc: A2, ww: A2):
+def k_visc_nu(qx3: A2, qy3: A2, l3: A2, m3: A2, mask: I2, fx: I2, fy: I2, P: A1, inv_h: F, N: int, nuc: A2):
+    """Solver.yield_visc: per-cell viscosity of the Bingham foam raft, nu + tau_f c / (2 |D|_e + eps) capped at nu_max,
+    from the velocity before the step (mean of the available one-sided differences); nu where tau_f = 0."""
+    j, i = wp.tid()
+    nuc[j, i] = P[NU]
+    if mask[j, i] != 0 and P[TF] > F(0.0):
+        L = l3[j, i]
+        u = qx3[j, i] / L
+        v = qy3[j, i] / L
+        ax = F(0.0)
+        cx = F(0.0)
+        nx = F(0.0)
+        by = F(0.0)
+        dy = F(0.0)
+        ny = F(0.0)
+        if i < N - 1:
+            if fx[j, i] != 0:
+                ax += qx3[j, i + 1] / l3[j, i + 1] - u
+                cx += qy3[j, i + 1] / l3[j, i + 1] - v
+                nx += F(1.0)
+        if i > 0:
+            if fx[j, i - 1] != 0:
+                ax += u - qx3[j, i - 1] / l3[j, i - 1]
+                cx += v - qy3[j, i - 1] / l3[j, i - 1]
+                nx += F(1.0)
+        if j < N - 1:
+            if fy[j, i] != 0:
+                by += qx3[j + 1, i] / l3[j + 1, i] - u
+                dy += qy3[j + 1, i] / l3[j + 1, i] - v
+                ny += F(1.0)
+        if j > 0:
+            if fy[j - 1, i] != 0:
+                by += u - qx3[j - 1, i] / l3[j - 1, i]
+                dy += v - qy3[j - 1, i] / l3[j - 1, i]
+                ny += F(1.0)
+        a = ax / (wp.max(nx, F(1.0)) / inv_h)
+        c = cx / (wp.max(nx, F(1.0)) / inv_h)
+        b = by / (wp.max(ny, F(1.0)) / inv_h)
+        d = dy / (wp.max(ny, F(1.0)) / inv_h)
+        De = wp.sqrt(a * a + d * d + a * d + F(0.25) * (b + c) * (b + c) + F(1e-24))
+        cl = wp.min(wp.max(m3[j, i] / L, F(0.0)), F(1.0))
+        nuc[j, i] = wp.min(P[NU] + P[TF] * cl / (F(2.0) * De + F(YIELD_EPS)), F(NU_MAX))
+
+
+@wp.kernel
+def k_visc_coefs(l3: A2, fx: I2, fy: I2, cm: I2, geo: A2, P: A1, nuc: A2, N: int, wx: A2, wy: A2, wc: A2, ww: A2):
+    """Solver.sym_visc_coefs: constant nu (tau_f = 0) or the per-cell nuc averaged to faces and corners."""
     j, i = wp.tid()
     nu = P[NU]
     wx[j, i] = F(0.0)
     wy[j, i] = F(0.0)
     wc[j, i] = F(0.0)
-    if fx[j, i] != 0:
-        wx[j, i] = F(2.0) * nu * F(0.5) * (l3[j, i] + l3[j, i + 1])
-    if fy[j, i] != 0:
-        wy[j, i] = F(2.0) * nu * F(0.5) * (l3[j, i] + l3[j + 1, i])
-    if cm[j, i] != 0:
-        wc[j, i] = nu * F(0.25) * (l3[j, i] + l3[j + 1, i] + l3[j, i + 1] + l3[j + 1, i + 1])
-    ww[j, i] = F(2.0) * nu * l3[j, i] * geo[j, i]
+    if P[TF] > F(0.0):
+        if fx[j, i] != 0:
+            wx[j, i] = F(2.0) * (F(0.5) * (nuc[j, i] + nuc[j, i + 1])) * (F(0.5) * (l3[j, i] + l3[j, i + 1]))
+        if fy[j, i] != 0:
+            wy[j, i] = F(2.0) * (F(0.5) * (nuc[j, i] + nuc[j + 1, i])) * (F(0.5) * (l3[j, i] + l3[j + 1, i]))
+        if cm[j, i] != 0:
+            ncm = F(0.5) * (F(0.5) * (nuc[j, i] + nuc[j + 1, i]) + F(0.5) * (nuc[j, i + 1] + nuc[j + 1, i + 1]))
+            wc[j, i] = ncm * (F(0.25) * (l3[j, i] + l3[j + 1, i] + l3[j, i + 1] + l3[j + 1, i + 1]))
+        ww[j, i] = F(2.0) * nuc[j, i] * l3[j, i] * geo[j, i]
+    else:
+        if fx[j, i] != 0:
+            wx[j, i] = F(2.0) * nu * F(0.5) * (l3[j, i] + l3[j, i + 1])
+        if fy[j, i] != 0:
+            wy[j, i] = F(2.0) * nu * F(0.5) * (l3[j, i] + l3[j + 1, i])
+        if cm[j, i] != 0:
+            wc[j, i] = nu * F(0.25) * (l3[j, i] + l3[j + 1, i] + l3[j, i + 1] + l3[j + 1, i + 1])
+        ww[j, i] = F(2.0) * nu * l3[j, i] * geo[j, i]
 
 
 @wp.kernel
@@ -1400,8 +1457,9 @@ class WSolver:
         self.L(k_milk, [st["m"], sm, Gx, Gy, cfx, cfy, l2, qxn, qyn, g.mask, dt, ih, N], [l3, qx3, qy3, m3])
         qx4, qy4 = qx3, qy3
         if nu_on:
-            wx, wy, wc, ww = self.new(), self.new(), self.new(), self.new()
-            self.L(k_visc_coefs, [l3, g.fx, g.fy, g.cm, g.geo, P, N], [wx, wy, wc, ww])
+            wx, wy, wc, ww, nuc = self.new(), self.new(), self.new(), self.new(), self.new()
+            self.L(k_visc_nu, [qx3, qy3, l3, m3, g.mask, g.fx, g.fy, P, ih, N], [nuc])
+            self.L(k_visc_coefs, [l3, g.fx, g.fy, g.cm, g.geo, P, nuc, N], [wx, wy, wc, ww])
             X0x, X0y, bx, by = self.new(), self.new(), self.new(), self.new()
             self.L(k_visc_rhs, [qx3, qy3, l3, g.mask], [X0x, X0y, bx, by])
             dx, dy = self.new(), self.new()
@@ -1474,7 +1532,7 @@ class WSolver:
         if self.fb is None:
             z = lambda: wp.zeros((g.N, g.N), dtype=F, device=g.dev)
             names = ("l qx qy m l0 qx0 qy0 m0 Kraw Kd s Lam vsx vsy sm ls ux uy c Fxqx Fxqy Fyqx Fyqy ax ay coef Gex Gey "
-                     "Gx Gy l2 qxn qyn cfx cfy qx3 qy3 m3 qx4 qy4 m4").split()
+                     "Gx Gy l2 qxn qyn cfx cfy qx3 qy3 m3 qx4 qy4 m4 nuc").split()
             self.fb = {k: z() for k in names}
             self.fb["sums"] = wp.zeros(2, dtype=F, device=g.dev)
             self.fb["sumsd"] = wp.zeros(2, dtype=F, device=g.dev)
@@ -1559,7 +1617,8 @@ class WSolver:
         R(k_milk, [fb["m"], fb["sm"], fb["Gx"], fb["Gy"], fb["cfx"], fb["cfy"], fb["l2"], fb["qxn"], fb["qyn"], g.mask, dt, ih, N],
           [V.c["l3"], fb["qx3"], fb["qy3"], fb["m3"]])
         if nu_on:
-            R(k_visc_coefs, [V.c["l3"], g.fx, g.fy, g.cm, g.geo, P, N], [V.c["wx"], V.c["wy"], V.c["wc"], V.c["ww"]])
+            R(k_visc_nu, [fb["qx3"], fb["qy3"], V.c["l3"], fb["m3"], g.mask, g.fx, g.fy, P, ih, N], [fb["nuc"]])
+            R(k_visc_coefs, [V.c["l3"], g.fx, g.fy, g.cm, g.geo, P, fb["nuc"], N], [V.c["wx"], V.c["wy"], V.c["wc"], V.c["ww"]])
             R(k_visc_rhs, [fb["qx3"], fb["qy3"], V.c["l3"], g.mask], [V.x[0], V.x[1], V.b[0], V.b[1]])
             R(k_visc_diag, [V.c["l3"], V.c["wx"], V.c["wy"], V.c["wc"], V.c["ww"], g.nbx, g.nby, g.mask, dt, ih, N],
               [V.d[0], V.d[1]])

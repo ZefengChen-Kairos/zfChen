@@ -43,6 +43,10 @@ class Params:
     kappa_M: float = 0.0    # surface current driven by the stream's momentum (circulation.py): the film is dragged towards
                             # kappa_M U, gains upwelled water kappa_M sigma+ and goes down at kappa_M sigma-; 0 = V1 (at rest)
     eps_f: float = 0.0      # ... fraction of the foam going down with it (buoyant microfoam: ~0; 1: non-selective)
+    tau_f: float = 0.0      # closure "chi": yield stress / density of the foam raft [D_L^2/s^2] (Bingham film): the symmetric
+                            # viscosity becomes nu_eff = min(nu + tau_f c / (2 |D|_e + yield_eps), nu_max) per cell, lagged
+                            # on the velocity before the step; foam surfacing under a raft then thickens it instead of
+                            # spreading it (V2_SURFACE_MODEL.md 10); 0 = Newtonian (V0.5)
     xi_X: float = 0.0       # ... share of the current's divergence taken up by the floating layer (compressed / spread)
                             # instead of exchanged with the bulk: up- and downwelling run at (1 - xi_X) kappa_M (0: V2);
                             # the drag towards kappa_M U, which fans the new foam out sideways, is unchanged
@@ -662,7 +666,7 @@ class Solver:
             qy_new = np.where(mask, lsn * uy_new, 0.0)
         elif P.nu > 0 and P.visc == "symmetric" and P.closure == "chi":
             # l u+ - dt div(2 nu l S(u+)) = l u-, coupled x/y, PCG (V1 3.4)
-            ux_new, uy_new, it = self.sym_visc_step(qx_new / lsn, qy_new / lsn, lsn, dt)
+            ux_new, uy_new, it = self.sym_visc_step(qx_new / lsn, qy_new / lsn, lsn, dt, np.where(mask, m_new / lsn, 0.0))
             self.stats["cg_visc"] += it
             qx_new = np.where(mask, lsn * ux_new, 0.0)
             qy_new = np.where(mask, lsn * uy_new, 0.0)
@@ -733,21 +737,50 @@ class Solver:
         return True
 
     # ----- symmetric viscosity -------------------------------------------------------
-    def sym_visc_coefs(self, lsn):
+    def sym_visc_coefs(self, lsn, nuc=None):
         """Weights of K = G^T W G (kernels.sym_visc_apply): wx, wy = 2 nu l_f on active faces, wc = nu l_corner on
-        active corners, ww = 2 nu l * wall geometry; plus the outward cup normal."""
+        active corners, ww = 2 nu l * wall geometry; plus the outward cup normal.  nuc: per-cell viscosity (Bingham
+        foam, yield_visc) averaged to faces and corners; None: the constant nu."""
         g, nu = self.g, self.P.nu
         cm, geo, nbx, nby = g.sym_geometry()
         lfx, lfy = g.face_avg(lsn)
-        wx = np.ascontiguousarray(2.0 * nu * lfx); wy = np.ascontiguousarray(2.0 * nu * lfy)
-        wc = np.ascontiguousarray(np.where(cm, nu * 0.25 * (lsn[:-1, :-1] + lsn[1:, :-1] + lsn[:-1, 1:] + lsn[1:, 1:]), 0.0))
-        ww = np.ascontiguousarray(2.0 * nu * lsn * geo)
+        lc = 0.25 * (lsn[:-1, :-1] + lsn[1:, :-1] + lsn[:-1, 1:] + lsn[1:, 1:])
+        if nuc is None:
+            wx = np.ascontiguousarray(2.0 * nu * lfx); wy = np.ascontiguousarray(2.0 * nu * lfy)
+            wc = np.ascontiguousarray(np.where(cm, nu * lc, 0.0))
+            ww = np.ascontiguousarray(2.0 * nu * lsn * geo)
+        else:
+            nfx = 0.5 * (nuc[:, :-1] + nuc[:, 1:]); nfy = 0.5 * (nuc[:-1, :] + nuc[1:, :])
+            ncm = 0.5 * (0.5 * (nuc[:-1, :-1] + nuc[1:, :-1]) + 0.5 * (nuc[:-1, 1:] + nuc[1:, 1:]))
+            wx = np.ascontiguousarray(2.0 * nfx * lfx); wy = np.ascontiguousarray(2.0 * nfy * lfy)
+            wc = np.ascontiguousarray(np.where(cm, ncm * lc, 0.0))
+            ww = np.ascontiguousarray(2.0 * nuc * lsn * geo)
         return wx, wy, wc, ww, nbx, nby
 
-    def sym_visc_operator(self, lsn, dt):
+    def yield_visc(self, ux, uy, c):
+        """Per-cell effective viscosity of the Bingham foam raft: nu + tau_f c / (2 |D|_e + yield_eps), capped at nu_max,
+        |D|_e^2 = u_x^2 + v_y^2 + u_x v_y + (u_y + v_x)^2 / 4 from the mean of the available one-sided differences
+        (wsolver.k_visc_nu)."""
+        g, P, h = self.g, self.P, self.g.h
+        def d_dx(a):
+            dr = np.zeros_like(a); dl = np.zeros_like(a)
+            dr[:, :-1] = (a[:, 1:] - a[:, :-1]) * g.fx; dl[:, 1:] = (a[:, 1:] - a[:, :-1]) * g.fx
+            n = np.zeros_like(a); n[:, :-1] += g.fx; n[:, 1:] += g.fx
+            return (dr + dl) / (h * np.maximum(n, 1.0))
+        def d_dy(a):
+            dr = np.zeros_like(a); dl = np.zeros_like(a)
+            dr[:-1, :] = (a[1:, :] - a[:-1, :]) * g.fy; dl[1:, :] = (a[1:, :] - a[:-1, :]) * g.fy
+            n = np.zeros_like(a); n[:-1, :] += g.fy; n[1:, :] += g.fy
+            return (dr + dl) / (h * np.maximum(n, 1.0))
+        a, b, cc, d = d_dx(ux), d_dy(ux), d_dx(uy), d_dy(uy)
+        De = np.sqrt(a * a + d * d + a * d + 0.25 * (b + cc) ** 2 + 1e-24)
+        cl = np.clip(c, 0.0, 1.0)
+        return np.where(g.mask, np.minimum(P.nu + P.tau_f * cl / (2.0 * De + P.yield_eps), P.nu_max), P.nu)
+
+    def sym_visc_operator(self, lsn, dt, nuc=None):
         """(apply, diag) of A = L + dt K on stacked velocities X = [u; v] of shape (2N, N); identity outside the cup."""
         g = self.g; N = g.N; inv_h = 1.0 / g.h
-        wx, wy, wc, ww, nbx, nby = self.sym_visc_coefs(lsn)
+        wx, wy, wc, ww, nbx, nby = self.sym_visc_coefs(lsn, nuc)
         T = np.empty((N - 1, N - 1))
         mask = g.mask
 
@@ -767,10 +800,12 @@ class Solver:
         diag = np.concatenate([np.where(mask, du, 1.0), np.where(mask, dv, 1.0)])
         return apply, diag
 
-    def sym_visc_step(self, ux, uy, lsn, dt):
-        """Backward Euler step of l du/dt = div(2 nu l S(u)) with l frozen: (L + dt K) u+ = L u-, PCG (SPD)."""
+    def sym_visc_step(self, ux, uy, lsn, dt, c=None):
+        """Backward Euler step of l du/dt = div(2 nu l S(u)) with l frozen: (L + dt K) u+ = L u-, PCG (SPD).  With the
+        foam yield stress (tau_f > 0, colour c) nu is the per-cell nu_eff of yield_visc, lagged on u-."""
         g = self.g; N = g.N; mask = g.mask
-        apply, diag = self.sym_visc_operator(lsn, dt)
+        nuc = self.yield_visc(ux, uy, c) if (self.P.tau_f > 0 and c is not None) else None
+        apply, diag = self.sym_visc_operator(lsn, dt, nuc)
         X0 = np.concatenate([np.where(mask, ux, 0.0), np.where(mask, uy, 0.0)])
         L2 = np.concatenate([np.where(mask, lsn, 1.0), np.where(mask, lsn, 1.0)])
         b = np.where(np.concatenate([mask, mask]), L2 * X0, 0.0)
