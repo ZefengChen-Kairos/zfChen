@@ -80,6 +80,21 @@ def shift_program(prog, a, b):
 
 
 E0_WIN = 0.5             # [s] half window of the running median of the measured offsets
+E0_CODES = {0: False, 1: "jet", 2: "world"}     # the "e0" value stored in closure json files
+
+
+def e0_mode(e0):
+    """Normalise an E0 switch: False / 0 (none), True / 1 / 'jet' (e0_offsets, along / across u_in), 2 / 'world'
+    (e0_world_offsets, cup frame)."""
+    if isinstance(e0, str):
+        if e0 not in ("jet", "world"):
+            raise ValueError(f"e0 must be 'jet' or 'world', got {e0!r}")
+        return e0
+    return E0_CODES[int(round(float(e0 or 0)))]
+
+
+def e0_code(e0):
+    return {v: k for k, v in E0_CODES.items()}[e0_mode(e0)]
 
 
 def shift_program_world(prog, fx, fy):
@@ -96,42 +111,88 @@ def shift_program_world(prog, fx, fy):
     return prog
 
 
-def e0_world_offsets(p, prog):
+# E0 world-frame estimator (e0_world_offsets).  Candidate feet: a well-resolved stream (score, centre-line rms, slope)
+# reaching the surface within the path search bound (stream_foot.py searches to 12 mm below the tip; its own `trusted`
+# flag stops at TOP_OK = 10 mm and so dropped good frames of the fast heart-1 stroke while keeping weak ones that follow
+# foam behind the tip).  Feet more than E0_BEHIND behind the spout tip are dropped from every tier; a candidate whose
+# offset disagrees with its neighbours by more than E0_GATE is dropped; the offset at time t is a quality-weighted robust
+# (Tukey) mean of the kept frames under a Gaussian time window (audit wf_61f4987d-e3b, C1; V2_SURFACE_MODEL.md §9).
+E0_CAND = dict(q=0.6, rms_mm=1.0, slope=0.8, top_mm=12.0)
+E0_PLAUS = dict(q=0.2, rms_mm=3.5, slope=0.8, top_mm=12.0)
+E0_BEHIND = 3.0e-3      # [m] a foot further behind the spout tip (along the stream's horizontal direction u_in) is not
+                        # the stream: the falling milk only moves forward; checked on the camera images of heart, where all
+                        # such feet were the pitcher's lower edge or the liquid edge in its shadow by the rim
+E0_GATE = (0.30, 0.11)   # [s] neighbour window, [solver units ~ 10 mm] consistency limit
+E0_SIG, E0_CUT, E0_TUKEY, E0_WMIN = 0.10, 0.30, 0.08, 0.3     # [s], [s], [su], minimum summed weight
+
+
+def _e0_sel(r, c):
+    return r["quality"] > c["q"] and r["rms_mm"] <= c["rms_mm"] and r["slope"] <= c["slope"] and r["top_mm"] <= c["top_mm"]
+
+
+def e0_world_estimate(t, O, q, keep, plaus, tt):
+    """Offset at time tt from per-frame offsets O (n, 2) at times t with quality q: Tukey IRLS (3 iterations from the
+    median) of the kept frames weighted by q exp(-(t - tt)^2 / 2 E0_SIG^2) within E0_CUT; where those weigh less than
+    E0_WMIN, the median of the plausible frames within E0_WIN (>= 3), else the median of all kept frames."""
+    n = keep & (np.abs(t - tt) <= E0_CUT)
+    if n.sum() >= 2:
+        w0 = q[n] * np.exp(-0.5 * ((t[n] - tt) / E0_SIG) ** 2)
+        if w0.sum() > E0_WMIN:
+            m = np.median(O[n], 0)
+            for _ in range(3):
+                r = np.hypot(*(O[n] - m).T) / E0_TUKEY
+                w = w0 * np.where(r < 1.0, (1.0 - r * r) ** 2, 0.0)
+                if w.sum() <= 0:
+                    break
+                m = (w[:, None] * O[n]).sum(0) / w.sum()
+            return m
+    n2 = plaus & (np.abs(t - tt) <= E0_WIN)
+    if n2.sum() >= 3:
+        return np.median(O[n2], 0)
+    return np.median(O[keep], 0)
+
+
+def e0_world_offsets(p, prog, grid=False):
     """E0 replay in the cup frame: the measured stream foot (rig/stream_foot.py) minus the landing point of prog (the
-    model as built, e.g. with the calibrated exit) at the same time, running median of the trusted frames over
-    +-E0_WIN s (plausible frames where those are sparse, else the pour median), as functions of the sim time.  Unlike
-    e0_offsets it does not use the jet direction (u_in), whose frame-to-frame noise turns a near-constant offset into
-    landing-point jitter."""
+    model as built, e.g. with the calibrated exit) at the same time, as functions of the sim time (robust estimator
+    above).  Unlike e0_offsets it does not use the jet direction (u_in), whose frame-to-frame noise turns a near-
+    constant offset into landing-point jitter.  grid: also return (t grid, offsets, kept frame times)."""
     import json
     import os
     from ..rig.real_program import RES
     fn = os.path.join(RES, p, "stream_foot.json")
     if not os.path.exists(fn):
         return None
-    allf = json.load(open(fn))["frames"]
-    def resid(rows):
-        out = []
-        for r in rows:
+    rows = []
+    for r in json.load(open(fn))["frames"]:
+        if _e0_sel(r, E0_PLAUS):
             inl = prog(r["t"])
-            if inl.active:
-                out.append((r["t"], r["x"] - inl.x_hit[0], r["y"] - inl.x_hit[1]))
-        return np.array(out).reshape(-1, 3)
-    A = resid([r for r in allf if r.get("trusted")])
-    if len(A) < 5:
+            un = math.hypot(*inl.u_in) if inl.active else 0.0
+            if un > 0:
+                # spout tip in solver units (same board -> solver map as the foot); foot ahead of it along u_in [m]
+                fb, tb = r["foot_board"], r["tip_board"]
+                ahead = ((fb[0] - tb[0]) * inl.u_in[0] + (tb[1] - fb[1]) * inl.u_in[1]) / un     # board y = -solver y
+                if ahead < -E0_BEHIND:
+                    continue
+                rows.append((r["t"], r["x"] - inl.x_hit[0], r["y"] - inl.x_hit[1], r["quality"], _e0_sel(r, E0_CAND)))
+    if not rows:
         return None
-    A2 = resid([r for r in allf if r["quality"] > 0.2 and r["rms_mm"] <= 3.5 and r["slope"] <= 0.8 and r["top_mm"] <= 12.0])
-    med = np.median(A[:, 1:], 0)
-    lo = min(A[:, 0].min(), A2[:, 0].min() if len(A2) else A[:, 0].min()) - 1.0
-    hi = max(A[:, 0].max(), A2[:, 0].max() if len(A2) else A[:, 0].max()) + 1.0
-    tg = np.arange(lo, hi, 0.05)
-    G = np.empty((len(tg), 2))
-    for i, tt in enumerate(tg):
-        near = np.abs(A[:, 0] - tt) <= E0_WIN
-        near2 = np.abs(A2[:, 0] - tt) <= E0_WIN if len(A2) else np.zeros(0, bool)
-        G[i] = (np.median(A[near, 1:], 0) if near.sum() >= 3 else
-                np.median(A2[near2, 1:], 0) if near2.sum() >= 3 else med)
-    return (lambda tt: float(np.interp(tt, tg, G[:, 0], left=med[0], right=med[0])),
-            lambda tt: float(np.interp(tt, tg, G[:, 1], left=med[1], right=med[1])))
+    R = np.array(rows, float)
+    t, O, q, plaus, cand = R[:, 0], R[:, 1:3], R[:, 3], np.ones(len(R), bool), R[:, 4] > 0
+    keep = cand.copy()
+    for i in np.where(cand)[0]:
+        nb = cand & (np.abs(t - t[i]) <= E0_GATE[0])
+        nb[i] = False
+        if nb.sum() >= 2 and np.hypot(*(O[i] - np.median(O[nb], 0))) > E0_GATE[1]:
+            keep[i] = False
+    if keep.sum() < 5:
+        return None
+    med = np.median(O[keep], 0)
+    tg = np.arange(t.min() - 1.0, t.max() + 1.0, 0.05)
+    G = np.array([e0_world_estimate(t, O, q, keep, plaus, tt) for tt in tg])
+    f = (lambda tt: float(np.interp(tt, tg, G[:, 0], left=med[0], right=med[0])),
+         lambda tt: float(np.interp(tt, tg, G[:, 1], left=med[1], right=med[1])))
+    return (f, (tg, G, t[keep])) if grid else f
 
 
 def e0_offsets(p):
@@ -178,6 +239,7 @@ def pour_script(p, N, e0=False, exit_cal=False):
     from .. import s1_forward as SF
     pour = Pour(p, law=RP.EXIT_CAL if exit_cal else None)
     prog = SF.FwdProgram(p, pour.R, N, meta=pour.meta)
+    e0 = e0_mode(e0)
     if e0:
         off = e0_world_offsets(p, prog) if e0 == "world" else e0_offsets(p)
         if off is None:

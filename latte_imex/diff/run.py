@@ -197,14 +197,15 @@ def kernel_inside(S, geo, x, y):
     return Z
 
 
-def circ_fields(S, geo, x=None, y=None, dtype=np.float32):
+def circ_fields(S, geo, x=None, y=None, dtype=np.float32, shape=None):
     """Unit surface-current fields of every frame of the arrival record S (circulation.SurfaceCurrent: U, sigma+,
-    sigma-, W_n), stored as dtype; driven by the received flow Q Z (Z: kernel_inside) at the landing points x, y (default S's)."""
+    sigma-, W_n), stored as dtype; driven by the received flow Q Z (Z: kernel_inside) at the landing points x, y (default
+    S's).  shape: SurfaceCurrent shape constants (r, L, r_f) overriding the defaults."""
     from ..circulation import SurfaceCurrent
     x = S["x"] if x is None else x
     y = S["y"] if y is None else y
     Z = kernel_inside(S, geo, x, y)
-    C = SurfaceCurrent(geo.x_np, geo.y_np, geo.mask_np, geo.h)
+    C = SurfaceCurrent(geo.x_np, geo.y_np, geo.mask_np, geo.h, **(shape or {}))
     n, N = S["n"], geo.N
     U = np.zeros((n, 2, N, N), dtype)
     up, dn, Wn = (np.zeros((n, N, N), dtype) for _ in range(3))
@@ -270,7 +271,7 @@ def target_on_grid(p, geo):
 class DiffPour:
     def __init__(self, p, N=128, device=None, T_max=None, w_gap=2.0, tau=0.05, check_every=None, graphs=True,
                  loss="video", w_final=0.0, scales=(0.0,), e0=False, upwell=False, circ=False, w_flow=0.0,
-                 flow_scale=0.15, flow_u0=0.05, exit_cal=False, log=print):
+                 flow_scale=0.15, flow_u0=0.05, exit_cal=False, circ_shape=None, log=print):
         self.p, self.N, self.log = p, N, log
         wp.init()
         script, pour = SC.pour_script(p, N, e0=e0, exit_cal=exit_cal)
@@ -283,9 +284,9 @@ class DiffPour:
         self.sol = W.WSolver(self.geo, v05=self.S["return_law"] == "v05", check_every=check_every, graphs=graphs, up=upwell)
         dev = self.geo.dev
         self.Sw = {k: wp.array(self.S[k], dtype=F, device=dev, requires_grad=True) for k in W.SCHED}
-        self.circ = circ
+        self.circ, self.circ_shape = circ, dict(circ_shape or {})
         if circ:                                         # momentum-driven surface current (circulation.py)
-            self.sol.set_circ(*circ_fields(self.S, self.geo))
+            self.sol.set_circ(*circ_fields(self.S, self.geo, shape=self.circ_shape))
         self.foot_dir = SC.foot_dirs(self.S["ux"], self.S["uy"])
         self._foot = (0.0, 0.0)
         tw, valid, gaps, self.T = target_on_grid(p, self.geo)
@@ -385,7 +386,7 @@ class DiffPour:
             self.Sw["x"].assign(x)
             self.Sw["y"].assign(y)
             if self.circ:                                # the current follows the landing point
-                self.sol.set_circ(*circ_fields(self.S, self.geo, x, y))
+                self.sol.set_circ(*circ_fields(self.S, self.geo, x, y, shape=self.circ_shape))
             self._foot = ab
 
     def _P(self, P, rec):

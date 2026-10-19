@@ -2,7 +2,8 @@
 
 Parameters: v05_adapter.SPACE (8 closure parameters) in the unit box (log-scaled where SPACE says 'log'); nu and D
 fixed.  Inlet: the measured pour with the landing point corrected by the measured stream foot (E0 input replay,
-schedule.e0_offsets; --no-e0: pitcher model alone).  Diagnostic option --foot: also fit a landing-point correction shared by all pours, foot_a / foot_b [cup
+--e0 jet: schedule.e0_offsets along / across the jet, the earlier fits; --e0 world: schedule.e0_world_offsets in the cup
+frame, robust to stream-tracking outliers; --e0 none: pitcher model alone).  Diagnostic option --foot: also fit a landing-point correction shared by all pours, foot_a / foot_b [cup
 diameters] along / across the jet's horizontal direction (schedule.foot_shift) -- off by default (the inlet is not
 corrected from the target pattern; see the V1 plan, 4.1 and E0).
 After the fit, the frozen parameters are run on every other pattern (frozen-parameter test): test.json, with the same
@@ -32,6 +33,7 @@ import time
 import numpy as np
 
 from ..v05_adapter import SPACE
+from . import schedule as SC
 from . import wsolver as W
 
 FOOT_SPACE = {"foot_a": (-0.25, 0.25, "lin"),      # landing-point correction [cup diameters], along the jet
@@ -297,9 +299,11 @@ def main(argv=None):
     ap.add_argument("--upwell", action="store_true",
                     help="volume-conserving surface source: the whole received volume reaches the surface, chi decides "
                          "whether it is new milk or resurfacing base material (wsolver.k_fields)")
-    ap.add_argument("--no-e0", dest="e0", action="store_false",
-                    help="landing point from the pitcher model alone (default: E0, corrected by the measured stream foot, "
-                         "rig/stream_foot.py)")
+    ap.add_argument("--e0", default="jet", choices=("jet", "world", "none"),
+                    help="landing point corrected by the measured stream foot (rig/stream_foot.py): 'jet' along / across "
+                         "u_in (schedule.e0_offsets, the earlier fits), 'world' in the cup frame with the robust estimator "
+                         "(schedule.e0_world_offsets), 'none': the pitcher model alone")
+    ap.add_argument("--no-e0", dest="e0", action="store_const", const="none", help="= --e0 none")
     ap.add_argument("--w-final", dest="w_final", type=float, default=0.0, help="extra final-frame soft-IoU term (video loss)")
     ap.add_argument("--init", default=None, help="closure json to start from (default: S1)")
     ap.add_argument("--set", default="", help="start values overriding the start closure, e.g. beta=0.5,kappa_t=1")
@@ -318,7 +322,7 @@ def main(argv=None):
     use_foot(a.foot, a.circ, a.dep)
     cal = a.cal.split(",")
     kw = dict(N=a.N, device=a.device, w_gap=a.w_gap, tau=a.tau0, T_max=a.T, loss=a.loss, w_final=a.w_final,
-              scales=tuple(float(x) for x in a.scales.split(",")), e0=a.e0, upwell=a.upwell,
+              scales=tuple(float(x) for x in a.scales.split(",")), e0=SC.e0_mode(0 if a.e0 == "none" else a.e0), upwell=a.upwell,
               circ=a.circ, w_flow=a.w_flow)
     workers = a.workers if a.workers >= 0 else (len(cal) if (a.device or "cuda").startswith("cuda") else 0)
     pours = {p: Pour(p, kw, process=workers > 0) for p in cal}
@@ -331,7 +335,7 @@ def main(argv=None):
     for k, v in (x.split("=") for x in a.set.split(",") if x):
         base[k] = float(v)
     # the closure is the single source of the model switches: the render (real_program) reads them back
-    base["e0"], base["upwell"], base["circ"] = float(a.e0), float(a.upwell), float(a.circ)
+    base["e0"], base["upwell"], base["circ"] = float(SC.e0_code(0 if a.e0 == "none" else a.e0)), float(a.upwell), float(a.circ)
     if not a.circ and any(base.get(k, 0.0) for k in ("kappa_M", "kappa_w")):
         log("no --circ: kappa_M, kappa_w of the start closure set to 0")
     if not a.circ:

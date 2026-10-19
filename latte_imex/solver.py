@@ -44,6 +44,9 @@ class Params:
                             # kappa_M U, gains upwelled water kappa_M sigma+ and goes down at kappa_M sigma-; 0 = V1 (at rest)
     eps_f: float = 0.0      # ... fraction of the foam going down with it (buoyant microfoam: ~0; 1: non-selective)
     kappa_w: float = 0.0    # ... and the received flow's area kappa_w kappa_Q abar going down where the current converges
+    circ_L: float = 0.4     # surface current: momentum spreading length sqrt(nu / r) (circulation.L_C) and radius of the
+    circ_rf: float = 0.06   # momentum kernel (circulation.R_F) [D_L]; a short L_C keeps the stream's forward current near the
+                            # landing point, where it parts sideways and fans the new foam out
     tau_s: float = 0.0      # closure "chi": the deposited foam surfaces tau_s u_in ahead of the landing point (carried by the
                             # plunging stream's horizontal velocity for its rise time; the deposit kernel K_d), [s]
     mu_s: float = 0.0       # closure "chi": share of the jet momentum the surfacing foam has lost (it arrives with the film
@@ -948,7 +951,7 @@ class Solver:
         if self.P.kappa_M or self.P.kappa_w:   # surface current of this frame (circulation.py)
             if getattr(self, "circ", None) is None:
                 from .circulation import SurfaceCurrent
-                self.circ = SurfaceCurrent(g.x, g.y, g.mask, g.h)
+                self.circ = SurfaceCurrent(g.x, g.y, g.mask, g.h, L=self.P.circ_L, r_f=self.P.circ_rf)
             act = bool(inlet.active and inlet.S_eff > 0)
             Zr = getattr(self, "last_Z", 1.0) if self.P.offcup == "account" else 1.0
             U, up, dn, Wn = self.circ.step(frame_dt, act, inlet.S_eff * Zr / self.P.kappa_Q if act else 0.0,

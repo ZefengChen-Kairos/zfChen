@@ -341,16 +341,19 @@ def real_program(p, N=256, flow="pitcher", V0=None, log=print, closure=None):
     if closure:
         closure = {k: v for k, v in closure.items() if not k.startswith("_")}     # "_note" etc.: comments
         foot = (float(closure.pop("foot_a", 0.0)), float(closure.pop("foot_b", 0.0)))
-        e0 = bool(closure.pop("e0", 0))
+        e0 = closure.pop("e0", 0)
         if not closure.pop("circ", 1):                 # fitted without the surface current (diff/fit.py --circ off)
             for k in ("kappa_M", "eps_f", "kappa_w"):
                 closure[k] = 0.0
         meta["config"]["parameters"].update(closure)
         meta["kQ"] = float(closure.get("kappa_Q", meta["kQ"]))
     prog = SF.FwdProgram(p, scaled_record(R, C["L"]), N, meta=meta)
-    if e0:                                             # E0: measured stream foot (rig/stream_foot.py)
-        from ..diff.schedule import e0_offsets, shift_program
-        shift_program(prog, *e0_offsets(p))
+    from ..diff import schedule as SCH
+    e0 = SCH.e0_mode(e0)
+    if e0 == "jet":                                    # E0: measured stream foot (rig/stream_foot.py), closure "e0" 1
+        SCH.shift_program(prog, *SCH.e0_offsets(p))
+    elif e0 == "world":                                # ... in the cup frame (closure "e0" 2)
+        SCH.shift_program_world(prog, *SCH.e0_world_offsets(p, prog))
     if any(foot):                                      # landing-point correction of the differentiable fit
         from ..diff.schedule import shift_program
         shift_program(prog, *foot)

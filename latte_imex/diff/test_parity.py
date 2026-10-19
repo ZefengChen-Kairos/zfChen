@@ -55,7 +55,7 @@ def main():
         sol = W.WSolver(g, v05=S["return_law"] == "v05", check_every=a.check_every, up=a.upwell)
         if a.circ:
             from .run import circ_fields
-            sol.set_circ(*circ_fields(S, g, dtype=np.float64))
+            sol.set_circ(*circ_fields(S, g, dtype=np.float64, shape=dict(L=P.circ_L, r_f=P.circ_rf)))
         nw = []
         t0 = time.time()
         if path == "frame":

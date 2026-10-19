@@ -26,7 +26,8 @@ Film coupling (solver.py, diff/wsolver.py), all with the unit current (kappa_M =
 W_n: the received flow's area (abar: the relaxed received flow) leaving where the current goes down (sigma- / its
 integral; along the wall when there is no current): kappa_w = 1 removes the area the inlet adds.  kappa_M, eps_f,
 kappa_w are the closure parameters (multipliers of these unit fields in the Warp solver: exact gradients); R_C, L_C,
-R_F are fixed shape constants.  kappa_M = kappa_w = 0 is V1/V0.5."""
+R_F are the default shape constants (L_C and R_F calibrated as closure values circ_L, circ_rf: solver.Params,
+diff/run.DiffPour(circ_shape=...), diff/cmafit.py --circ-L).  kappa_M = kappa_w = 0 is V1/V0.5."""
 from __future__ import annotations
 
 import math
