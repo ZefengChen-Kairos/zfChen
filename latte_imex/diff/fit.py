@@ -53,7 +53,7 @@ DEP_SPACE = {"tau_s": (0.0, 0.2, "lin"),
 DEP_START = {"tau_s": 0.05, "mu_s": 0.0}
 
 
-def use_foot(on, circ=False, dep=True):
+def use_foot(on, circ=False, dep=False):
     global KEYS, SP
     SP = dict(SPACE, **(FOOT_SPACE if on else {}), **(CIRC_SPACE if circ else {}), **(DEP_SPACE if dep else {}))
     KEYS = tuple(SP)
@@ -288,8 +288,9 @@ def main(argv=None):
                     help="video loss scales [cup radii] (run.py): blurred residual terms, 0 = per pixel; '0' = pixel term only")
     ap.add_argument("--w-flow", dest="w_flow", type=float, default=0.0,
                     help="weight of the surface-velocity term (optical flow of the real pour, rig/video_flow.py)")
-    ap.add_argument("--no-dep", dest="dep", action="store_false",
-                    help="foam surfaces at the landing point (tau_s = 0, V0.5) instead of fitting tau_s")
+    ap.add_argument("--dep", action="store_true",
+                    help="foam surfaces tau_s u_in ahead of the landing point with the share mu_s of the jet momentum "
+                    "lost (fit tau_s, mu_s; off: V0.5, tau_s = mu_s = 0)")
     ap.add_argument("--circ", action="store_true",
                     help="surface current driven by the stream's momentum (circulation.py: fit kappa_M, eps_f, kappa_w; use with "
                          "--upwell)")
