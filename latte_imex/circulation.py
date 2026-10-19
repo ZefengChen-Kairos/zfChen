@@ -18,14 +18,15 @@ wall faces: its integral over the cup is 0 to round-off); upwelling sigma+ = max
 
 Film coupling (solver.py, diff/wsolver.py), all with the unit current (kappa_M = 1) of this module:
     drag towards kappa_M U                      -beta (q - l kappa_M U)
-    upwelled surface water kappa_M sigma+        film source of base material (c = 0) at the rest thickness 1
-    downwelling W = kappa_M sigma- + kappa_w kappa_Q W_n
-                                                 the brown part b = l - m goes down at the rate W, the foam at eps_f W
-                                                 (microfoam, rho_f / rho ~ 0.4, stays up: eps_f ~ 0); q leaves with u.
+    vertical exchange after each sub-step, on the brown part b = l - m only (the buoyant microfoam raft, rho_f / rho ~
+    0.4, floats over the exchange: the water surfaces beside it and goes down beside it):
+        db/dt = -W b + kappa_M sigma+ (1 - c),   W = kappa_M sigma- + kappa_w kappa_Q W_n
+        dm/dt = -eps_f W m                       (eps_f: fraction of the foam that does go down; physical value ~ 0)
+    the exchanged material moves with the film (u unchanged).
 W_n: the received flow's area (abar: the relaxed received flow) leaving where the current goes down (sigma- / its
-integral; along the wall when there is no current), so that kappa_w = 1 closes the film's area budget against the
-inlet's kappa_Q Q.  kappa_M, eps_f, kappa_w are the closure parameters (linear multipliers of these unit fields in the
-Warp solver: exact gradients); R_C, L_C, R_F are fixed shape constants.  kappa_M = kappa_w = 0 is V1/V0.5."""
+integral; along the wall when there is no current): kappa_w = 1 removes the area the inlet adds.  kappa_M, eps_f,
+kappa_w are the closure parameters (multipliers of these unit fields in the Warp solver: exact gradients); R_C, L_C,
+R_F are fixed shape constants.  kappa_M = kappa_w = 0 is V1/V0.5."""
 from __future__ import annotations
 
 import math

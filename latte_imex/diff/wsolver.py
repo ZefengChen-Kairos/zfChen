@@ -127,28 +127,22 @@ def k_fields(Kraw: A2, sums: A1, mask: I2, xc: A2, yc: A2, P: A1, Sx: A1, Sy: A1
 
 
 @wp.kernel
-def k_circ_src(s: A2, Kb: A2, P: A1, mask: I2, out: A2):
-    """out = s + kappa_M sigma+ (surface water upwelled by the current: base material at the rest thickness 1,
-    circulation.py)."""
-    j, i = wp.tid()
-    v = s[j, i]
-    if mask[j, i] != 0:
-        v = v + P[KM] * Kb[j, i]
-    out[j, i] = v                                        # one store (an overwrite would double the adjoint on old Warp)
-
-
-@wp.kernel
-def k_down(l: A2, qx: A2, qy: A2, m: A2, Db: A2, Wf: A2, P: A1, dta: A1, mask: I2, lo: A2, qxo: A2, qyo: A2, mo: A2):
-    """Film going down where the current converges (circulation.py): W = kappa_M sigma- + kappa_w kappa_Q W_n; the brown
-    part l - m decays by exp(-dt W), the foam by exp(-dt eps_f W) (buoyant microfoam stays up), q with the layer."""
+def k_exchange(l: A2, qx: A2, qy: A2, m: A2, Kb: A2, Db: A2, Wf: A2, P: A1, dta: A1, mask: I2,
+               lo: A2, qxo: A2, qyo: A2, mo: A2):
+    """Vertical exchange of the film with the surface current (circulation.py), after each sub-step: the brown part
+    b = l - m goes down at W = kappa_M sigma- + kappa_w kappa_Q W_n and is resupplied by the upwelled water
+    kappa_M sigma+ where the surface is brown (fraction 1 - c: the water surfaces beside the buoyant foam raft, not
+    under it); the foam goes down at eps_f W.  Exchanged material moves with the film (u unchanged)."""
     j, i = wp.tid()
     fl = F(1.0)
     fm = F(1.0)
     if mask[j, i] != 0:
+        L = l[j, i]
+        c = wp.min(wp.max(m[j, i] / L, F(0.0)), F(1.0))
         W = P[KM] * Db[j, i] + P[KW] * P[KQ] * Wf[j, i]
-        eb = wp.exp(-dta[0] * W)
         fm = wp.exp(-dta[0] * P[KE] * W)
-        fl = eb + m[j, i] / l[j, i] * (fm - eb)
+        b = (L - m[j, i]) * wp.exp(-dta[0] * W) + dta[0] * P[KM] * Kb[j, i] * (F(1.0) - c)
+        fl = (b + m[j, i] * fm) / L
     lo[j, i] = l[j, i] * fl
     qxo[j, i] = qx[j, i] * fl
     qyo[j, i] = qy[j, i] * fl
@@ -1346,22 +1340,14 @@ class WSolver:
         out = [self.new() for _ in range(5)]
         self.set_kq(k, q)
         if not active:
-            return self._circ_src(out, P)
+            return out
         Kraw = self.new()
         sums = self.new1()
         self.L(k_kernel_raw, [g.xc, g.yc, g.mask, S["x"], S["y"], S["r1"], S["r2"], S["phi"], self.kq, F(g.h)],
                [Kraw, sums])
         self.L(k_fields, [Kraw, sums, g.mask, g.xc, g.yc, P, S["x"], S["y"], S["Q"], S["ux"], S["uy"], S["U"], S["d"],
                           S["r1"], S["r2"], self.kq, F(g.h * g.h), self.v05, self.up], out)
-        return self._circ_src(out, P)
-
-    def _circ_src(self, out, P):
-        """Film source of the surface water upwelled by the current (recorded)."""
-        if self.circ is None:
-            return out
-        s2 = self.new()
-        self.L(k_circ_src, [out[0], self.Kb, P, self.g.mask], [s2])
-        return [s2] + out[1:]
+        return out
 
     def substep(self, st, fl, P, nu_on, mix_on):
         g = self.g
@@ -1423,7 +1409,7 @@ class WSolver:
         self.stats["substeps"] += 1
         if self.circ is not None:
             lo, qxo, qyo, mo = self.new(), self.new(), self.new(), self.new()
-            self.L(k_down, [l3, qx4, qy4, m4, self.Db, self.Wf, P, dt, g.mask], [lo, qxo, qyo, mo])
+            self.L(k_exchange, [l3, qx4, qy4, m4, self.Kb, self.Db, self.Wf, P, dt, g.mask], [lo, qxo, qyo, mo])
             return dict(l=lo, qx=qxo, qy=qyo, m=mo)
         return dict(l=l3, qx=qx4, qy=qy4, m=m4)
 
@@ -1502,17 +1488,10 @@ class WSolver:
         self.L(k_fields, [fb["Kraw"], fb["sums"], g.mask, g.xc, g.yc, P, S["x"], S["y"], S["Q"], S["ux"], S["uy"], S["U"],
                           S["d"], S["r1"], S["r2"], self.kq, F(g.h * g.h), self.v05, self.up],
                [fb["s"], fb["Lam"], fb["vsx"], fb["vsy"], fb["sm"]], record=False)
-        self._g_circ_src()
 
     def _g_zero_fields(self):
         for k in ("s", "Lam", "vsx", "vsy", "sm"):
             self.L(k_set0, [self.fb[k]], record=False)
-        self._g_circ_src()
-
-    def _g_circ_src(self):
-        if self.circ is not None:
-            fb = self.fb
-            self.L(k_circ_src, [fb["s"], self.Kb, fb["P"], self.g.mask], [fb["s"]], record=False)
 
     def _g_speed(self, active):
         g, fb = self.g, self.fb
@@ -1584,7 +1563,7 @@ class WSolver:
             self.cp(fb["m3"], fb["m"])
         self.cp(V.c["l3"], fb["l"])
         if self.circ is not None:
-            R(k_down, [fb["l"], fb["qx"], fb["qy"], fb["m"], self.Db, self.Wf, fb["P"], self.dta, g.mask],
+            R(k_exchange, [fb["l"], fb["qx"], fb["qy"], fb["m"], self.Kb, self.Db, self.Wf, fb["P"], self.dta, g.mask],
               [fb["l"], fb["qx"], fb["qy"], fb["m"]])
 
     def cg_iterations(self):

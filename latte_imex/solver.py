@@ -460,9 +460,9 @@ class Solver:
         # ---- delay closure: impact momentum now, white later --------------------
         s_mom = s
         self._s_base = None
-        if getattr(self, "_milk_frac", 1.0) != 1.0 or getattr(self, "_s_circ", None) is not None:
+        if getattr(self, "_milk_frac", 1.0) != 1.0:
             # only the new milk arrives with the jet target v*; the base material with the film velocity (wsolver.k_stepA_B)
-            s_mom = (s if self._s_circ is None else s - self._s_circ) * getattr(self, "_milk_frac", 1.0)
+            s_mom = s * self._milk_frac
             self._s_base = s - s_mom
         s_l = None             # film mass source when it differs from the milk source (two-layer surface cell)
         brown_rate = 0.0
@@ -614,7 +614,7 @@ class Solver:
             else:
                 Gx_m, Gy_m = Gx, Gy
         else:
-            s_m = (s if getattr(self, "_s_circ", None) is None else s - self._s_circ) * getattr(self, "_milk_frac", 1.0)
+            s_m = s * getattr(self, "_milk_frac", 1.0)
             Gx_m, Gy_m = Gx, Gy
         m_new = m + dt * s_m - dt * g.div(Gx_m * cfx, Gy_m * cfy)
         # boundedness guard (should be inactive under the material CFL)
@@ -689,10 +689,12 @@ class Solver:
             self.stats["cg_mix"] += it3
             m_new = np.where(mask, lsn * np.clip(c_new, 0.0, 1.0), 0.0)
 
-        if getattr(self, "_sink", None) is not None:          # film going down where the surface current converges
-            eb = np.exp(-dt * self._sink)                     # brown part
+        if getattr(self, "_sink", None) is not None:          # vertical exchange with the surface current
+            Ls = np.where(mask, l_new, 1.0)
+            cc = np.clip(m_new / Ls, 0.0, 1.0)
             fm = np.where(mask, np.exp(-dt * P.eps_f * self._sink), 1.0)    # foam (buoyant: eps_f ~ 0)
-            fl = np.where(mask, eb + m_new / np.where(mask, l_new, 1.0) * (fm - eb), 1.0)
+            b = (Ls - m_new) * np.exp(-dt * self._sink) + dt * self._up * (1.0 - cc)    # brown: down + upwelled water
+            fl = np.where(mask, (b + m_new * fm) / Ls, 1.0)
             l_new, qx_new, qy_new, m_new = l_new * fl, qx_new * fl, qy_new * fl, m_new * fm
         # accept only finite, positive-layer states; otherwise the frame is retried with a smaller step
         if not (np.isfinite(l_new).all() and np.isfinite(qx_new).all() and np.isfinite(qy_new).all()
@@ -939,10 +941,9 @@ class Solver:
                                            inlet.x_hit, inlet.u_in)
             self._Vb = U
             self._sink = self.P.kappa_M * dn + self.P.kappa_w * self.P.kappa_Q * Wn
-            self._s_circ = np.where(g.mask, self.P.kappa_M * up, 0.0)   # upwelled water: base material, not milk
-            s = s + self._s_circ
+            self._up = np.where(g.mask, self.P.kappa_M * up, 0.0)    # upwelled water (vertical exchange, substep)
         else:
-            self._Vb = self._s_circ = self._sink = None
+            self._Vb = self._up = self._sink = None
         if self.P.closure == "skin":
             self._entrainment_flow()
         if self.P.closure in ("twolayer", "v2"):
