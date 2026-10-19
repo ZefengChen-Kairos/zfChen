@@ -46,6 +46,8 @@ class Params:
     kappa_w: float = 0.0    # ... and the received flow's area kappa_w kappa_Q abar going down where the current converges
     tau_s: float = 0.0      # closure "chi": the deposited foam surfaces tau_s u_in ahead of the landing point (carried by the
                             # plunging stream's horizontal velocity for its rise time; the deposit kernel K_d), [s]
+    mu_s: float = 0.0       # closure "chi": share of the jet momentum the surfacing foam has lost (it arrives with the film
+                            # velocity instead of the jet target v*); 0 = V0.5
     upwell: bool = False    # closure "chi": the whole received volume reaches the surface (s = S K); chi only decides whether
                             # it is new milk (m source chi S K) or dived milk resurfacing as base material
     closure: str = "chi"    # "chi": original single-layer closure ; "skin" ; "twolayer": the layer (l, q, m) is the floating
@@ -471,9 +473,10 @@ class Solver:
         # ---- delay closure: impact momentum now, white later --------------------
         s_mom = s
         self._s_base = None
-        if P.upwell and getattr(self, "_s_milk", None) is not None:
-            # only the new milk arrives with the jet target v*; the base material with the film velocity (wsolver.k_stepA_B)
-            s_mom = self._s_milk
+        if getattr(self, "_s_milk", None) is not None and (P.upwell or P.mu_s):
+            # only the new milk arrives with the jet target v* (less the share mu_s that surfaces with the film velocity);
+            # the base material with the film velocity (wsolver.k_stepA_B)
+            s_mom = (1.0 - P.mu_s) * self._s_milk
             self._s_base = s - s_mom
         s_l = None             # film mass source when it differs from the milk source (two-layer surface cell)
         brown_rate = 0.0

@@ -23,8 +23,8 @@ import warp as wp
 wp.config.quiet = True
 F = wp.float64
 PARAMS = ("cp", "beta", "nu", "D", "kappa_Q", "kappa_c", "kappa_t", "kappa_r", "B_dep", "p_dep", "kappa_M", "eps_f",
-          "kappa_w", "tau_s")
-CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW, TS = range(14)
+          "kappa_w", "tau_s", "mu_s")
+CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW, TS, MS = range(15)
 SCHED = ("x", "y", "Q", "ux", "uy", "U", "d", "r1", "r2", "phi")
 A2 = wp.array2d(dtype=F)
 I2 = wp.array2d(dtype=wp.int32)
@@ -201,17 +201,19 @@ def k_rusanov(qx: A2, qy: A2, ux: A2, uy: A2, fx: I2, fy: I2, Fxqx: A2, Fxqy: A2
 def k_stepA_B(qx: A2, qy: A2, Fxqx: A2, Fxqy: A2, Fyqx: A2, Fyqy: A2, s: A2, Lam: A2, vsx: A2, vsy: A2, ls: A2,
               P: A1, dta: A1, inv_h: F, N: int, Vbx: A2, Vby: A2, sm: A2, ux: A2, uy: A2, ax: A2, ay: A2, coef: A2):
     """q* = q - dt div(F) (step A), then stepB_prepare: theta = 1 + dt (beta + Lam/l),
-    a = (q* + dt (sm+Lam) v* + dt (s-sm) u + dt beta l kappa_M U)/theta, coef = cp^2 l / theta: the new milk sm
-    arrives with the jet target v*, the base material s - sm (dived milk resurfacing, upwelled coffee) with the film's
-    own velocity u (V0.5: s = sm)."""
+    a = (q* + dt ((1-mu_s) sm + Lam) v* + dt (s - (1-mu_s) sm) u + dt beta l kappa_M U)/theta, coef = cp^2 l / theta:
+    the new milk sm arrives with the jet target v* except the share mu_s of it that surfaces at rest relative to the
+    film (its jet momentum lost under water), the base material s - sm (dived milk resurfacing) with the film's own
+    velocity u (V0.5: s = sm, mu_s = 0)."""
     j, i = wp.tid()
     dt = dta[0]
     qxs = qx[j, i] - dt * divF(Fxqx, Fyqx, j, i, N, inv_h)
     qys = qy[j, i] - dt * divF(Fxqy, Fyqy, j, i, N, inv_h)
     L = ls[j, i]
     theta = F(1.0) + dt * (P[BETA] + Lam[j, i] / L)
-    f = dt * (sm[j, i] + Lam[j, i])
-    fb = dt * (s[j, i] - sm[j, i])
+    smv = (F(1.0) - P[MS]) * sm[j, i]
+    f = dt * (smv + Lam[j, i])
+    fb = dt * (s[j, i] - smv)
     g = dt * P[BETA] * L * P[KM]                         # drag towards the surface current (circulation.py; 0: at rest)
     ax[j, i] = (qxs + f * vsx[j, i] + fb * ux[j, i] + g * Vbx[j, i]) / theta
     ay[j, i] = (qys + f * vsy[j, i] + fb * uy[j, i] + g * Vby[j, i]) / theta

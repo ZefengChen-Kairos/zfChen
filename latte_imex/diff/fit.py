@@ -48,8 +48,9 @@ CIRC_SPACE = {"kappa_M": (0.0, 8.0, "lin"),        # surface current driven by t
 CIRC_START = {"kappa_M": 1.5, "eps_f": 0.0, "kappa_w": 0.0}
 # the foam surfaces tau_s u_in ahead of the landing point (u_in ~ 1 D/s: tau_s = 0.05 s ~ 4 mm; the real deposits grow
 # forward of the measured stream foot)
-DEP_SPACE = {"tau_s": (0.0, 0.2, "lin")}
-DEP_START = {"tau_s": 0.05}
+DEP_SPACE = {"tau_s": (0.0, 0.2, "lin"),
+             "mu_s": (0.0, 1.0, "lin")}           # share of the jet momentum the surfacing foam has lost
+DEP_START = {"tau_s": 0.05, "mu_s": 0.0}
 
 
 def use_foot(on, circ=False, dep=True):
@@ -336,7 +337,7 @@ def main(argv=None):
         for k in ("kappa_M", "eps_f", "kappa_w"):
             base[k] = 0.0
     if not a.dep:
-        base["tau_s"] = 0.0
+        base["tau_s"] = base["mu_s"] = 0.0
     u = to_unit(base)
     m1, m2 = np.zeros_like(u), np.zeros_like(u)
     b1, b2, eps = 0.9, 0.999, 1e-8
