@@ -40,8 +40,7 @@ SP = dict(SPACE)
 KEYS = tuple(SPACE)
 
 
-CIRC_SPACE = {"kappa_o": (0.0, 20.0, "lin"),       # circulation drag reference strength (circulation.py)
-              "kappa_s": (0.0, 20.0, "lin")}       # upwelled base material
+CIRC_SPACE = {"kappa_w": (0.0, 6.0, "lin")}        # film carried down along the wall (circulation.py)
 
 
 def use_foot(on, circ=False):
@@ -278,7 +277,8 @@ def main(argv=None):
     ap.add_argument("--scales", default="0.3,0.15,0",
                     help="video loss scales [cup radii] (run.py): blurred residual terms, 0 = per pixel; '0' = pixel term only")
     ap.add_argument("--circ", action="store_true",
-                    help="jet-driven overturning circulation (circulation.py): also fit kappa_o, kappa_s")
+                    help="area-conserving film (circulation.py): the film goes down along the wall (fit kappa_w; use with "
+                         "--upwell)")
     ap.add_argument("--upwell", action="store_true",
                     help="volume-conserving surface source: the whole received volume reaches the surface, chi decides "
                          "whether it is new milk or resurfacing base material (wsolver.k_fields)")
@@ -309,7 +309,7 @@ def main(argv=None):
     pours = {p: Pour(p, kw, process=workers > 0) for p in cal}
     log(f"{len(cal)} calibration pours, {'one worker process each' if workers > 0 else 'in-process'}")
     base = dict(pours[cal[0]].s1, **({"foot_a": 0.0, "foot_b": 0.0} if a.foot else {}),
-                **({"kappa_o": 2.0, "kappa_s": 2.0} if a.circ else {}))
+                **({"kappa_w": 2.0} if a.circ else {}))
     if a.e0:
         base["e0"] = 1.0
     if a.upwell:

@@ -13,7 +13,12 @@ current one with time constant TAU, per frame,  V <- e V + (1 - e) Q grad(phi_k)
 e = exp(-dt_frame / TAU).  The solver uses
     drag towards kappa_o V           (the film's -beta (q - l kappa_o V) instead of -beta q)
     film source kappa_s K            (upwelled base material: the film diverges where the cell upwells)
-so kappa_o, kappa_s are linear multipliers (exact gradients in the Warp solver), TAU, R_UP, BACK are fixed shape
+    film sink   kappa_w W_s            (the film is carried down along the wall where the cell downwells: l, q, m all
+                                        decay by exp(-dt kappa_w W_s), the composition c and velocity u unchanged;
+                                        W_s: the relaxed received flow times the downstream wall weight wall_dir)  With the volume-conserving source (wsolver up / Params.upwell: the whole
+received volume reaches the surface as area kappa_Q Q, white fraction chi) and kappa_w = kappa_Q the film's area budget
+closes: the cup surface cannot be compressed indefinitely, what enters at the stream goes down at the wall.  The potential
+drag reference (kappa_o) acts only through the film's compressibility (a gradient force is taken up by the film pressure).  kappa_o, kappa_s are linear multipliers (exact gradients in the Warp solver), TAU, R_UP, BACK are fixed shape
 constants.  kappa_o = kappa_s = 0 is V1/V0.5."""
 from __future__ import annotations
 
@@ -22,6 +27,7 @@ import math
 import numpy as np
 
 TAU, R_UP, BACK = 1.0, 0.10, 1.0
+WALL_DIR = 1.0           # exponent of the downstream weighting of the wall sink (0: uniform along the wall)
 
 
 class CircField:
@@ -49,12 +55,26 @@ class CircField:
         pad = np.pad(mask, 1)
         wall = mask & ~(pad[:-2, 1:-1] & pad[2:, 1:-1] & pad[1:-1, :-2] & pad[1:-1, 2:])
         self.wall = wall.astype(float) / (wall.sum() * h * h)
+        r = np.maximum(np.hypot(x, y), 1e-12)
+        self.wall_n = (x / r, y / r)                    # outward normal of the wall cells
         self.reset()
+
+    def wall_dir(self, u_in):
+        """Downwelling along the wall downstream of the stream: weight max(0, n . e) (e: the stream's horizontal
+        direction; uniform if it has none), integrating to 1."""
+        un = math.hypot(float(u_in[0]), float(u_in[1]))
+        if un <= 1e-9 or WALL_DIR == 0:
+            return self.wall
+        w = self.wall * np.maximum(0.0, (self.wall_n[0] * u_in[0] + self.wall_n[1] * u_in[1]) / un) ** WALL_DIR
+        tot = w.sum() * self.h * self.h
+        return w / tot if tot > 0 else self.wall
 
     def reset(self):
         N = self.m.shape[0]
         self.V = np.zeros((2, N, N))
         self.K = np.zeros((N, N))
+        self.Wsink = np.zeros((N, N))
+        self.abar = 0.0
         self._last = None
 
     def unit(self, x_hit, u_in):
@@ -71,29 +91,34 @@ class CircField:
             return None
         K = K / (K.sum() * h * h)
         N = m.shape[0]
+        Wd = self.wall_dir(u_in)
         phi = np.zeros((N, N))
-        phi[m] = self.lu.solve((K - self.wall)[m])
+        phi[m] = self.lu.solve((K - Wd)[m])
         gx, gy, nx, ny = (np.zeros((N, N)) for _ in range(4))
         d = (phi[:, 1:] - phi[:, :-1]) / h * self.fx[:, :-1]
         gx[:, :-1] += d; gx[:, 1:] += d; nx[:, :-1] += self.fx[:, :-1]; nx[:, 1:] += self.fx[:, :-1]
         d = (phi[1:, :] - phi[:-1, :]) / h * self.fy[:-1, :]
         gy[:-1, :] += d; gy[1:, :] += d; ny[:-1, :] += self.fy[:-1, :]; ny[1:, :] += self.fy[:-1, :]
-        return (np.where(nx > 0, gx / np.maximum(nx, 1), 0.0), np.where(ny > 0, gy / np.maximum(ny, 1), 0.0), K)
+        return (np.where(nx > 0, gx / np.maximum(nx, 1), 0.0), np.where(ny > 0, gy / np.maximum(ny, 1), 0.0), K, Wd)
 
     def step(self, frame_dt, active, Q, x_hit=None, u_in=None):
-        """Advance the relaxed unit fields by one frame; returns (V (2, N, N), K (N, N)) for this frame."""
+        """Advance the relaxed unit fields by one frame; returns (V (2, N, N), K (N, N)) for this frame (and sets
+        Wsink: the film's wall sink per unit kappa_w)."""
         if active and Q > 0 and x_hit is not None:
             u = self.unit(x_hit, u_in)
             if u is not None:
                 self._last = u
         e = math.exp(-frame_dt / self.tau)
         a = Q if active else 0.0
+        self.abar = e * self.abar + (1 - e) * a
         if self._last is not None:
-            tx, ty, K = self._last
+            tx, ty, K, Wd = self._last
             self.V[0] = e * self.V[0] + (1 - e) * a * tx
             self.V[1] = e * self.V[1] + (1 - e) * a * ty
             self.K = e * self.K + (1 - e) * a * K
+            self.Wsink = e * self.Wsink + (1 - e) * a * Wd
         else:
             self.V *= e
             self.K *= e
+            self.Wsink *= e
         return self.V, self.K

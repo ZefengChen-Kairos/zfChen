@@ -159,11 +159,12 @@ def circ_fields(S, geo):
     n, N = S["n"], geo.N
     V = np.zeros((n, 2, N, N), np.float32)
     K = np.zeros((n, N, N), np.float32)
+    Ws = np.zeros((n, N, N), np.float32)
     for k in range(n):
         v, kk = C.step(float(S["fdt"][k]), bool(S["active"][k]), float(S["Q"][k]), (S["x"][k], S["y"][k]),
                        (S["ux"][k], S["uy"][k]))
-        V[k], K[k] = v, kk
-    return V, K
+        V[k], K[k], Ws[k] = v, kk, C.Wsink
+    return V, K, Ws
 
 
 def video_on_grid(p, geo, t_end):

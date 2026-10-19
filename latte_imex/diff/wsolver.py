@@ -22,8 +22,9 @@ import warp as wp
 
 wp.config.quiet = True
 F = wp.float64
-PARAMS = ("cp", "beta", "nu", "D", "kappa_Q", "kappa_c", "kappa_t", "kappa_r", "B_dep", "p_dep", "kappa_o", "kappa_s")
-CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KO, KS = range(12)
+PARAMS = ("cp", "beta", "nu", "D", "kappa_Q", "kappa_c", "kappa_t", "kappa_r", "B_dep", "p_dep", "kappa_o", "kappa_s",
+          "kappa_w")
+CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KO, KS, KW = range(13)
 SCHED = ("x", "y", "Q", "ux", "uy", "U", "d", "r1", "r2", "phi")
 A2 = wp.array2d(dtype=F)
 I2 = wp.array2d(dtype=wp.int32)
@@ -132,6 +133,19 @@ def k_circ_src(s: A2, Kb: A2, P: A1, mask: I2, out: A2):
     out[j, i] = s[j, i]
     if mask[j, i] != 0:
         out[j, i] = s[j, i] + P[KS] * Kb[j, i]
+
+
+@wp.kernel
+def k_wall_sink(l: A2, qx: A2, qy: A2, m: A2, Wf: A2, P: A1, dta: A1, mask: I2, lo: A2, qxo: A2, qyo: A2, mo: A2):
+    """Film carried down along the wall: l, q, m decay by exp(-dt kappa_w W_s) (circulation.py)."""
+    j, i = wp.tid()
+    f = F(1.0)
+    if mask[j, i] != 0:
+        f = wp.exp(-dta[0] * P[KW] * Wf[j, i])
+    lo[j, i] = l[j, i] * f
+    qxo[j, i] = qx[j, i] * f
+    qyo[j, i] = qy[j, i] * f
+    mo[j, i] = m[j, i] * f
 
 
 # ============================================================================ sub-step kernels (solver.substep)
@@ -1162,7 +1176,7 @@ class WSolver:
         dev = geo.dev
         self.dta = wp.zeros(1, dtype=F, device=dev)
         self.kq = wp.zeros(2, dtype=wp.int32, device=dev)
-        self.Vbx, self.Vby, self.Kb = (wp.zeros((geo.N, geo.N), dtype=F, device=dev) for _ in range(3))
+        self.Vbx, self.Vby, self.Kb, self.Wf = (wp.zeros((geo.N, geo.N), dtype=F, device=dev) for _ in range(4))
         self.circ, self._ck = None, None     # circulation unit fields of the frames (set_circ)
         self._dt = None
         self._kq = None
@@ -1229,18 +1243,21 @@ class WSolver:
             self.dta.assign(np.array([dt], np.float64))
             self._dt = dt
 
-    def set_circ(self, V, K):
-        """Circulation unit fields per frame (circulation.CircField, host arrays (n, 2, N, N), (n, N, N)) or None."""
-        self.circ = None if V is None else (V, K)
+    def set_circ(self, V, K, Ws=None):
+        """Circulation unit fields per frame (circulation.CircField: host arrays V (n, 2, N, N), K, Ws (n, N, N)) or
+        None."""
+        self.circ = None if V is None else (V, K, Ws)
         self._ck = None
-        self.Vbx.zero_(); self.Vby.zero_(); self.Kb.zero_()
+        self.Vbx.zero_(); self.Vby.zero_(); self.Kb.zero_(); self.Wf.zero_()
 
     def set_kq(self, k, q):
         if self.circ is not None and self._ck != k:
-            V, K = self.circ
+            V, K, Ws = self.circ
             self.Vbx.assign(np.ascontiguousarray(V[k, 0], np.float64))
             self.Vby.assign(np.ascontiguousarray(V[k, 1], np.float64))
             self.Kb.assign(np.ascontiguousarray(K[k], np.float64))
+            if Ws is not None:
+                self.Wf.assign(np.ascontiguousarray(Ws[k], np.float64))
             self._ck = k
         if self._kq != (k, q):
             self.kq.assign(np.array([k, q], np.int32))
@@ -1395,6 +1412,10 @@ class WSolver:
             m4 = self.new()
             self.L(k_mix, [m3, l3, g.fx, g.fy, g.mask, P, dt, ih2, N], [m4])
         self.stats["substeps"] += 1
+        if self.circ is not None and self.circ[2] is not None:
+            lo, qxo, qyo, mo = self.new(), self.new(), self.new(), self.new()
+            self.L(k_wall_sink, [l3, qx4, qy4, m4, self.Wf, P, dt, g.mask], [lo, qxo, qyo, mo])
+            return dict(l=lo, qx=qxo, qy=qyo, m=mo)
         return dict(l=l3, qx=qx4, qy=qy4, m=m4)
 
     def n_substeps_host(self, st, fl, fdt, active):
@@ -1552,6 +1573,9 @@ class WSolver:
         else:
             self.cp(fb["m3"], fb["m"])
         self.cp(V.c["l3"], fb["l"])
+        if self.circ is not None and self.circ[2] is not None:
+            R(k_wall_sink, [fb["l"], fb["qx"], fb["qy"], fb["m"], self.Wf, fb["P"], self.dta, g.mask],
+              [fb["l"], fb["qx"], fb["qy"], fb["m"]])
 
     def cg_iterations(self):
         """PCG iterations so far (mass, viscosity; forward and adjoint solves together).  Synchronises."""

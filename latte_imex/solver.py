@@ -42,6 +42,7 @@ class Params:
     # ---- closure "skin" (bulk + submerged foam + surface foam), replaces chi-splitting, kappa_r, return law and delay
     kappa_o: float = 0.0    # jet-driven overturning circulation (circulation.py): the film is dragged towards kappa_o V_b
     kappa_s: float = 0.0    # ... and receives the upwelled base material kappa_s K_b; 0, 0 = lower layer at rest (V1)
+    kappa_w: float = 0.0    # film carried down along the cup wall at the rate kappa_w abar W (abar: relaxed received flow)
     upwell: bool = False    # closure "chi": the whole received volume reaches the surface (s = S K); chi only decides whether
                             # it is new milk (m source chi S K) or dived milk resurfacing as base material
     closure: str = "chi"    # "chi": original single-layer closure ; "skin" ; "twolayer": the layer (l, q, m) is the floating
@@ -678,6 +679,9 @@ class Solver:
             self.stats["cg_mix"] += it3
             m_new = np.where(mask, lsn * np.clip(c_new, 0.0, 1.0), 0.0)
 
+        if getattr(self, "_sink", None) is not None:          # circulation: film carried down along the wall
+            fs = np.where(mask, np.exp(-dt * self._sink), 1.0)
+            l_new, qx_new, qy_new, m_new = l_new * fs, qx_new * fs, qy_new * fs, m_new * fs
         # accept only finite, positive-layer states; otherwise the frame is retried with a smaller step
         if not (np.isfinite(l_new).all() and np.isfinite(qx_new).all() and np.isfinite(qy_new).all()
                 and np.isfinite(m_new).all() and l_new[mask].min() > self.l_floor):
@@ -913,17 +917,18 @@ class Solver:
             frame_dt = min(frame_dt, max(lim, 1e-4))
         s, Lam, vsx, vsy, chi = self.inlet_fields(inlet)
         g = self.g
-        if self.P.kappa_o or self.P.kappa_s:                  # circulation fields of this frame (circulation.py)
+        if self.P.kappa_o or self.P.kappa_s or self.P.kappa_w:   # circulation fields of this frame (circulation.py)
             if getattr(self, "circ", None) is None:
                 from .circulation import CircField
                 self.circ = CircField(g.x, g.y, g.mask, g.h)
             act = bool(inlet.active and inlet.S_eff > 0)
             Vb, Kb = self.circ.step(frame_dt, act, inlet.S_eff / self.P.kappa_Q if act else 0.0, inlet.x_hit, inlet.u_in)
             self._Vb = Vb
+            self._sink = self.P.kappa_w * self.circ.Wsink                      # film carried down along the wall
             self._s_circ = np.where(g.mask, self.P.kappa_s * Kb, 0.0)   # base material: layer only, not milk
             s = s + self._s_circ
         else:
-            self._Vb = self._s_circ = None
+            self._Vb = self._s_circ = self._sink = None
         if self.P.closure == "skin":
             self._entrainment_flow()
         if self.P.closure in ("twolayer", "v2"):
