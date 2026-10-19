@@ -1,0 +1,21 @@
+{
+ "cp": 1.2869688805810933,
+ "beta": 2.598448472391518,
+ "nu": 0.001,
+ "D": 1e-07,
+ "kappa_Q": 2.3037157681682108,
+ "kappa_c": 0.9287793418281083,
+ "kappa_t": 0.8557905080788645,
+ "kappa_r": 0.04188073561462661,
+ "B_dep": 4358.976362499109,
+ "p_dep": 7.970782323554909,
+ "kappa_M": 0.0,
+ "eps_f": 0.010021288760740238,
+ "kappa_w": 0.32861223401095396,
+ "tau_s": 0.03707109030403982,
+ "mu_s": 0.6739941004483564,
+ "upwell": 1.0,
+ "circ": 1.0,
+ "e0": 1.0,
+ "_note": "CMA-ES on tulip + leaf, N=48, E0: V0.5 + foam surfacing ahead (tau_s, mu_s) + upwell with the received area leaving where the unit current goes down (kappa_w; kappa_M = 0); restores the tulip layering, held-out video IoU 0.423 (V2_SURFACE_MODEL.md section 5)"
+}
