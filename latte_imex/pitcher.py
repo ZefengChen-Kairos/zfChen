@@ -905,6 +905,9 @@ def records_table(records):
 #   step 6  dV_P/dt = -Q_o; ledger V_P + V_jet + V_cup + V_spill = V_P(0)
 #   step 7  v_o,i = v_lip,i + U_i d_o,i, U = C_v sqrt(2 g H) (H = max head), d_o,i = local outward lip normal tilted
 #           down by the lip slope; flux-weighted origin, velocity and direction; A_o = sum Q_i / U_i
+#   step 7b (optional, calibrated from the measured stream, off by default) the exit direction is lifted by exit_lift
+#           towards the spout heading (horizontal part of e_main) and the jet origin moved by anchor along it: the
+#           milk leaves the beak after running down the spout channel, flatter and further forward than the lip normal
 #   step 8  ballistic parcels (emission time, volume, origin, velocity) to z = 0; arrivals binned on the output grid
 @dataclass
 class ForwardLaw:
@@ -918,6 +921,8 @@ class ForwardLaw:
     inertia: bool = False       # step 5 (off by default)
     L_e: float = 0.02           # effective inertial length [m] (step 5 only)
     smooth_s: float = 0.0       # gaussian sigma [s] on the pose before differentiation (0: none)
+    exit_lift: float = 0.0      # [rad] step 7b: exit direction lifted towards the spout heading (0: lip normal, V1)
+    anchor: float = 0.0         # [m] step 7b: jet origin moved along the spout heading (0: V1)
     g: float = G
 
 
@@ -1122,6 +1127,18 @@ class ForwardPitcher:
             for k in ("origin", "v_o", "d_o", "e_main"):
                 E[k][i] = Wr[k]
         E.update(t=t, dt=dt, v_tip=v_tip, omega=om, V0=float(V0))
+        if law.exit_lift or law.anchor:                 # step 7b
+            em = E["e_main"].copy()
+            em[:, 2] = 0.0
+            hh = em / np.maximum(np.linalg.norm(em, axis=1), 1e-12)[:, None]
+            d, U = E["d_o"], E["U"]
+            v_lip = E["v_o"] - U[:, None] * d
+            phi = np.arctan2(d[:, 2], np.hypot(d[:, 0], d[:, 1])) + law.exit_lift
+            d2 = np.c_[np.cos(phi)[:, None] * hh[:, :2], np.sin(phi)]
+            on = E["Q_o"] > 0
+            E["d_o"] = np.where(on[:, None], d2, d)
+            E["v_o"] = np.where(on[:, None], v_lip + U[:, None] * d2, E["v_o"])
+            E["origin"] = np.where(on[:, None], E["origin"] + law.anchor * hh, E["origin"])
         # ballistic flight to the coffee surface z = 0 (step 8)
         vz, z0 = E["v_o"][:, 2], E["origin"][:, 2]
         tf = np.where(z0 > 0, (vz + np.sqrt(vz ** 2 + 2 * g * np.maximum(z0, 0.0))) / g, 0.0)

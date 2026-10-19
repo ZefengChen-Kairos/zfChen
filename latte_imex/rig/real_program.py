@@ -123,6 +123,12 @@ M_CAD = np.array([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])   # colum
 
 DTILT = {}                                                 # pattern -> extra pitcher rotation about its x axis [deg]
 TIP_OVERRIDE = None                                        # spout tip in the pitcher (tag) frame [m], else pitcher_pose.npz
+LAW_OVERRIDE = None                                        # ForwardLaw fields, e.g. EXIT_CAL
+# exit of the stream calibrated to the measured stream (E0 trusted frames of tulip + leaf: landing point and path
+# slope; never the pattern): exit speed C_v sqrt(2 g H) with C_v 1.5, direction lifted 9.5 deg towards the spout
+# heading, origin 3 mm along it.  Landing bias 8-10 mm -> ~2 mm on all five pours, horizontal arrival speed 0.08-0.10 ->
+# 0.18-0.22 m/s, stream slope 0.15-0.17 -> 0.29-0.34 (measured 0.25-0.43).  V2_SURFACE_MODEL.md section 8.
+EXIT_CAL = dict(C_v=1.5, exit_lift=math.radians(9.5), anchor=3.0e-3)
 
 
 def cup_poses(p, dt=DT):
@@ -193,6 +199,7 @@ def forward_pitcher():
         else:
             geom = SF.geometry(ALPHA_DEG)
         law = json.loads(os.environ.get("PITCHER_LAW", "{}"))  # e.g. {"C_d": 1.2} (flow-law sensitivity runs)
+        law.update(LAW_OVERRIDE or {})
         _FP["fp"] = ForwardPitcher(geom, ForwardLaw(**law))
     return _FP["fp"]
 

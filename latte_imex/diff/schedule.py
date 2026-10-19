@@ -82,6 +82,58 @@ def shift_program(prog, a, b):
 E0_WIN = 0.5             # [s] half window of the running median of the measured offsets
 
 
+def shift_program_world(prog, fx, fy):
+    """Make prog(t) return inlets with the landing point moved by (fx(t), fy(t)) in the cup frame (solver units)."""
+    base = type(prog)
+
+    class ShiftedW(base):
+        def __call__(self, t):
+            inl = base.__call__(self, t)
+            if inl.active:
+                inl.x_hit = (float(inl.x_hit[0] + fx(t)), float(inl.x_hit[1] + fy(t)))
+            return inl
+    prog.__class__ = ShiftedW
+    return prog
+
+
+def e0_world_offsets(p, prog):
+    """E0 replay in the cup frame: the measured stream foot (rig/stream_foot.py) minus the landing point of prog (the
+    model as built, e.g. with the calibrated exit) at the same time, running median of the trusted frames over
+    +-E0_WIN s (plausible frames where those are sparse, else the pour median), as functions of the sim time.  Unlike
+    e0_offsets it does not use the jet direction (u_in), whose frame-to-frame noise turns a near-constant offset into
+    landing-point jitter."""
+    import json
+    import os
+    from ..rig.real_program import RES
+    fn = os.path.join(RES, p, "stream_foot.json")
+    if not os.path.exists(fn):
+        return None
+    allf = json.load(open(fn))["frames"]
+    def resid(rows):
+        out = []
+        for r in rows:
+            inl = prog(r["t"])
+            if inl.active:
+                out.append((r["t"], r["x"] - inl.x_hit[0], r["y"] - inl.x_hit[1]))
+        return np.array(out).reshape(-1, 3)
+    A = resid([r for r in allf if r.get("trusted")])
+    if len(A) < 5:
+        return None
+    A2 = resid([r for r in allf if r["quality"] > 0.2 and r["rms_mm"] <= 3.5 and r["slope"] <= 0.8 and r["top_mm"] <= 12.0])
+    med = np.median(A[:, 1:], 0)
+    lo = min(A[:, 0].min(), A2[:, 0].min() if len(A2) else A[:, 0].min()) - 1.0
+    hi = max(A[:, 0].max(), A2[:, 0].max() if len(A2) else A[:, 0].max()) + 1.0
+    tg = np.arange(lo, hi, 0.05)
+    G = np.empty((len(tg), 2))
+    for i, tt in enumerate(tg):
+        near = np.abs(A[:, 0] - tt) <= E0_WIN
+        near2 = np.abs(A2[:, 0] - tt) <= E0_WIN if len(A2) else np.zeros(0, bool)
+        G[i] = (np.median(A[near, 1:], 0) if near.sum() >= 3 else
+                np.median(A2[near2, 1:], 0) if near2.sum() >= 3 else med)
+    return (lambda tt: float(np.interp(tt, tg, G[:, 0], left=med[0], right=med[0])),
+            lambda tt: float(np.interp(tt, tg, G[:, 1], left=med[1], right=med[1])))
+
+
 def e0_offsets(p):
     """E0 input replay: the measured landing-point offset of pour p (rig/stream_foot.py: the stream foot seen by the
     three cameras minus the model's landing point, along / across the jet), as functions of the sim time: running
@@ -116,16 +168,19 @@ def e0_offsets(p):
             lambda tt: float(np.interp(tt, tg, G[:, 1], left=med[1], right=med[1])))
 
 
-def pour_script(p, N, e0=False):
+def pour_script(p, N, e0=False, exit_cal=False):
     """ProgScript of pattern p's measured pour through the Kona 700 mL pitcher (tulip_feas.Pour inlet) and the S1
-    closure as starting parameters; e0: landing point corrected by the measured stream foot (e0_offsets)."""
+    closure as starting parameters.  exit_cal: the stream exit calibrated to the measured stream (real_program.EXIT_CAL);
+    e0: landing point corrected by the measured stream foot -- True / 'jet': e0_offsets (along / across u_in, relative to
+    the default exit), 'world': e0_world_offsets (cup frame, relative to the program as built)."""
     from ..rig.tulip_feas import Pour
+    from ..rig import real_program as RP
     from .. import s1_forward as SF
-    pour = Pour(p)
+    pour = Pour(p, law=RP.EXIT_CAL if exit_cal else None)
     prog = SF.FwdProgram(p, pour.R, N, meta=pour.meta)
     if e0:
-        off = e0_offsets(p)
+        off = e0_world_offsets(p, prog) if e0 == "world" else e0_offsets(p)
         if off is None:
             raise FileNotFoundError(f"{p}: no E0 stream-foot measurement (python3 -m latte_imex.rig.stream_foot {p})")
-        shift_program(prog, *off)
+        (shift_program_world if e0 == "world" else shift_program)(prog, *off)
     return SF.ProgScript(prog, p), pour
