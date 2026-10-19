@@ -117,6 +117,9 @@ def main(argv=None):
     ap.add_argument("--w-iou", dest="w_iou", type=float, default=0.25)
     ap.add_argument("--init", default=None)
     ap.add_argument("--set", default="")
+    ap.add_argument("--bound", default="",
+                    help="override parameter bounds, e.g. B_dep=1230:2210 (the deposition threshold measured from the "
+                         "videos: foam survives below Fr_c^2 = 11-20, V2_SURFACE_MODEL.md 10)")
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--workers", type=int, default=0, help="0: in-process (one device); >0: forked worker processes (CPU)")
     ap.add_argument("--seed", type=int, default=3)
@@ -127,6 +130,9 @@ def main(argv=None):
     cal = a.cal.split(",")
     test = [p for p in (a.test.split(",") if a.test else PATTERNS) if p not in cal]
     SP, sw = model_space(a.model)
+    for k, v in (x.split("=") for x in a.bound.split(",") if x):
+        lo, hi = map(float, v.split(":"))
+        SP[k] = (lo, hi, SP[k][2] if k in SP else "lin")
     e0 = SC.e0_mode(0 if a.e0 == "none" else a.e0)
     cfg = dict(pours=cal, N=a.N, device=a.device, e0=e0, exit_cal=a.exit_cal, circ_shape=dict(L=a.circ_L, r_f=a.circ_rf), **sw)
     from .run import DiffPour
