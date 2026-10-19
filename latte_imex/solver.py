@@ -43,6 +43,9 @@ class Params:
     kappa_M: float = 0.0    # surface current driven by the stream's momentum (circulation.py): the film is dragged towards
                             # kappa_M U, gains upwelled water kappa_M sigma+ and goes down at kappa_M sigma-; 0 = V1 (at rest)
     eps_f: float = 0.0      # ... fraction of the foam going down with it (buoyant microfoam: ~0; 1: non-selective)
+    xi_X: float = 0.0       # ... share of the current's divergence taken up by the floating layer (compressed / spread)
+                            # instead of exchanged with the bulk: up- and downwelling run at (1 - xi_X) kappa_M (0: V2);
+                            # the drag towards kappa_M U, which fans the new foam out sideways, is unchanged
     kappa_w: float = 0.0    # ... and the received flow's area kappa_w kappa_Q abar going down where the current converges
     circ_L: float = 0.4     # surface current: momentum spreading length sqrt(nu / r) (circulation.L_C) and radius of the
     circ_rf: float = 0.06   # momentum kernel (circulation.R_F) [D_L]; a short L_C keeps the stream's forward current near the
@@ -957,8 +960,9 @@ class Solver:
             U, up, dn, Wn = self.circ.step(frame_dt, act, inlet.S_eff * Zr / self.P.kappa_Q if act else 0.0,
                                            inlet.x_hit, inlet.u_in)
             self._Vb = U
-            self._sink = self.P.kappa_M * dn + self.P.kappa_w * self.P.kappa_Q * Wn
-            self._up = np.where(g.mask, self.P.kappa_M * up, 0.0)    # upwelled water (vertical exchange, substep)
+            kX = (1.0 - self.P.xi_X) * self.P.kappa_M            # exchange share of the current's divergence
+            self._sink = kX * dn + self.P.kappa_w * self.P.kappa_Q * Wn
+            self._up = np.where(g.mask, kX * up, 0.0)    # upwelled water (vertical exchange, substep)
         else:
             self._Vb = self._up = self._sink = None
         if self.P.closure == "skin":

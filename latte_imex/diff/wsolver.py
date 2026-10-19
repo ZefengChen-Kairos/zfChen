@@ -23,8 +23,8 @@ import warp as wp
 wp.config.quiet = True
 F = wp.float64
 PARAMS = ("cp", "beta", "nu", "D", "kappa_Q", "kappa_c", "kappa_t", "kappa_r", "B_dep", "p_dep", "kappa_M", "eps_f",
-          "kappa_w", "tau_s", "mu_s")
-CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW, TS, MS = range(15)
+          "kappa_w", "tau_s", "mu_s", "xi_X")
+CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW, TS, MS, XX = range(16)
 SCHED = ("x", "y", "Q", "ux", "uy", "U", "d", "r1", "r2", "phi")
 A2 = wp.array2d(dtype=F)
 I2 = wp.array2d(dtype=wp.int32)
@@ -139,18 +139,20 @@ def k_fields(Kraw: A2, sums: A1, Kd: A2, sumsd: A1, mask: I2, xc: A2, yc: A2, P:
 def k_exchange(l: A2, qx: A2, qy: A2, m: A2, Kb: A2, Db: A2, Wf: A2, P: A1, dta: A1, mask: I2,
                lo: A2, qxo: A2, qyo: A2, mo: A2):
     """Vertical exchange of the film with the surface current (circulation.py), after each sub-step: the brown part
-    b = l - m goes down at W = kappa_M sigma- + kappa_w kappa_Q W_n and is resupplied by the upwelled water
-    kappa_M sigma+ where the surface is brown (fraction 1 - c: the water surfaces beside the buoyant foam raft, not
-    under it); the foam goes down at eps_f W.  Exchanged material moves with the film (u unchanged)."""
+    b = l - m goes down at W = k_X sigma- + kappa_w kappa_Q W_n and is resupplied by the upwelled water k_X sigma+
+    where the surface is brown (fraction 1 - c: the water surfaces beside the buoyant foam raft, not under it); the
+    foam goes down at eps_f W.  k_X = (1 - xi_X) kappa_M: xi_X the share of the current's divergence taken up by the
+    floating layer instead of exchanging it with the bulk (0: V2).  Exchanged material moves with the film."""
     j, i = wp.tid()
     fl = F(1.0)
     fm = F(1.0)
     if mask[j, i] != 0:
         L = l[j, i]
         c = wp.min(wp.max(m[j, i] / L, F(0.0)), F(1.0))
-        W = P[KM] * Db[j, i] + P[KW] * P[KQ] * Wf[j, i]
+        kX = (F(1.0) - P[XX]) * P[KM]
+        W = kX * Db[j, i] + P[KW] * P[KQ] * Wf[j, i]
         fm = wp.exp(-dta[0] * P[KE] * W)
-        b = (L - m[j, i]) * wp.exp(-dta[0] * W) + dta[0] * P[KM] * Kb[j, i] * (F(1.0) - c)
+        b = (L - m[j, i]) * wp.exp(-dta[0] * W) + dta[0] * kX * Kb[j, i] * (F(1.0) - c)
         fl = (b + m[j, i] * fm) / L
     lo[j, i] = l[j, i] * fl
     qxo[j, i] = qx[j, i] * fl

@@ -42,12 +42,13 @@ SP = dict(SPACE)
 KEYS = tuple(SPACE)
 
 
-CIRC_SPACE = {"kappa_M": (0.0, 8.0, "lin"),        # surface current driven by the stream's momentum (circulation.py)
+CIRC_SPACE = {"kappa_M": (0.0, 12.0, "lin"),       # surface current driven by the stream's momentum (circulation.py)
               "eps_f": (0.0, 1.0, "lin"),          # fraction of the foam going down with the current
-              "kappa_w": (0.0, 2.0, "lin")}        # the received flow's area going down with the current
+              "kappa_w": (0.0, 2.0, "lin"),        # the received flow's area going down with the current
+              "xi_X": (0.0, 1.0, "lin")}           # share of the current's divergence not exchanged with the bulk
 # start: kappa_M = 1.5 (the time-mean surface current of the optical flow, 0.04 D/s, needs ~10 in total, but most of it
 # is the pattern pushed by the jet itself, which the inlet already models; forward runs at S1: tulip best at 1-2)
-CIRC_START = {"kappa_M": 1.5, "eps_f": 0.0, "kappa_w": 0.0}
+CIRC_START = {"kappa_M": 1.5, "eps_f": 0.0, "kappa_w": 0.0, "xi_X": 0.0}
 # the foam surfaces tau_s u_in ahead of the landing point (u_in ~ 1 D/s: tau_s = 0.05 s ~ 4 mm; the real deposits grow
 # forward of the measured stream foot)
 DEP_SPACE = {"tau_s": (0.0, 0.2, "lin"),
