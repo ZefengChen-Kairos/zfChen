@@ -197,23 +197,21 @@ def kernel_inside(S, geo, x, y):
     return Z
 
 
-def circ_fields(S, geo, x=None, y=None):
-    """Unit circulation fields of every frame of the arrival record S (circulation.CircField), float32; driven by the
-    received flow Q Z (Z: kernel_inside) at the landing points x, y (default S's)."""
-    from ..circulation import CircField
+def circ_fields(S, geo, x=None, y=None, dtype=np.float32):
+    """Unit surface-current fields of every frame of the arrival record S (circulation.SurfaceCurrent: U, sigma+,
+    sigma-, W_n), stored as dtype; driven by the received flow Q Z (Z: kernel_inside) at the landing points x, y (default S's)."""
+    from ..circulation import SurfaceCurrent
     x = S["x"] if x is None else x
     y = S["y"] if y is None else y
     Z = kernel_inside(S, geo, x, y)
-    C = CircField(geo.x_np, geo.y_np, geo.mask_np, geo.h)
+    C = SurfaceCurrent(geo.x_np, geo.y_np, geo.mask_np, geo.h)
     n, N = S["n"], geo.N
-    V = np.zeros((n, 2, N, N), np.float32)
-    K = np.zeros((n, N, N), np.float32)
-    Ws = np.zeros((n, N, N), np.float32)
+    U = np.zeros((n, 2, N, N), dtype)
+    up, dn, Wn = (np.zeros((n, N, N), dtype) for _ in range(3))
     for k in range(n):
-        v, kk = C.step(float(S["fdt"][k]), bool(S["active"][k]), float(S["Q"][k] * Z[k]), (x[k], y[k]),
-                       (S["ux"][k], S["uy"][k]))
-        V[k], K[k], Ws[k] = v, kk, C.Wsink
-    return V, K, Ws
+        U[k], up[k], dn[k], Wn[k] = C.step(float(S["fdt"][k]), bool(S["active"][k]), float(S["Q"][k] * Z[k]),
+                                           (x[k], y[k]), (S["ux"][k], S["uy"][k]))
+    return U, up, dn, Wn
 
 
 def video_on_grid(p, geo, t_end):
@@ -271,7 +269,7 @@ class DiffPour:
         dev = self.geo.dev
         self.Sw = {k: wp.array(self.S[k], dtype=F, device=dev, requires_grad=True) for k in W.SCHED}
         self.circ = circ
-        if circ:                                         # jet-driven overturning circulation (circulation.py)
+        if circ:                                         # momentum-driven surface current (circulation.py)
             self.sol.set_circ(*circ_fields(self.S, self.geo))
         self.foot_dir = SC.foot_dirs(self.S["ux"], self.S["uy"])
         self._foot = (0.0, 0.0)
@@ -363,13 +361,15 @@ class DiffPour:
 
     # ------------------------------------------------------------------ pieces
     def _apply_foot(self, P):
-        """Landing-point correction (schedule.foot_shift) from P['foot_a'], P['foot_b'] (default 0)."""
+        """Landing-point correction (schedule.foot_shift) from P['foot_a'], P['foot_b'] (default 0).  With the surface
+        current on, its host fields are recomputed for the shifted landing points; the adjoint does not see that part
+        of the dependence (foot_a, foot_b gradients are partial; the foot fit is a diagnostic only, fit.py --foot)."""
         ab = (float(P.get("foot_a", 0.0)), float(P.get("foot_b", 0.0)))
         if ab != self._foot:
             x, y = SC.foot_shift(self.S["x"], self.S["y"], self.S["ux"], self.S["uy"], *ab)
             self.Sw["x"].assign(x)
             self.Sw["y"].assign(y)
-            if self.circ:                                # the circulation follows the landing point
+            if self.circ:                                # the current follows the landing point
                 self.sol.set_circ(*circ_fields(self.S, self.geo, x, y))
             self._foot = ab
 

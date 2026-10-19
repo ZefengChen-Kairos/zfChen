@@ -40,7 +40,10 @@ SP = dict(SPACE)
 KEYS = tuple(SPACE)
 
 
-CIRC_SPACE = {"kappa_w": (0.0, 6.0, "lin")}        # film carried down along the wall (circulation.py)
+CIRC_SPACE = {"kappa_M": (0.0, 30.0, "lin"),       # surface current driven by the stream's momentum (circulation.py)
+              "eps_f": (0.0, 1.0, "lin"),          # fraction of the foam going down with the current
+              "kappa_w": (0.0, 3.0, "lin")}        # the received flow's area going down with the current
+CIRC_START = {"kappa_M": 10.0, "eps_f": 0.0, "kappa_w": 1.0}   # kappa_M: the measured mean surface current (tulip, leaf, heart, push_heart)
 
 
 def use_foot(on, circ=False):
@@ -279,7 +282,7 @@ def main(argv=None):
     ap.add_argument("--w-flow", dest="w_flow", type=float, default=0.0,
                     help="weight of the surface-velocity term (optical flow of the real pour, rig/video_flow.py)")
     ap.add_argument("--circ", action="store_true",
-                    help="area-conserving film (circulation.py): the film goes down along the wall (fit kappa_w; use with "
+                    help="surface current driven by the stream's momentum (circulation.py: fit kappa_M, eps_f, kappa_w; use with "
                          "--upwell)")
     ap.add_argument("--upwell", action="store_true",
                     help="volume-conserving surface source: the whole received volume reaches the surface, chi decides "
@@ -311,7 +314,7 @@ def main(argv=None):
     pours = {p: Pour(p, kw, process=workers > 0) for p in cal}
     log(f"{len(cal)} calibration pours, {'one worker process each' if workers > 0 else 'in-process'}")
     base = dict(pours[cal[0]].s1, **({"foot_a": 0.0, "foot_b": 0.0} if a.foot else {}),
-                **({"kappa_w": 2.0} if a.circ else {}))
+                **(CIRC_START if a.circ else {}))
     if a.init:
         base.update({k: float(v) for k, v in json.load(open(a.init)).items() if k in base})
         log(f"start: {a.init}")
@@ -319,10 +322,10 @@ def main(argv=None):
         base[k] = float(v)
     # the closure is the single source of the model switches: the render (real_program) reads them back
     base["e0"], base["upwell"], base["circ"] = float(a.e0), float(a.upwell), float(a.circ)
-    if not a.circ and any(base.get(k, 0.0) for k in ("kappa_o", "kappa_s", "kappa_w")):
-        log("no --circ: kappa_o, kappa_s, kappa_w of the start closure set to 0")
+    if not a.circ and any(base.get(k, 0.0) for k in ("kappa_M", "kappa_w")):
+        log("no --circ: kappa_M, kappa_w of the start closure set to 0")
     if not a.circ:
-        for k in ("kappa_o", "kappa_s", "kappa_w"):
+        for k in ("kappa_M", "eps_f", "kappa_w"):
             base[k] = 0.0
     u = to_unit(base)
     m1, m2 = np.zeros_like(u), np.zeros_like(u)

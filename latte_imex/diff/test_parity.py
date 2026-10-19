@@ -1,6 +1,7 @@
 """Forward parity: both paths of the Warp solver (recorded `frame`, fast graph path `fast_forward`) against
 solver.Solver on the first frames of a real pour (same arrival record).
-    python -m latte_imex.diff.test_parity [--pattern heart --N 64 --frames 150 --device cuda:0 --check-every 1]"""
+    python -m latte_imex.diff.test_parity [--pattern heart --N 64 --frames 150 --device cuda:0 --check-every 1]
+                                          [--upwell --circ kappa_M,eps_f,kappa_w]"""
 import argparse
 import time
 
@@ -19,10 +20,16 @@ def main():
     ap.add_argument("--device", default=None)
     ap.add_argument("--check-every", dest="check_every", type=int, default=1,
                     help="PCG convergence check interval (1: the same iteration counts as the numpy solver)")
+    ap.add_argument("--upwell", action="store_true", help="volume-conserving surface source")
+    ap.add_argument("--circ", default="", help="kappa_M,eps_f,kappa_w: surface current (circulation.py)")
     a = ap.parse_args()
     script, pour = SC.pour_script(a.pattern, a.N)
     S = SC.build(script, a.N)
     n = min(a.frames, S["n"])
+    if a.upwell:
+        script.params["upwell"] = True
+    if a.circ:
+        script.params.update(zip(("kappa_M", "eps_f", "kappa_w"), map(float, a.circ.split(","))))
     P = Params(**script.params)
     print(f"{a.pattern}: {S['n']} frames, testing {n}; return law {S['return_law']}; params "
           + " ".join(f"{k} {getattr(P, k):.4g}" for k in W.PARAMS))
@@ -43,7 +50,10 @@ def main():
     tol = 1e-12 if a.check_every == 1 else 1e-6
     ok = True
     for path in ("frame", "fast"):
-        sol = W.WSolver(g, v05=S["return_law"] == "v05", check_every=a.check_every)
+        sol = W.WSolver(g, v05=S["return_law"] == "v05", check_every=a.check_every, up=a.upwell)
+        if a.circ:
+            from .run import circ_fields
+            sol.set_circ(*circ_fields(S, g, dtype=np.float64))
         nw = []
         t0 = time.time()
         if path == "frame":

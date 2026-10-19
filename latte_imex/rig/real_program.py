@@ -335,8 +335,8 @@ def real_program(p, N=256, flow="pitcher", V0=None, log=print, closure=None):
         closure = dict(closure)
         foot = (float(closure.pop("foot_a", 0.0)), float(closure.pop("foot_b", 0.0)))
         e0 = bool(closure.pop("e0", 0))
-        if not closure.pop("circ", 1):                 # fitted without the circulation (diff/fit.py --circ off)
-            for k in ("kappa_o", "kappa_s", "kappa_w"):
+        if not closure.pop("circ", 1):                 # fitted without the surface current (diff/fit.py --circ off)
+            for k in ("kappa_M", "eps_f", "kappa_w"):
                 closure[k] = 0.0
         meta["config"]["parameters"].update(closure)
         meta["kQ"] = float(closure.get("kappa_Q", meta["kQ"]))

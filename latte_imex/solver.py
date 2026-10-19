@@ -40,9 +40,10 @@ class Params:
     # "push first, whiten later": the deposited milk enters a sub-surface reservoir and surfaces after tau_d
     # (its impact momentum acts immediately); tau_d = 0 reproduces the instantaneous closure
     # ---- closure "skin" (bulk + submerged foam + surface foam), replaces chi-splitting, kappa_r, return law and delay
-    kappa_o: float = 0.0    # jet-driven overturning circulation (circulation.py): the film is dragged towards kappa_o V_b
-    kappa_s: float = 0.0    # ... and receives the upwelled base material kappa_s K_b; 0, 0 = lower layer at rest (V1)
-    kappa_w: float = 0.0    # film carried down along the cup wall at the rate kappa_w abar W (abar: relaxed received flow)
+    kappa_M: float = 0.0    # surface current driven by the stream's momentum (circulation.py): the film is dragged towards
+                            # kappa_M U, gains upwelled water kappa_M sigma+ and goes down at kappa_M sigma-; 0 = V1 (at rest)
+    eps_f: float = 0.0      # ... fraction of the foam going down with it (buoyant microfoam: ~0; 1: non-selective)
+    kappa_w: float = 0.0    # ... and the received flow's area kappa_w kappa_Q abar going down where the current converges
     upwell: bool = False    # closure "chi": the whole received volume reaches the surface (s = S K); chi only decides whether
                             # it is new milk (m source chi S K) or dived milk resurfacing as base material
     closure: str = "chi"    # "chi": original single-layer closure ; "skin" ; "twolayer": the layer (l, q, m) is the floating
@@ -461,7 +462,7 @@ class Solver:
         self._s_base = None
         if getattr(self, "_milk_frac", 1.0) != 1.0 or getattr(self, "_s_circ", None) is not None:
             # only the new milk arrives with the jet target v*; the base material with the film velocity (wsolver.k_stepA_B)
-            s_mom = (s if self._s_circ is None else s - self._s_circ) * self._milk_frac
+            s_mom = (s if self._s_circ is None else s - self._s_circ) * getattr(self, "_milk_frac", 1.0)
             self._s_base = s - s_mom
         s_l = None             # film mass source when it differs from the milk source (two-layer surface cell)
         brown_rate = 0.0
@@ -550,9 +551,9 @@ class Solver:
             th = 1.0 + dt * (beta_B + Lam / lsafe)
             a_x += dt * self._s_base * ux / th
             a_y += dt * self._s_base * uy / th
-        if getattr(self, "_Vb", None) is not None and P.kappa_o:   # drag towards the circulation
+        if getattr(self, "_Vb", None) is not None and P.kappa_M:   # drag towards the surface current
             th = 1.0 + dt * (beta_B + Lam / lsafe)
-            gb = dt * beta_B * lsafe * P.kappa_o
+            gb = dt * beta_B * lsafe * P.kappa_M
             a_x += gb * self._Vb[0] / th
             a_y += gb * self._Vb[1] / th
         if msub_new is not None and P.sub_pressure > 0:
@@ -688,9 +689,11 @@ class Solver:
             self.stats["cg_mix"] += it3
             m_new = np.where(mask, lsn * np.clip(c_new, 0.0, 1.0), 0.0)
 
-        if getattr(self, "_sink", None) is not None:          # circulation: film carried down along the wall
-            fs = np.where(mask, np.exp(-dt * self._sink), 1.0)
-            l_new, qx_new, qy_new, m_new = l_new * fs, qx_new * fs, qy_new * fs, m_new * fs
+        if getattr(self, "_sink", None) is not None:          # film going down where the surface current converges
+            eb = np.exp(-dt * self._sink)                     # brown part
+            fm = np.where(mask, np.exp(-dt * P.eps_f * self._sink), 1.0)    # foam (buoyant: eps_f ~ 0)
+            fl = np.where(mask, eb + m_new / np.where(mask, l_new, 1.0) * (fm - eb), 1.0)
+            l_new, qx_new, qy_new, m_new = l_new * fl, qx_new * fl, qy_new * fl, m_new * fm
         # accept only finite, positive-layer states; otherwise the frame is retried with a smaller step
         if not (np.isfinite(l_new).all() and np.isfinite(qx_new).all() and np.isfinite(qy_new).all()
                 and np.isfinite(m_new).all() and l_new[mask].min() > self.l_floor):
@@ -926,16 +929,17 @@ class Solver:
             frame_dt = min(frame_dt, max(lim, 1e-4))
         s, Lam, vsx, vsy, chi = self.inlet_fields(inlet)
         g = self.g
-        if self.P.kappa_o or self.P.kappa_s or self.P.kappa_w:   # circulation fields of this frame (circulation.py)
+        if self.P.kappa_M or self.P.kappa_w:   # surface current of this frame (circulation.py)
             if getattr(self, "circ", None) is None:
-                from .circulation import CircField
-                self.circ = CircField(g.x, g.y, g.mask, g.h)
+                from .circulation import SurfaceCurrent
+                self.circ = SurfaceCurrent(g.x, g.y, g.mask, g.h)
             act = bool(inlet.active and inlet.S_eff > 0)
             Zr = getattr(self, "last_Z", 1.0) if self.P.offcup == "account" else 1.0
-            Vb, Kb = self.circ.step(frame_dt, act, inlet.S_eff * Zr / self.P.kappa_Q if act else 0.0, inlet.x_hit, inlet.u_in)
-            self._Vb = Vb
-            self._sink = self.P.kappa_w * self.P.kappa_Q * self.circ.Wsink     # film carried down along the wall
-            self._s_circ = np.where(g.mask, self.P.kappa_s * Kb, 0.0)   # base material: layer only, not milk
+            U, up, dn, Wn = self.circ.step(frame_dt, act, inlet.S_eff * Zr / self.P.kappa_Q if act else 0.0,
+                                           inlet.x_hit, inlet.u_in)
+            self._Vb = U
+            self._sink = self.P.kappa_M * dn + self.P.kappa_w * self.P.kappa_Q * Wn
+            self._s_circ = np.where(g.mask, self.P.kappa_M * up, 0.0)   # upwelled water: base material, not milk
             s = s + self._s_circ
         else:
             self._Vb = self._s_circ = self._sink = None
@@ -953,7 +957,7 @@ class Solver:
         if getattr(self, "Ub", None) is not None:
             umax = max(umax, float(np.hypot(*self.Ub).max()), float(np.hypot(*self.Ud).max()))
         if self._Vb is not None:
-            umax = max(umax, float(np.max(abs(self.P.kappa_o) * np.hypot(*self._Vb))))
+            umax = max(umax, float(np.max(abs(self.P.kappa_M) * np.hypot(*self._Vb))))
         self.stats["max_u"] = max(self.stats["max_u"], umax)
         dt_cfl = self.num.cfl * g.h / (2.0 * max(umax, 1e-9))
         nsub = int(math.ceil(frame_dt / dt_cfl))

@@ -22,9 +22,9 @@ import warp as wp
 
 wp.config.quiet = True
 F = wp.float64
-PARAMS = ("cp", "beta", "nu", "D", "kappa_Q", "kappa_c", "kappa_t", "kappa_r", "B_dep", "p_dep", "kappa_o", "kappa_s",
+PARAMS = ("cp", "beta", "nu", "D", "kappa_Q", "kappa_c", "kappa_t", "kappa_r", "B_dep", "p_dep", "kappa_M", "eps_f",
           "kappa_w")
-CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KO, KS, KW = range(13)
+CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW = range(13)
 SCHED = ("x", "y", "Q", "ux", "uy", "U", "d", "r1", "r2", "phi")
 A2 = wp.array2d(dtype=F)
 I2 = wp.array2d(dtype=wp.int32)
@@ -128,26 +128,31 @@ def k_fields(Kraw: A2, sums: A1, mask: I2, xc: A2, yc: A2, P: A1, Sx: A1, Sy: A1
 
 @wp.kernel
 def k_circ_src(s: A2, Kb: A2, P: A1, mask: I2, out: A2):
-    """out = s + kappa_s K_b (film source of the upwelled base material, circulation.py)."""
+    """out = s + kappa_M sigma+ (surface water upwelled by the current: base material at the rest thickness 1,
+    circulation.py)."""
     j, i = wp.tid()
     v = s[j, i]
     if mask[j, i] != 0:
-        v = v + P[KS] * Kb[j, i]
+        v = v + P[KM] * Kb[j, i]
     out[j, i] = v                                        # one store (an overwrite would double the adjoint on old Warp)
 
 
 @wp.kernel
-def k_wall_sink(l: A2, qx: A2, qy: A2, m: A2, Wf: A2, P: A1, dta: A1, mask: I2, lo: A2, qxo: A2, qyo: A2, mo: A2):
-    """Film carried down along the wall: l, q, m decay by exp(-dt kappa_w kappa_Q W_s) (circulation.py; W_s carries the
-    received flow Q Z, so kappa_w = 1 removes the area the inlet adds)."""
+def k_down(l: A2, qx: A2, qy: A2, m: A2, Db: A2, Wf: A2, P: A1, dta: A1, mask: I2, lo: A2, qxo: A2, qyo: A2, mo: A2):
+    """Film going down where the current converges (circulation.py): W = kappa_M sigma- + kappa_w kappa_Q W_n; the brown
+    part l - m decays by exp(-dt W), the foam by exp(-dt eps_f W) (buoyant microfoam stays up), q with the layer."""
     j, i = wp.tid()
-    f = F(1.0)
+    fl = F(1.0)
+    fm = F(1.0)
     if mask[j, i] != 0:
-        f = wp.exp(-dta[0] * P[KW] * P[KQ] * Wf[j, i])
-    lo[j, i] = l[j, i] * f
-    qxo[j, i] = qx[j, i] * f
-    qyo[j, i] = qy[j, i] * f
-    mo[j, i] = m[j, i] * f
+        W = P[KM] * Db[j, i] + P[KW] * P[KQ] * Wf[j, i]
+        eb = wp.exp(-dta[0] * W)
+        fm = wp.exp(-dta[0] * P[KE] * W)
+        fl = eb + m[j, i] / l[j, i] * (fm - eb)
+    lo[j, i] = l[j, i] * fl
+    qxo[j, i] = qx[j, i] * fl
+    qyo[j, i] = qy[j, i] * fl
+    mo[j, i] = m[j, i] * fm
 
 
 # ============================================================================ sub-step kernels (solver.substep)
@@ -193,7 +198,7 @@ def k_rusanov(qx: A2, qy: A2, ux: A2, uy: A2, fx: I2, fy: I2, Fxqx: A2, Fxqy: A2
 def k_stepA_B(qx: A2, qy: A2, Fxqx: A2, Fxqy: A2, Fyqx: A2, Fyqy: A2, s: A2, Lam: A2, vsx: A2, vsy: A2, ls: A2,
               P: A1, dta: A1, inv_h: F, N: int, Vbx: A2, Vby: A2, sm: A2, ux: A2, uy: A2, ax: A2, ay: A2, coef: A2):
     """q* = q - dt div(F) (step A), then stepB_prepare: theta = 1 + dt (beta + Lam/l),
-    a = (q* + dt (sm+Lam) v* + dt (s-sm) u + dt beta l kappa_o V_b)/theta, coef = cp^2 l / theta: the new milk sm
+    a = (q* + dt (sm+Lam) v* + dt (s-sm) u + dt beta l kappa_M U)/theta, coef = cp^2 l / theta: the new milk sm
     arrives with the jet target v*, the base material s - sm (dived milk resurfacing, upwelled coffee) with the film's
     own velocity u (V0.5: s = sm)."""
     j, i = wp.tid()
@@ -204,7 +209,7 @@ def k_stepA_B(qx: A2, qy: A2, Fxqx: A2, Fxqy: A2, Fyqx: A2, Fyqy: A2, s: A2, Lam
     theta = F(1.0) + dt * (P[BETA] + Lam[j, i] / L)
     f = dt * (sm[j, i] + Lam[j, i])
     fb = dt * (s[j, i] - sm[j, i])
-    g = dt * P[BETA] * L * P[KO]                         # drag towards the circulation (circulation.py; 0: at rest)
+    g = dt * P[BETA] * L * P[KM]                         # drag towards the surface current (circulation.py; 0: at rest)
     ax[j, i] = (qxs + f * vsx[j, i] + fb * ux[j, i] + g * Vbx[j, i]) / theta
     ay[j, i] = (qys + f * vsy[j, i] + fb * uy[j, i] + g * Vby[j, i]) / theta
     coef[j, i] = P[CP] * P[CP] * L / theta
@@ -675,7 +680,7 @@ def k_rowmax_speed(qx: A2, qy: A2, l: A2, s: A2, Lam: A2, vsx: A2, vsy: A2, mask
         if mask[j, i] != 0:
             ls = l[j, i]
         acc = wp.max(acc, wp.sqrt(qx[j, i] * qx[j, i] + qy[j, i] * qy[j, i]) / ls)
-        acc = wp.max(acc, wp.abs(P[KO]) * wp.sqrt(Vbx[j, i] * Vbx[j, i] + Vby[j, i] * Vby[j, i]))
+        acc = wp.max(acc, wp.abs(P[KM]) * wp.sqrt(Vbx[j, i] * Vbx[j, i] + Vby[j, i] * Vby[j, i]))
         if active != 0:
             if s[j, i] + Lam[j, i] > F(0.0):
                 acc = wp.max(acc, wp.sqrt(vsx[j, i] * vsx[j, i] + vsy[j, i] * vsy[j, i]))
@@ -1181,8 +1186,8 @@ class WSolver:
         dev = geo.dev
         self.dta = wp.zeros(1, dtype=F, device=dev)
         self.kq = wp.zeros(2, dtype=wp.int32, device=dev)
-        self.Vbx, self.Vby, self.Kb, self.Wf = (wp.zeros((geo.N, geo.N), dtype=F, device=dev) for _ in range(4))
-        self.circ, self._ck = None, None     # circulation unit fields of the frames (set_circ)
+        self.Vbx, self.Vby, self.Kb, self.Db, self.Wf = (wp.zeros((geo.N, geo.N), dtype=F, device=dev) for _ in range(5))
+        self.circ, self._ck = None, None     # unit surface-current fields of the frames (set_circ)
         self._dt = None
         self._kq = None
         import os
@@ -1248,21 +1253,19 @@ class WSolver:
             self.dta.assign(np.array([dt], np.float64))
             self._dt = dt
 
-    def set_circ(self, V, K, Ws=None):
-        """Circulation unit fields per frame (circulation.CircField: host arrays V (n, 2, N, N), K, Ws (n, N, N)) or
-        None."""
-        self.circ = None if V is None else (V, K, Ws)
+    def set_circ(self, U=None, up=None, dn=None, Wn=None):
+        """Unit surface-current fields per frame (circulation.SurfaceCurrent: host arrays U (n, 2, N, N), sigma+,
+        sigma-, W_n (n, N, N)) or None."""
+        self.circ = None if U is None else (U, up, dn, Wn)
         self._ck = None
-        self.Vbx.zero_(); self.Vby.zero_(); self.Kb.zero_(); self.Wf.zero_()
+        for a in (self.Vbx, self.Vby, self.Kb, self.Db, self.Wf):
+            a.zero_()
 
     def set_kq(self, k, q):
         if self.circ is not None and self._ck != k:
-            V, K, Ws = self.circ
-            self.Vbx.assign(np.ascontiguousarray(V[k, 0], np.float64))
-            self.Vby.assign(np.ascontiguousarray(V[k, 1], np.float64))
-            self.Kb.assign(np.ascontiguousarray(K[k], np.float64))
-            if Ws is not None:
-                self.Wf.assign(np.ascontiguousarray(Ws[k], np.float64))
+            U, up, dn, Wn = self.circ
+            for a, b in ((self.Vbx, U[k, 0]), (self.Vby, U[k, 1]), (self.Kb, up[k]), (self.Db, dn[k]), (self.Wf, Wn[k])):
+                a.assign(np.ascontiguousarray(b, np.float64))
             self._ck = k
         if self._kq != (k, q):
             self.kq.assign(np.array([k, q], np.int32))
@@ -1353,7 +1356,7 @@ class WSolver:
         return self._circ_src(out, P)
 
     def _circ_src(self, out, P):
-        """Film source of the upwelled base material of the circulation (recorded)."""
+        """Film source of the surface water upwelled by the current (recorded)."""
         if self.circ is None:
             return out
         s2 = self.new()
@@ -1418,9 +1421,9 @@ class WSolver:
             m4 = self.new()
             self.L(k_mix, [m3, l3, g.fx, g.fy, g.mask, P, dt, ih2, N], [m4])
         self.stats["substeps"] += 1
-        if self.circ is not None and self.circ[2] is not None:
+        if self.circ is not None:
             lo, qxo, qyo, mo = self.new(), self.new(), self.new(), self.new()
-            self.L(k_wall_sink, [l3, qx4, qy4, m4, self.Wf, P, dt, g.mask], [lo, qxo, qyo, mo])
+            self.L(k_down, [l3, qx4, qy4, m4, self.Db, self.Wf, P, dt, g.mask], [lo, qxo, qyo, mo])
             return dict(l=lo, qx=qxo, qy=qyo, m=mo)
         return dict(l=l3, qx=qx4, qy=qy4, m=m4)
 
@@ -1580,8 +1583,8 @@ class WSolver:
         else:
             self.cp(fb["m3"], fb["m"])
         self.cp(V.c["l3"], fb["l"])
-        if self.circ is not None and self.circ[2] is not None:
-            R(k_wall_sink, [fb["l"], fb["qx"], fb["qy"], fb["m"], self.Wf, fb["P"], self.dta, g.mask],
+        if self.circ is not None:
+            R(k_down, [fb["l"], fb["qx"], fb["qy"], fb["m"], self.Db, self.Wf, fb["P"], self.dta, g.mask],
               [fb["l"], fb["qx"], fb["qy"], fb["m"]])
 
     def cg_iterations(self):

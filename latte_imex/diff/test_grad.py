@@ -22,14 +22,14 @@ def main():
     ap.add_argument("--upwell", action="store_true", help="volume-conserving surface source (wsolver.k_fields)")
     ap.add_argument("--w-flow", dest="w_flow", type=float, default=0.0)
     ap.add_argument("--loss", default="video")
-    ap.add_argument("--circ", default="", help="kappa_o,kappa_s[,kappa_w]: circulation (circulation.py)")
+    ap.add_argument("--circ", default="", help="kappa_M,eps_f[,kappa_w]: surface current (circulation.py)")
     a = ap.parse_args()
     D = DiffPour(a.pattern, N=a.N, device=a.device, T_max=a.T, tau=0.1, scales=[float(x) for x in a.scales.split(",")],
                  upwell=a.upwell, circ=bool(a.circ), w_flow=a.w_flow,
                  loss=a.loss)
     P = dict(D.s1, foot_a=0.05, foot_b=-0.02)
     if a.circ:
-        for k, x in zip(("kappa_o", "kappa_s", "kappa_w"), a.circ.split(",")):
+        for k, x in zip(("kappa_M", "eps_f", "kappa_w"), a.circ.split(",")):
             P[k] = float(x)
     L, g, _ = D.loss_grad(P)
     ns = D.nsub
@@ -42,9 +42,12 @@ def main():
         Lm = D.loss(dict(P, **{k: P[k] - h}), nsub=ns)[0]
         fd = (Lp - Lm) / (2 * h)
         rel = abs(g[k] - fd) / max(abs(fd), abs(g[k]), 1e-12)
-        if abs(fd) > 1e-9 or abs(g[k]) > 1e-9:
+        # with the current on, the landing point also moves the current (host fields, not differentiated): partial
+        partial = bool(a.circ) and k.startswith("foot")
+        if (abs(fd) > 1e-9 or abs(g[k]) > 1e-9) and not partial:
             worst = max(worst, rel)
-        print(f"  {k:8s} adjoint {g[k]: .6e}  FD {fd: .6e}  rel diff {rel:.1e}")
+        print(f"  {k:8s} adjoint {g[k]: .6e}  FD {fd: .6e}  rel diff {rel:.1e}"
+              + ("  (partial: the current's dependence on the landing point is not differentiated)" if partial else ""))
     # schedule entries (per-frame arrival record): the hit point x and the flow Q of a few pouring frames
     D._apply_foot(P)            # the parameter loop left the last perturbed landing-point shift applied
     act = np.where(D.S["active"])[0]
