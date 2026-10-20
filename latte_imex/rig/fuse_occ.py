@@ -1,12 +1,13 @@
 """Occlusion-aware fusion of the rectified top-view frames of video_obs.py (V2_SURFACE_MODEL.md 10.5).
 
 Why.  cup_register.fuse() samples every camera at the liquid plane and keeps a camera where its depth is not nearer than
-the plane by OCC -- and MISSING DEPTH COUNTS AS VISIBLE.  The black, glossy cup rim, the steel pitcher and the in-air
-stream return no depth, so the oblique cameras 0 and 2 contribute their view of the cup wall (black) along a band at the
-near rim, and camera 1 its view of the pitcher spout; the per-pixel median of 2 views then turns grey -> staircase
-'cracks' across the disc and the white (94-98 % of the median's dark pixels in the crack windows are such a leak; the
-leaks of cams 0 / 2 lie 2 px (median) from their valid near-depth pixels, 72-95 % within 8 px).  Exposure differences
-between the cameras make seams where the set of visible views changes.
+the plane by OCC -- and MISSING DEPTH COUNTS AS VISIBLE.  The black, glossy cup rim and the steel pitcher return no
+depth, so the oblique cameras 0 and 2 contribute their view of the cup wall (black) along a band at the near rim, and
+camera 1 its view of the pitcher spout; the per-pixel median of 2 views then turns grey -> staircase 'cracks' across the
+disc and the white (94-98 % of the median's dark pixels in the crack windows are such a leak; the leaks of cams 0 / 2
+lie 2 px (median) from their valid near-depth pixels, 72-95 % within 8 px).  The thin in-air stream is not resolved by
+stereo: its depth reads as the plane, so every camera keeps it.  Exposure differences between the cameras make seams
+where the set of visible views changes.
 
 What (per frame; all constants shared by every pour and frame):
  1. occluders  in each camera's IMAGE (848 x 480):
@@ -30,16 +31,20 @@ What (per frame; all constants shared by every pour and frame):
                medians + median filter, 2 iterations) clamped to +-G_LOC, both estimated on the >= 3-view pixels only
                (>= 2 for a camera without enough of them; a 2-view pair whose aligned views disagree by > DIS is left out
                of the fit -- unclamped, a 2-view fit turned leaks into gains up to |G| 1.6 and carried them into
-               single-view regions); weights = resolution (worst-direction ground sampling step s^-4, RES_MODE) x outlier
-               rejection when >= 3 views x a distance feather at usable-mask edges; pixels with no usable view are invalid
+               single-view regions); weights = resolution ((s_min / s)^4, s = the worst-direction ground sampling step:
+               the blur bias of a fine feature ~ sigma^2, inverse squared bias -> s^-4) x outlier rejection when >= 3
+               views x a distance feather at usable-mask edges; pixels with no usable view are invalid
                (their colour falls back to the cup_register rule, so the image looks as before there).  Usable-weighted
                2x2 mean -> the 128 video grid.
  4. validity   video_obs.observe() (inside R_IN * edge, not a small saturated glare blob, outside FOOT_R of the spout
                tip) on the usable-view mask instead of cup_register's 'seen'.
-Cost: the 8 px margin makes 13-18 % of the disc invalid in the early frames (mean valid 0.84-0.87 of the disc against
-0.97), including most of the stream-foot neighbourhood (0.07-0.26 valid within 4 mm of the foot); the image data do not
-support a smaller margin (camera 1 is still 7 % brighter than the other views 12 px from its stream mask).  About a third
-of the valid pixels are single-view.
+Cost: the occluders cost 2-3 % of the disc and the 8 px margin another 13-18 % in the early frames (t < 4 s valid
+0.75-0.80 of the disc against 0.94-0.97; whole pour 0.84-0.87 against 0.97), including most of the stream-foot
+neighbourhood (0.07-0.26 valid within 4 mm of the foot); the image data do not support a smaller margin (camera 1 is
+still 7 % brighter than the other views 12 px from its stream mask).  About a third of the valid pixels are single-view.
+In 2-view pixels camera 1 always has the larger weight and no outlier test is possible: its lamp highlight (late leaf)
+and dark cup-wall reflections at the left rim (late tulip / leaf) remain (dropping 2-view no-consensus pixels cost tulip
+2.2 % of its valid area; not done).
 Output (video_obs.write_frames): t, img RGB, L, valid, nview (usable views per pixel), frame_idx, pitcher_depth_conflict
 (per camera: share of the pitcher hull where the camera sees valid depth AT the plane; high = wrong pose), pose_rejected_t.
     python3 -m latte_imex.rig.fuse_occ [--out DIR] [--frames a:b] [pour ...]     (needs the session's pours/ data)
@@ -80,14 +85,9 @@ GAIN_MINV, GAIN_MIN_PX = 3, 500   # gain consensus only where >= 3 views are usa
 G_LOC = 0.15                # clamp of the smooth part of a camera's log gain around its global offset (0.15 = the largest
                             # per-pour median of the per-frame p99 |G| in 3-view regions)
 DIS, DIS_SIGMA = 3 * 0.12, 2.0    # 2-view consensus: two usable views whose aligned log lightness (blurred within their masks by
-                                  # 2 NS px = 0.7 mm, the oblique cameras' sampling step) differ by > 3 TAU -> neither is trusted
-NOCONS = os.environ.get("FUSE_NOCONS", "0") == "1"   # option: drop such 2-view pixels from the fusion (invalid): removes 2-view
-                                  # wall reflections / lamp highlights at 0.2-2.2 % of the disc; off (it cost tulip 2.2 % of its
-                                  # valid area); the gain fit excludes them either way
-RES_MODE = "along4"        # view weights: 'along4' = (s_min / s)^4 with s the worst-direction ground sampling step (the blur
-                            # bias of a fine feature ~ sigma^2, inverse squared bias -> s^-4); 'gsd2' = geometric-mean GSD^-2;
-                            # 'median' = plain median of the usable views
-SHARP_POW = 2.0             # exponent of the 'gsd2' mode
+                                  # 2 NS px = 0.7 mm, the oblique cameras' sampling step) differ by > 3 TAU -> neither enters
+                                  # the gain fit (both stay in the fusion)
+RES_POW = 4.0               # view weight (s_min / s)^RES_POW, s = worst-direction ground sampling step
 FEATHER_PX = 4.0            # [px of the NS grid] weight ramp at a camera's usable-mask edge (1.4 mm)
 H_IMG, W_IMG = 480, 848
 
@@ -272,8 +272,8 @@ def grid(n=NS):
     return np.meshgrid(s, s)
 
 
-def rectify(P, fi, keep_masks=False):
-    """Per camera: bilinear colour on the NS disc grid, usable mask, cup_register-rule visibility, GSD."""
+def rectify(P, fi):
+    """Per camera: bilinear colour on the NS disc grid, usable mask, cup_register-rule visibility, ground sampling step."""
     z = P.z(fi)
     cen, L = np.array(P.D[fi]["disc_centre"]), P.D[fi]["L_m"]
     U, V = grid()
@@ -300,14 +300,9 @@ def rectify(P, fi, keep_masks=False):
         X, Y = Pw[:, 0].reshape(NS, NS), Pw[:, 1].reshape(NS, NS)
         dvec = np.stack([Cw[0] - X, Cw[1] - Y, np.full_like(X, Cw[2] - z)], -1)
         cosang = np.abs(dvec[..., 2]) / np.linalg.norm(dvec, axis=-1)
-        gsd = zc / P.tk.K[c][0, 0] / np.sqrt(np.maximum(cosang, 0.2))        # geometric mean of the two in-plane steps
         step = zc / P.tk.K[c][0, 0] / np.maximum(cosang, 0.2)                # worst-direction step (along the camera's tilt)
-        vw = dict(cam=c, k=k, dt=dt, col=col, vis=vis, use=vis & ~glare, old_vis=old_vis, gsd=gsd.astype(np.float32),
-                  step=step.astype(np.float32),
-                  conflict=parts["conflict"])
-        if keep_masks:
-            vw.update(img=img, dep=dep, occ=occ, parts=parts, u=u, v=v)
-        views.append(vw)
+        views.append(dict(cam=c, k=k, dt=dt, col=col, use=vis & ~glare, old_vis=old_vis, step=step.astype(np.float32),
+                          conflict=parts["conflict"]))
     return views, disc
 
 
@@ -405,19 +400,13 @@ def fuse_views(views, disc):
     # (2) 2-view consensus test on the globally aligned views; disagreeing pairs do not enter the smooth gain field
     nocons = _no_consensus(lC - g0[:, None, None, :], M, two)
     Mg = M & ~nocons[None]
-    # (3) smooth (bounded) gain field on the consensus pixels, then the final consensus test on the aligned views
-    G, g0 = _gain_fit(lC, Mg, nv0, local=True)
+    # (3) smooth (bounded) gain field on the consensus pixels
+    G = _gain_fit(lC, Mg, nv0, local=True)[0]
     A = lC - G
-    nocons = _no_consensus(A, M, two)
-    if NOCONS:
-        M = M & ~nocons[None]
-    key, pw = ("gsd", SHARP_POW) if RES_MODE == "gsd2" else ("step", 4.0)
-    gsd = np.stack([v[key] for v in views])
+    step = np.stack([v["step"] for v in views])
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
-        res = np.nan_to_num((np.nanmin(np.where(M, gsd, np.nan), 0)[None] / gsd) ** pw)
-    if RES_MODE == "median":
-        res = np.ones_like(res)
+        res = np.nan_to_num((np.nanmin(np.where(M, step, np.nan), 0)[None] / step) ** RES_POW)
     lA = A.mean(-1)
     lmed = _nanmedian0(lA, M)
     nvalid = M.sum(0)
@@ -428,14 +417,12 @@ def fuse_views(views, disc):
     W = M * res * out_w * feather
     Ws = W.sum(0)
     top = (W[..., None] * (np.exp(A) - 1.0)).sum(0) / np.maximum(Ws, 1e-9)[..., None]
-    if RES_MODE == "median":
-        top = np.where(M.any(0)[..., None], np.nan_to_num(np.exp(_nanmedian0(A, M)) - 1.0), top)
     none = Ws <= 0
     if none.any():                                        # no usable view: cup_register rule colour (invalid anyway)
         Mo = np.stack([v["old_vis"] for v in views])
         fb = np.nan_to_num(_nanmedian0(C, Mo))
         top[none] = fb[none]
-    return top, ~none, M, dict(G=G, W=W, g0=g0, nocons=nocons)
+    return top, ~none, M
 
 
 # ------------------------------------------------------------------------------------------------ video grid
@@ -454,15 +441,12 @@ def to_video(top, seen, M, D, fi):
     return im, valid, nview
 
 
-def frame(P, fi, keep=False):
-    """Fused frame fi of P: img (BGR uint8, OUT), valid, nview, per-camera pitcher depth conflict (+ internals if keep)."""
-    views, disc = rectify(P, fi, keep_masks=keep)
-    top, seen, M, info = fuse_views(views, disc)
+def frame(P, fi):
+    """Fused frame fi of P: img (BGR uint8, OUT), valid, nview, per-camera pitcher depth conflict."""
+    views, disc = rectify(P, fi)
+    top, seen, M = fuse_views(views, disc)
     im, valid, nview = to_video(top, seen, M, P.D, fi)
-    out = dict(img=im, valid=valid, nview=nview, conflict=[v["conflict"] for v in views])
-    if keep:
-        out.update(views=views, top=top, seen=seen, M=M, info=info, disc=disc)
-    return out
+    return dict(img=im, valid=valid, nview=nview, conflict=[v["conflict"] for v in views])
 
 
 def build(p, frames=None, log=print):
@@ -488,7 +472,7 @@ def build(p, frames=None, log=print):
                 frame_idx=np.array(fis), pitcher_depth_conflict=cf, pose_rejected_t=P.pose_rejected,
                 source=f"{p}: fuse_occ.py (occluder masks in camera images: near depth + pitcher solid + stream, "
                        f"margin {MARGIN_PX} px; gain-aligned (3-view consensus, smooth part <= {G_LOC}) weighted fusion; "
-                       f"2-view no-consensus pixels {'dropped' if NOCONS else 'kept'}; cup_register plane, disc.json track)")
+                       f"cup_register plane, disc.json track)")
 
 
 def main(argv=None):

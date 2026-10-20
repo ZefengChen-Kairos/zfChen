@@ -23,7 +23,6 @@ Two passes: frames for every pour (frames()), then the whiteness (white()), whic
 raw_data/rig/video_obs/<p>.npz (+ <p>_sheet.jpg).  Run where the pipeline's pours/ data are.
     python3 -m latte_imex.rig.video_obs [--frames | --white] [pattern ...]
 (<p>_flow.npz, video_flow.py, was computed on the cup_register frames before fuse_occ; weight 0 in the fit.)"""
-import json
 import os
 import sys
 
@@ -110,8 +109,8 @@ def area_resample(a, n):
 
 def hand_mask(p, n=OUT):
     """Finished-pattern target mask (targets/<p>.npz, 512 px) at the video resolution: white, valid = area mean > 0.5
-    on the align-corners grid of both (was a 4 x 4 block mean, which puts pixel edges at +-EXT and moved the mask by up
-    to 1.5 target px = 0.26 mm towards the centre at the rim)."""
+    on the align-corners grid of both (was a 4 x 4 block mean, which puts pixel edges at +-EXT: the mask came out
+    magnified by 0.6 %, its rim moved outwards by up to 1.5 target px = 0.26 mm)."""
     T = np.load(f"{REPO}/raw_data/rig/targets/{p}.npz")
     return area_resample(T["white"].astype(np.float32), n) > 0.5, area_resample(T["valid"].astype(np.float32), n) > 0.5
 

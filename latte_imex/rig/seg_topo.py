@@ -3,9 +3,10 @@
     W = carve( veto( temporal( classifier ) ) )
 
 Why.  seg_sup's W filled the thin brown gaps between layers (tulip teardrop / heart / wings merged; 14 % of the tulip
-gap centre-line brown): its labels are Otsu masks that fill gaps (gap recall 0.42-0.57 on tulip / leaf / swan) and its
-temporal stage blurs the evidence by 1 px.  A brown line 1-2 mm wide under the video's edge blur (sigma ~1 mm) never
-falls to the crema level, so no global threshold keeps it; a half-max test against the local white level does.
+gap centre-line brown): its labels are Otsu masks that fill gaps (gap recall 0.54 / 0.48 / 0.41 on tulip / leaf /
+swan) and its temporal stage blurs the evidence by 1 px.  A brown line 1-2 mm wide under the video's edge blur
+(sigma ~1 mm) never falls to the crema level, so no global threshold keeps it; a half-max test against the local white
+level does.
 
 1. classifier  seg_sup exactly (frame_feats, CFG: features, label construction, weights, camera-gain replay,
                HistGradientBoosting) and seg_gmm for its crema-belief feature, both retrained leave-one-pour-out on the
@@ -38,12 +39,14 @@ area-sampled structure score, part-count and thickness terms; admissibility boun
 white, flips, blinks); the rule's tie-break picked gate 'none', 'z2' was adopted after the round's results for the
 physics above (cal J2 identical, test J2 0.835 vs 0.833).
 Cache: env SEG_TOPO_CACHE (default <tmp>/seg_topo_cache): classifier logits per fold, keyed by a content hash of the
-frames and the target masks.
+frames and the target masks, CFG, and the code that makes the logits (seg_sup.py, seg_gmm.py, video_obs.hand_mask and
+its resampling, classifier_logits, the scikit-learn version).
     python3 -m latte_imex.rig.seg_topo <out_dir> [--pours tulip,...] [--gate z2] [--carve run] [--viddir D]
         -> <out_dir>/W_<p>.npz: W float16 (n, 128, 128) in [0, 1] (0 outside valid), W2 (stage 2 after the veto), carved
     video_obs.white(p) stores segment_lopo(p) as the target."""
 import argparse
 import hashlib
+import inspect
 import json
 import os
 import tempfile
@@ -117,7 +120,7 @@ def classifier_logits(p, vid=None, log=print):
     others = tuple(q for q in POURS if q != p)
     key = hashlib.sha1(json.dumps({k: (list(v) if isinstance(v, tuple) else v) for k, v in CFG.items()},
                                   sort_keys=True).encode()).hexdigest()[:8]
-    fn = f"{CACHE}/logit_{frames_id(vid)}_{key}_{p}.npz"
+    fn = f"{CACHE}/logit_{frames_id(vid)}_{key}_{CODE_ID}_{p}.npz"
     if os.path.exists(fn):
         D = np.load(fn)
         return D["L"].astype(np.float32), float(D["prior"])
@@ -143,6 +146,21 @@ def classifier_logits(p, vid=None, log=print):
     os.makedirs(CACHE, exist_ok=True)
     np.savez_compressed(fn, L=L, prior=float(prior), train=np.array(others), frames=os.path.realpath(vid))
     return L.astype(np.float32), float(prior)
+
+
+def code_id():
+    """Hash of the code behind the cached logits (any edit there -- even a comment -- recomputes them), read when this
+    module is imported (CODE_ID), so a file edited during a run cannot key the running code's logits."""
+    import sklearn
+    h = hashlib.sha1(sklearn.__version__.encode())
+    for m in (seg_sup, seg_gmm):
+        h.update(open(m.__file__, "rb").read())
+    for f in (video_obs.hand_mask, video_obs.area_resample, video_obs.footprint_mean, classifier_logits):
+        h.update(inspect.getsource(f).encode())
+    return h.hexdigest()[:8]
+
+
+CODE_ID = code_id()
 
 
 # ------------------------------------------------------------------------------------------------ colour

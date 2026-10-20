@@ -48,6 +48,7 @@ import numpy as np
 from scipy import ndimage as ndi
 
 from ..diff import score as SS
+from .video_obs import footprint_mean
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 TGT = os.path.join(REPO, "raw_data", "rig", "targets")
@@ -60,7 +61,6 @@ POURS = ("tulip", "leaf", "heart", "push_heart", "swan")
 CAL, TEST = ("tulip", "leaf"), ("heart", "push_heart", "swan")
 EXT = 1.05
 L_M_MM = 42.0           # cup radius unit (disc.json L_m 41.5-42.3 mm)
-R_IN = 0.96
 N_LAST = 3              # last frames scored against the finished-pattern reference
 WHITE_FRAC = 0.5        # reference white at H: area fraction of reference white > 0.5
 GAP_FRAC = 0.25         # reference gap at H: area fraction of reference gaps > 0.25
@@ -86,27 +86,6 @@ def disk(r):
     return (x * x + y * y) <= r * r + 1e-9
 
 
-def footprint_mean(a, U, V, d, S=None):
-    """Mean of a (m x m, pixel centres linspace(-EXT, EXT, m): the video_obs / targets grid) over the square footprints of
-    width d centred at (U, V) (arrays, units of L_m): S x S bilinear samples spread over each footprint (exact area mean
-    up to the bilinear sub-sampling; S defaults to 2 * ceil(d / source pixel) + 2)."""
-    a = np.asarray(a, np.float32)
-    m = a.shape[0]
-    sp = 2 * EXT / (m - 1)
-    if S is None:
-        S = 2 * int(np.ceil(d / sp)) + 2 if d > sp else 1
-    U = np.asarray(U, np.float64); V = np.asarray(V, np.float64)
-    acc = np.zeros(U.shape)
-    for j in range(S):
-        for i in range(S):
-            u = U + ((i + 0.5) / S - 0.5) * d
-            v = V + ((j + 0.5) / S - 0.5) * d
-            mx = ((u + EXT) / sp).astype(np.float32)
-            my = ((v + EXT) / sp).astype(np.float32)
-            acc += cv2.remap(a, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
-    return acc / (S * S)
-
-
 def grid(n):
     s = np.linspace(-EXT, EXT, n)
     return np.meshgrid(s, s)
@@ -114,9 +93,9 @@ def grid(n):
 
 def area_resample(a, n, shift=(0.0, 0.0)):
     """Area-weighted mean of a (m x m) on the n x n grid, both with pixel centres linspace(-EXT, EXT, .) (align corners:
-    the video_obs and targets convention), optionally with the content of a moved by shift = (du, dv) [L_m].  Review
-    fix: cv2 INTER_AREA assumes pixel edges at +-EXT, which shifts the 512 -> 128 result by up to 1.5 target px
-    (0.26 mm, 0.37 px at 128) towards the centre at the rim."""
+    the video_obs and targets convention; video_obs.footprint_mean), optionally with the content of a moved by shift =
+    (du, dv) [L_m].  Not cv2 INTER_AREA: it assumes pixel edges at +-EXT, which magnifies the 512 -> 128 result by
+    0.6 % (the rim moves outwards by up to 1.5 target px = 0.26 mm, 0.37 px at 128)."""
     a = np.asarray(a, np.float32)
     if a.shape[0] == n and shift[0] == 0 and shift[1] == 0:
         return a.astype(float)
@@ -136,24 +115,25 @@ _OFF_FLY = {}
 
 def frame_offsets(p):
     """{frame index: (du, dv) [L_m]} of the scored frames against the target (topo_ref.offset, image-to-image measurement,
-    W not involved).  File: OFFSETS if given; else targets/frame_offsets.json for the default frames (topo_ref.py
-    --offsets; re-run it when video_obs is rebuilt; empty if missing: no per-frame correction); else (other frames, no
-    file) measured now on the last N_LAST frames of VIDDIR."""
+    W not involved).  File: OFFSETS if given, else targets/frame_offsets.json for the default frames (topo_ref.py
+    --offsets).  It is used when it holds the pour and its fingerprint of the frames (topo_ref.frames_fp; files without
+    one are taken as given) matches VIDDIR; otherwise (other frames, no file, stale file) the offsets are measured now on
+    the last N_LAST frames of VIDDIR."""
+    from .topo_ref import frames_fp, offset
     fn = OFFSETS or (f"{TGT}/frame_offsets.json" if os.path.abspath(VIDDIR) == os.path.abspath(DEFAULT_VIDDIR) else "")
-    if fn:
-        if not os.path.exists(fn):
-            return {}
-        D = json.load(open(fn)).get(p, {})
-    else:
-        if p not in _OFF_FLY:
-            from .topo_ref import offset
+    if p not in _OFF_FLY:
+        Z = np.load(f"{VIDDIR}/{p}.npz")
+        F = json.load(open(fn)) if fn and os.path.exists(fn) else {}
+        fp = F.get("_frames", {}).get(p)
+        if p in F and fp in (None, frames_fp(Z)):
+            _OFF_FLY[p] = F[p]
+        else:
             T = np.load(f"{TGT}/{p}.npz")
-            Z = np.load(f"{VIDDIR}/{p}.npz")
             n = len(Z["t"])
             _OFF_FLY[p] = {str(k): list(offset(T, Z["img"][k], Z["valid"][k])[:2]) for k in range(n - N_LAST, n)}
-            print(f"[topo_metric] {p}: frame offsets measured on {VIDDIR} (no offsets file given)", flush=True)
-        D = _OFF_FLY[p]
-    return {int(k): (v[0] / L_M_MM, v[1] / L_M_MM) for k, v in D.items()}
+            why = "stale offsets file (frames changed)" if p in F else "no offsets file"
+            print(f"[topo_metric] {p}: frame offsets measured on {VIDDIR} ({why}: {fn or '-'})", flush=True)
+    return {int(k): (v[0] / L_M_MM, v[1] / L_M_MM) for k, v in _OFF_FLY[p].items()}
 
 
 class Ref:
@@ -206,7 +186,7 @@ REF_N = 512
 
 
 def interior_brown_ref_res(w, m, ref):
-    """Predicted interior brown with exactly the reference's gap construction (review fix): W bilinearly upsampled to the
+    """Predicted interior brown with exactly the reference's gap construction: W bilinearly upsampled to the
     512 reference grid and thresholded at 0.5, closing with the reference's disk (round(R_GAP_MM / px) = 12 px), pieces
     < MIN_GAP_MM2 dropped, then back to H by area fraction > GAP_FRAC (as gaps_ref).  At H = 128 a 2 mm disk is
     2.9 px, which discretises to a 5 x 5 SQUARE: it closes diagonal channels up to ~4.9 mm wide, against 4.1 mm for the
@@ -240,6 +220,8 @@ def near(x, tol=TOL):
 
 
 def frame_metrics(w, vv, ref):
+    """Per-frame metrics of W (w, H x H) with video valid vv against the (registered) reference ref: iou, gap recall /
+    precision / F1, component counts, bf1 and the json-only extras (module docstring)."""
     m = vv & ref.valid
     wb = (w > 0.5) & m
     rw = ref.white & m
@@ -372,6 +354,9 @@ def load_w(p, d, Z):
 
 
 def evaluate_pour(p, d):
+    """All metrics of pour p for the W of d (load_w): the last N_LAST frames against the per-frame registered reference
+    (frame_metrics, down, dArea, mass_ratio / ME), the whole-video terms (temporal_extras, early, flip, midfar) and PE,
+    pchg60, J2.  Returns a flat dict (json keys)."""
     Z = np.load(f"{VIDDIR}/{p}.npz")
     W, last_only = load_w(p, d, Z)
     n, H = W.shape[0], W.shape[-1]
@@ -446,6 +431,7 @@ def fmt(v, k=None):
 
 
 def table(tag, res, pours=POURS):
+    """Text table of res (run): one row per pour and the mean / cal / test rows, columns HDR."""
     lines = [f"[{tag}]  last {N_LAST} frames vs reference (cRef at W resolution; 512 reference counts in json); "
              f"frames {VIDDIR}",
              f"{'pour':11s}" + "".join(f"{h:>7s}" if k not in FMT else f"{h:>8s}" for h, k in zip(HDR, KEYS))]
@@ -458,6 +444,7 @@ def table(tag, res, pours=POURS):
 
 
 def run(tag, d, pours=POURS):
+    """evaluate_pour for each pour, mean / cal / test rows -> RESDIR/<tag>.json (with the settings) and the printed table."""
     res = {p: evaluate_pour(p, d) for p in pours}
     for nm, ps in (("mean", POURS), ("cal", CAL), ("test", TEST)):
         if all(p in res for p in ps):
@@ -480,6 +467,8 @@ def run(tag, d, pours=POURS):
 
 
 def sheet(tag, d, size=256):
+    """Contact sheet of the last frame per pour -> RESDIR/<tag>_sheet.jpg: video frame | W | W against the registered
+    reference (white agree, red W-only white, blue reference-only white, green gap skeleton, yellow faint hairlines)."""
     rows = []
     for p in POURS:
         if d != "video_obs" and not os.path.exists(f"{d}/W_{p}.npz"):

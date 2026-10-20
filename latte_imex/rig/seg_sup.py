@@ -1,4 +1,6 @@
-"""Supervised video whiteness (the supervision target of video_obs.py), leave-one-pour-out.
+"""Supervised video whiteness, leave-one-pour-out: stages 1-2 (classifier, temporal HMM) of seg_topo.py.  Until
+V2_SURFACE_MODEL.md 10.5 its W was the supervision target of video_obs.py; on its own it fills the thin brown gaps
+between layers (Otsu labels, 1 px temporal blur), which seg_topo carves back.
 
 The only labels are the finished-pattern target masks (targets/<p>.npz: Otsu on LAB lightness of one hand-picked, evenly
 lit camera-1 frame after the pour, registered onto the video by target_register.py) -- one frame per pour, taken after

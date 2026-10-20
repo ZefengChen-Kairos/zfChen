@@ -29,13 +29,15 @@ teardrop / heart saddle <= 0.32) and survives a video-like blur up to sigma ~1.0
 Frame registration (offset()): the target was registered to the LAST video frame only; the two before it drift by up to
 1.6 mm, which a strict 1-px gap metric cannot absorb, so each scored frame's translation against the target image is
 measured (NCC of high-passed LAB lightness, sigma 3 mm, r < 0.9, both valid; integer search on a 256 grid +-2.8 mm,
-refined on the 512 grid +-2 px with a parabolic sub-pixel peak; W never used).
-    python3 -m latte_imex.rig.topo_ref [pour ...]      -> raw_data/rig/targets/<p>_ref.npz
-    python3 -m latte_imex.rig.topo_ref --offsets       -> raw_data/rig/targets/frame_offsets.json (video_obs frames)
+refined on the 512 grid +-2 px with a parabolic sub-pixel peak; W never used).  The file also stores a fingerprint of
+the frames it was measured on (frames_fp); topo_metric measures afresh when the frames have changed since.
+    python3 -m latte_imex.rig.topo_ref [--out DIR] [pour ...]   -> DIR/<p>_ref.npz (default raw_data/rig/targets)
+    python3 -m latte_imex.rig.topo_ref --offsets [--out DIR]    -> DIR/frame_offsets.json (of the video_obs frames)
 """
+import argparse
+import hashlib
 import json
 import os
-import sys
 
 import cv2
 import numpy as np
@@ -63,7 +65,6 @@ MIN_GAP_MM2 = 1.0    # [mm^2] gap pieces smaller than this are closing residues 
 R_FAINT = 1.25       # [mm] faint-line top-hat radius (lines up to 2.5 mm wide)
 FAINT_DEPTH = 0.2    # faint-line minimum dip depth (fraction of the foam-crema contrast)
 R_IN = 0.96          # [disc radii] as video_obs.py
-CHROMA = True        # whiteness = min(linear-light fraction, chromatic fraction)
 # frame registration
 N_LAST = 3           # scored frames (topo_metric.N_LAST)
 SIG_HP_MM = 3.0      # high-pass of the lightness
@@ -152,7 +153,7 @@ def reference(img, valid):
     SC, SF = C.sum(2), F.sum(2); dC, dF = C[..., 0] - C[..., 2], F[..., 0] - F[..., 2]
     den = (dF - dC) - b * (SF - SC)
     fc = (b * SC - dC) / np.where(np.abs(den) < 1e-6, 1e-6, den)
-    f = np.minimum(fl, np.clip(fc, -1.0, 2.0)) if CHROMA else fl
+    f = np.minimum(fl, np.clip(fc, -1.0, 2.0))
     # outside valid: replace by nearest valid value (no fake edges at the disc border)
     idx = ndi.distance_transform_edt(~v, return_distances=False, return_indices=True)
     f = f[tuple(idx)]
@@ -176,13 +177,16 @@ def reference(img, valid):
                 otsu_th=th)
 
 
-def build(pours=POURS):
+def build(pours=POURS, out=TGT):
+    """reference() of the target image of each pour -> out/<p>_ref.npz (white, valid, gaps, faint, n_comp, f as float16,
+    constants), with the component counts against the stored Otsu mask."""
+    os.makedirs(out, exist_ok=True)
     for p in pours:
         T = np.load(f"{TGT}/{p}.npz")
         r = reference(T["img"], T["valid"])
         n, _ = components(r["white"])
         no, _ = components(T["white"] & r["valid"])
-        np.savez_compressed(f"{TGT}/{p}_ref.npz", white=r["white"], valid=r["valid"], gaps=r["gaps"], faint=r["faint"],
+        np.savez_compressed(f"{out}/{p}_ref.npz", white=r["white"], valid=r["valid"], gaps=r["gaps"], faint=r["faint"],
                             n_comp=n, f=r["f"].astype(np.float16), px_mm=PX_MM, extent=EXT, min_comp_mm2=MIN_COMP_MM2,
                             r_gap_mm=R_GAP, min_gap_mm2=MIN_GAP_MM2,
                             rule="topo_ref.py: linear-light crema->foam mixing fraction, local half-max (f >= P/2, P>=0.5)")
@@ -243,13 +247,24 @@ def offset(T, img128, valid128):
     return -dx * PXR, -dy * PXR, float(M.max()), _ncc(A, B, m, 0, 0)
 
 
+def frames_fp(Z):
+    """Fingerprint of the scored frames of a video_obs npz (frame count, img and valid of the last N_LAST frames)."""
+    n = len(Z["t"])
+    h = hashlib.sha1(str(n).encode())
+    for a in (Z["img"][n - N_LAST:], Z["valid"][n - N_LAST:]):
+        h.update(np.ascontiguousarray(a).tobytes())
+    return h.hexdigest()[:12]
+
+
 def frame_offsets(vid=VID, fn=os.path.join(TGT, "frame_offsets.json")):
-    """{pour: {frame index: [du_mm, dv_mm, ncc, ncc_unshifted]}} of the last N_LAST frames of vid -> fn."""
-    out = {}
+    """{pour: {frame index: [du_mm, dv_mm, ncc, ncc_unshifted]}, '_frames': {pour: frames_fp}} of the last N_LAST frames
+    of vid -> fn."""
+    out = {"_frames": {}}
     for p in POURS:
         T = np.load(f"{TGT}/{p}.npz")
         Z = np.load(f"{vid}/{p}.npz")
         n = len(Z["t"])
+        out["_frames"][p] = frames_fp(Z)
         out[p] = {}
         for k in range(n - N_LAST, n):
             du, dv, c, c0 = offset(T, Z["img"][k], Z["valid"][k])
@@ -260,7 +275,14 @@ def frame_offsets(vid=VID, fn=os.path.join(TGT, "frame_offsets.json")):
 
 
 if __name__ == "__main__":
-    if sys.argv[1:2] == ["--offsets"]:
-        frame_offsets()
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("pours", nargs="*", metavar="pour", help=f"default: all of {', '.join(POURS)}")
+    ap.add_argument("--offsets", action="store_true", help="frame registrations of the video_obs frames instead")
+    ap.add_argument("--out", default=TGT, help="output directory (default: the repo's targets/)")
+    a = ap.parse_args()
+    if set(a.pours) - set(POURS):
+        ap.error(f"unknown pour(s) {sorted(set(a.pours) - set(POURS))}; choose from {', '.join(POURS)}")
+    if a.offsets:
+        frame_offsets(fn=os.path.join(a.out, "frame_offsets.json"))
     else:
-        build(sys.argv[1:] or POURS)
+        build(a.pours or POURS, a.out)
