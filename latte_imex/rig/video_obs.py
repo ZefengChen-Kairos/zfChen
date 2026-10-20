@@ -12,11 +12,11 @@ Per frame:
          (r <= 0.96 R(t)/L_m: the meniscus at the wall is excluded), not a specular glare blob (small near-saturated
          components), not within FOOT_R disc radii of the spout tip (stream / impact zone: low confidence)
   t      frame time [s] on the simulation clock
-  w      whiteness (uint8, 255 = foam): seg_gmm.py -- per-frame crema / foam Gaussian mixture with a per-pixel HMM over
-         the whole video, fitted by EM; the class geometry is learnt from the hand-checked final masks of the
-         calibration pours only (tulip, leaf; targets/<p>.npz registered onto the video by target_register.py)
-Two passes: frames for every pour (frames()), then the whiteness (white()), which reads the calibration pours' last
-frames.  Writes raw_data/rig/video_obs/<p>.npz (+ <p>_sheet.jpg).  Run where the pipeline's top/ frames are.
+  w      whiteness (uint8, 255 = foam): seg_sup.py -- a classifier on crema-relative colour / texture features plus the
+         seg_gmm posterior, followed by a per-pixel HMM over the whole video, trained leave-one-pour-out on the
+         finished-pattern target masks (targets/<p>.npz: Otsu on one hand-picked, evenly lit frame after the pour,
+         registered onto the video by target_register.py): the W of pour p never sees p's own mask
+Two passes: frames for every pour (frames()), then the whiteness (white()), which reads every pour's frames.  Writes raw_data/rig/video_obs/<p>.npz (+ <p>_sheet.jpg).  Run where the pipeline's top/ frames are.
     python3 -m latte_imex.rig.video_obs [pattern ...]"""
 import json
 import os
@@ -30,7 +30,7 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUT, EXT = 128, 1.05
 R_IN = 0.96              # disc radius used (the bright meniscus ring at the wall is excluded)
 FOOT_R = 0.12            # [disc radii] exclusion around the spout tip while pouring
-CAL = ("tulip", "leaf")  # calibration pours: their hand masks teach seg_gmm the foam / crema geometry
+POURS = ("tulip", "leaf", "heart", "push_heart", "swan")
 
 
 def frame(p, fi, D, U, V, RR):
@@ -82,7 +82,7 @@ def frames(p):
 
 
 def hand_mask(p, n=OUT):
-    """Hand-checked final pattern (targets/<p>.npz) at the video resolution: white, valid."""
+    """Finished-pattern target mask (targets/<p>.npz) at the video resolution: white, valid."""
     T = np.load(f"{REPO}/raw_data/rig/targets/{p}.npz")
     k = T["white"].shape[0] // n
     w = T["white"].reshape(n, k, n, k).mean((1, 3)) > 0.5
@@ -91,17 +91,21 @@ def hand_mask(p, n=OUT):
 
 
 def white(p):
-    """seg_gmm whiteness of pour p (frames() must have run for p and the calibration pours)."""
-    from . import seg_gmm
+    """Supervised leave-one-pour-out whiteness of pour p (frames() must have run for every pour)."""
+    from . import seg_sup
+    store_white(p, seg_sup.segment_lopo(p, {q: hand_mask(q) for q in POURS}))
+
+
+def store_white(p, W):
+    """Write the whiteness W (n, OUT, OUT) of pour p into video_obs/<p>.npz, with the contact sheet."""
     fn = f"{REPO}/raw_data/rig/video_obs/{p}.npz"
     Z = dict(np.load(fn))
-    W = seg_gmm.segment(p, Z, {q: hand_mask(q) for q in CAL})
     V = Z["valid"].astype(bool)
     W = np.where(V, W, 0.0)
     n = len(W)
     prior = np.array([W[k][V[k]].mean() if V[k].any() else 0.0 for k in range(n)])
     Z.update(w=(W * 255).round().astype(np.uint8), white_frac=prior,
-             source=f"{p}: cup_register.py frames and disc.json; w = seg_gmm whiteness * 255")
+             source=f"{p}: cup_register.py frames and disc.json; w = seg_sup (leave-one-pour-out) whiteness * 255")
     np.savez_compressed(fn, **Z)
     rows = []
     for k in np.linspace(0, n - 1, 16).astype(int):
@@ -116,13 +120,13 @@ def white(p):
     hw, hv = hand_mask(p)
     m = hv & V[-1]
     a, b = (W[-1] > 0.5) & m, hw & m
-    print(f"{p}: white fraction first/mid/last {prior[0]:.2f}/{prior[n // 2]:.2f}/{prior[-1]:.2f}, last frame vs hand mask "
+    print(f"{p}: white fraction first/mid/last {prior[0]:.2f}/{prior[n // 2]:.2f}/{prior[-1]:.2f}, last frame vs target mask "
           f"IoU {(a & b).sum() / max((a | b).sum(), 1):.3f} (area ratio {a.sum() / max(b.sum(), 1):.2f})")
 
 
 if __name__ == "__main__":
     pats = sys.argv[1:] or ["heart", "push_heart", "leaf", "swan", "tulip"]
-    for p in sorted(set(pats) | set(CAL), key=lambda q: q not in CAL):
+    for p in POURS:
         if p in pats or not os.path.exists(f"{REPO}/raw_data/rig/video_obs/{p}.npz"):
             frames(p)
     for p in pats:
