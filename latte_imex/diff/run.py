@@ -228,30 +228,49 @@ def exposure_transients(t, L, valid, tol=EXPOSURE_TOL):
     return np.abs(med - run) > tol * run
 
 
+def footprint_mean(a, U, V, d, ex):
+    """Mean of the video image a (n x n, pixel centres linspace(-ex, ex, n), disc units) over the square cell footprints
+    of width d centred at (U, V): S x S bilinear samples per footprint (exact area mean up to the sub-sampling)."""
+    import cv2
+    a = np.asarray(a, np.float32)
+    sp = 2 * ex / (a.shape[0] - 1)
+    S = 2 * int(math.ceil(d / sp)) + 2
+    acc = np.zeros(U.shape)
+    for j in range(S):
+        for i in range(S):
+            mx = ((U + ((i + 0.5) / S - 0.5) * d + ex) / sp).astype(np.float32)
+            my = ((V + ((j + 0.5) / S - 0.5) * d + ex) / sp).astype(np.float32)
+            acc += cv2.remap(a, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    return acc / (S * S)
+
+
 def video_on_grid(p, geo, t_end):
     """Whole-video observations (raw_data/rig/video_obs/<p>.npz) on the solver cells: list of (frame index, time
-    weight, w, v) for the frames inside the simulated time (exposure transients dropped, EXPOSURE_TOL)."""
+    weight, w, v) for the frames inside the simulated time (exposure transients dropped, EXPOSURE_TOL).  w is the AREA
+    mean of the observed whiteness over each cell's footprint (the simulation's c is a cell mean too; a nearest-pixel
+    sample would hit or miss a 1-2 mm layer gap depending on where the cell lattice falls); a cell is observed when more
+    than half of its footprint is (V2_SURFACE_MODEL.md 10.5)."""
     import os
     from ..rig.real_program import CUP_R, REPO
     Z = np.load(os.path.join(REPO, "raw_data", "rig", "video_obs", f"{p}.npz"))
-    t, Wo, Vo, ex = Z["t"], Z["w"].astype(float) / 255.0, Z["valid"], float(Z["extent"])
+    t, Wo, Vo, ex = Z["t"], Z["w"].astype(np.float32) / 255.0, Z["valid"], float(Z["extent"])
     bad = exposure_transients(t, Z["L"].astype(float), Vo) if EXPOSURE_TOL else np.zeros(len(t), bool)
-    n = Wo.shape[1]
     U, V = geo.x_np / CUP_R, -geo.y_np / CUP_R
-    col = np.clip(np.round((U + ex) / (2 * ex) * (n - 1)).astype(int), 0, n - 1)
-    row = np.clip(np.round((V + ex) / (2 * ex) * (n - 1)).astype(int), 0, n - 1)
+    d = geo.h / CUP_R
     inside = (U ** 2 + V ** 2 <= 1.0) & geo.mask_np
-    keep = [j for j in range(len(t)) if t[j] <= t_end[-1] + 0.02 and (Vo[j][row, col] & inside).sum() > 50 and not bad[j]]
-    tk = t[keep]
+    out, cand = [], [j for j in range(len(t)) if t[j] <= t_end[-1] + 0.02 and not bad[j]]
+    for j in cand:
+        vf = footprint_mean(Vo[j], U, V, d, ex)
+        v = (vf > 0.5) & inside
+        if v.sum() > 50:
+            out.append((j, footprint_mean(np.where(Vo[j], Wo[j], 0.0), U, V, d, ex) / np.maximum(vf, 1e-9), v))
+    tk = t[[j for j, _, _ in out]]
     mid = 0.5 * (tk[1:] + tk[:-1])
     dt = np.diff(np.r_[tk[0], mid, tk[-1]]) if len(tk) > 1 else np.ones(1)
     dt = np.maximum(dt, 1e-3)
     dt /= dt.sum()
-    out = []
-    for jj, j in enumerate(keep):
-        k = int(np.argmin(np.abs(t_end - t[j])))
-        out.append((k, float(dt[jj]), Wo[j][row, col], (Vo[j][row, col] & inside).astype(float), float(t[j])))
-    return out
+    return [(int(np.argmin(np.abs(t_end - t[j]))), float(dt[jj]), np.clip(w, 0.0, 1.0), v.astype(float), float(t[j]))
+            for jj, (j, w, v) in enumerate(out)]
 
 
 def target_on_grid(p, geo):
