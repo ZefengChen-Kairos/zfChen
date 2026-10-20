@@ -14,10 +14,11 @@ Per frame:
          (small near-saturated components), not within FOOT_R disc radii of the spout tip (stream / impact zone)
   nview  cameras usable at the pixel (0-3; single-view pixels cannot be cross-checked)
   t      frame time [s] on the simulation clock
-  w      whiteness (uint8, 255 = foam): seg_sup.py -- a classifier on crema-relative colour / texture features plus the
-         seg_gmm posterior, followed by a per-pixel HMM over the whole video, trained leave-one-pour-out on the
-         finished-pattern target masks (targets/<p>.npz: Otsu on one hand-picked, evenly lit frame after the pour,
-         registered onto the video by target_register.py): the W of pour p never sees p's own mask
+  w      whiteness (uint8, 255 = foam): seg_topo.py -- the seg_sup classifier (crema-relative colour / texture
+         features + the seg_gmm posterior, trained leave-one-pour-out on the Otsu target masks of the other four
+         pours), seg_sup's per-pixel HMM over the whole video, a veto of white on pixels darker than their local crema,
+         and a persistent half-max valley carve that keeps the thin brown gaps between layers: the W of pour p never
+         sees p's own mask
 Two passes: frames for every pour (frames()), then the whiteness (white()), which reads every pour's frames.  Writes
 raw_data/rig/video_obs/<p>.npz (+ <p>_sheet.jpg).  Run where the pipeline's pours/ data are.
     python3 -m latte_imex.rig.video_obs [--frames | --white] [pattern ...]
@@ -83,19 +84,42 @@ def write_frames(p, F):
     print(f"{p}: {n} frames, t 0..{F['t'][-1]:.2f} s, valid fraction median {np.median(vf):.2f} (min {vf.min():.2f})")
 
 
+def footprint_mean(a, U, V, d, S=None):
+    """Mean of a (m x m, pixel centres linspace(-EXT, EXT, m)) over the square footprints of width d centred at (U, V):
+    S x S bilinear samples per footprint (S defaults to 2 ceil(d / source pixel) + 2)."""
+    a = np.asarray(a, np.float32)
+    sp = 2 * EXT / (a.shape[0] - 1)
+    if S is None:
+        S = 2 * int(np.ceil(d / sp)) + 2 if d > sp else 1
+    acc = np.zeros(np.shape(U))
+    for j in range(S):
+        for i in range(S):
+            u = U + ((i + 0.5) / S - 0.5) * d
+            v = V + ((j + 0.5) / S - 0.5) * d
+            acc += cv2.remap(a, ((u + EXT) / sp).astype(np.float32), ((v + EXT) / sp).astype(np.float32),
+                             cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    return acc / (S * S)
+
+
+def area_resample(a, n):
+    """Area mean of a (m x m) on the n x n grid, both with pixel centres linspace(-EXT, EXT, .) (align corners)."""
+    s = np.linspace(-EXT, EXT, n)
+    U, V = np.meshgrid(s, s)
+    return footprint_mean(a, U, V, 2 * EXT / (n - 1))
+
+
 def hand_mask(p, n=OUT):
-    """Finished-pattern target mask (targets/<p>.npz) at the video resolution: white, valid."""
+    """Finished-pattern target mask (targets/<p>.npz, 512 px) at the video resolution: white, valid = area mean > 0.5
+    on the align-corners grid of both (was a 4 x 4 block mean, which puts pixel edges at +-EXT and moved the mask by up
+    to 1.5 target px = 0.26 mm towards the centre at the rim)."""
     T = np.load(f"{REPO}/raw_data/rig/targets/{p}.npz")
-    k = T["white"].shape[0] // n
-    w = T["white"].reshape(n, k, n, k).mean((1, 3)) > 0.5
-    v = T["valid"].reshape(n, k, n, k).mean((1, 3)) > 0.5
-    return w, v
+    return area_resample(T["white"].astype(np.float32), n) > 0.5, area_resample(T["valid"].astype(np.float32), n) > 0.5
 
 
 def white(p):
-    """Supervised leave-one-pour-out whiteness of pour p (frames() must have run for every pour)."""
-    from . import seg_sup
-    store_white(p, seg_sup.segment_lopo(p, {q: hand_mask(q) for q in POURS}))
+    """Leave-one-pour-out whiteness of pour p (frames() must have run for every pour)."""
+    from . import seg_topo
+    store_white(p, seg_topo.segment_lopo(p))
 
 
 def store_white(p, W):
@@ -107,7 +131,8 @@ def store_white(p, W):
     n = len(W)
     prior = np.array([W[k][V[k]].mean() if V[k].any() else 0.0 for k in range(n)])
     Z.update(w=(W * 255).round().astype(np.uint8), white_frac=prior,
-             source=f"{p}: fuse_occ.py frames and disc.json; w = seg_sup (leave-one-pour-out) whiteness * 255")
+             source=f"{p}: fuse_occ.py frames and disc.json; w = seg_topo (leave-one-pour-out seg_sup classifier, "
+                    f"temporal HMM, darkness veto, persistent valley carve) whiteness * 255")
     np.savez_compressed(fn, **Z)
     rows = []
     for k in np.linspace(0, n - 1, 16).astype(int):
