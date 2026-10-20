@@ -125,8 +125,9 @@ def set_grid(N):
     """Scale the cell-based constants to grid N so that they keep their physical size (lengths x N/48, areas x
     (N/48)^2).  At N = 96 with the N = 48 constants the video's own 0.25 s self-consistency drops (tulip 0.92 -> 0.84,
     leaf 0.89 -> 0.79); scaled, it is 0.94 / 0.91 (V2_SURFACE_MODEL.md 10.5)."""
-    global R, SHIFT, SPECK, A, MIN_WHITE, _DR, _OFF, _OY, _OX
+    global R, SHIFT, SPECK, A, MIN_WHITE, _DR, _D1, _OFF, _OY, _OX
     f = N / REF_N
+    _D1 = _disk(max(1, int(round(f))))     # the half-credit neighbourhood of _near: one N = 48 cell (1.8 mm)
     R = max(1, int(round(_BASE['R'] * f)))
     SHIFT = max(1, int(round(_BASE['SHIFT'] * f)))
     SPECK = int(round(_BASE['SPECK'] * f * f))
