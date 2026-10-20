@@ -86,6 +86,7 @@ _CFG = {}
 def _init(cfg):
     from .run import DiffPour
     _CFG.update(cfg)
+    SS.set_grid(cfg["N"])                  # score constants at the same physical size on every grid
     for p in cfg["pours"]:
         D = DiffPour(p, N=cfg["N"], device=cfg["device"], tau=0.05, scales=(0.3, 0.15, 0.0), e0=cfg["e0"],
                      exit_cal=cfg["exit_cal"], upwell=cfg["upwell"], circ=cfg["circ"], circ_shape=cfg["circ_shape"],

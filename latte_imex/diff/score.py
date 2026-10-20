@@ -1,7 +1,8 @@
 """Structure-aware, position-tolerant score of a simulated frame against a video frame (V2_SURFACE_MODEL.md §9).
 
 score(c, w, valid) -> [0, 1], higher = better; c: simulated mixing fraction (soft, N x N), w: video white fraction (soft),
-valid: observed cells.  Built for the N = 48 solver grid (cell ~1.9 mm).
+valid: observed cells.  Built for the N = 48 solver grid (cell ~1.8 mm); set_grid(N) keeps R, SHIFT, SPECK, A and MIN_WHITE at
+the same physical size on other grids (SIG_C stays in cells: it is the solver's own resolution).
   0. cells outside `valid` take the value of the nearest valid cell (no fake edges at occluders); specks of <= SPECK
      8-connected cells flipped (both); the simulation alone smoothed by SIG_C cells (the solver does not resolve
      single-cell features; without it grid noise in c is rewarded)
@@ -30,6 +31,9 @@ A = 1.0                # additive prior per class (add-one smoothing, in cells)
 SHIFT = 2              # rigid alignment search radius (cells)
 SPECK = 2              # specks of <= SPECK cells are removed (both images)
 SIG_C = 0.7            # resolution filter on the simulation only (cells)
+
+REF_N = 48             # the grid the constants above are set for
+_BASE = dict(R=R, SHIFT=SHIFT, SPECK=SPECK, A=A)
 
 _E8 = np.ones((3, 3), bool)
 
@@ -114,6 +118,23 @@ def score(c, w, valid):
 
 # ---------------------------------------------------------------------------- whole-video use
 MIN_WHITE = 40          # observed white cells (w > 0.5) a video frame needs to count
+_MIN_WHITE0 = MIN_WHITE
+
+
+def set_grid(N):
+    """Scale the cell-based constants to grid N so that they keep their physical size (lengths x N/48, areas x
+    (N/48)^2).  At N = 96 with the N = 48 constants the video's own 0.25 s self-consistency drops (tulip 0.92 -> 0.84,
+    leaf 0.89 -> 0.79); scaled, it is 0.94 / 0.91 (V2_SURFACE_MODEL.md 10.5)."""
+    global R, SHIFT, SPECK, A, MIN_WHITE, _DR, _OFF, _OY, _OX
+    f = N / REF_N
+    R = max(1, int(round(_BASE['R'] * f)))
+    SHIFT = max(1, int(round(_BASE['SHIFT'] * f)))
+    SPECK = int(round(_BASE['SPECK'] * f * f))
+    A = _BASE['A'] * f * f
+    MIN_WHITE = int(round(_MIN_WHITE0 * f * f))
+    _DR = _disk(R)
+    _OFF = [(dy, dx) for dy in range(-SHIFT, SHIFT + 1) for dx in range(-SHIFT, SHIFT + 1) if dy * dy + dx * dx <= SHIFT * SHIFT]
+    _OY = np.array([SHIFT - dy for dy, dx in _OFF]); _OX = np.array([SHIFT - dx for dy, dx in _OFF])
 MIN_OBS = 0.6           # ... and the observed share of the cup
 LAG = 0.25              # [s] the video self-consistency reference
 
