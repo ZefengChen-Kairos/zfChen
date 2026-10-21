@@ -53,6 +53,11 @@ PKEYS = tuple(PARAM_WIDE)
 INLET_BOX = {"err": dict(dx_mm=8.0, Q_x=2.0, U_x=1.4, du_ms=0.10, knot_s=0.2),
              "wide": dict(dx_mm=20.0, Q_x=5.0, U_x=2.5, du_ms=0.30, knot_s=0.3)}
 IV = ("dx", "dy", "aQ", "aU", "dux", "duy")
+# the pattern-phase milk volume of the corrected inlet stays within this factor of the measured pour's (the whole pour's
+# 165 g is weighed; its pattern-phase share comes from the pour model): quadratic penalty W_VOL (ln excess)^2 beyond it
+VOL_TOL = {"err": 1.25, "wide": 2.0}
+W_VOL = 1.0
+PRIOR = 2e-6             # weak prior PRIOR sum (2u - 1)^2 on the inlet knots (see InletCorr.penalty)
 MODE_SET = {"params": (True, None), "inlet": (False, "err"), "both": (True, "err"), "both_wide": (True, "wide")}
 KEY_T = {"tulip": (1.92, 2.78, 4.02, 4.87, 13.21), "leaf": (2.21, 3.03, 4.41, 8.79)}
 SEP_FRAC = 0.3           # petal separation over the last 30 % of the observed frames
@@ -166,6 +171,32 @@ class InletCorr:
         g[5][a] = Gx["uy"] + c["uy"] * com + c["ux"] * iv2 * Gx["phi"]
         return self.frames_T(g) * (2.0 * self.lim[:, None])
 
+    def penalty(self, u, prior=PRIOR):
+        """Host-side terms of the inlet correction: (i) the pattern-phase volume within VOL_TOL of the measured one,
+        W_VOL (|ln V/V0| - ln VOL_TOL)^2 beyond it; (ii) a weak prior `prior` sum (2u - 1)^2 that keeps the knots the
+        video does not constrain at the measured inlet (Adam moves every coordinate by ~lr per step whatever the size of
+        its gradient, so without it those knots drift to the box edges and inflate the correction statistics).
+        Returns (value, dL/du (6, K), V / V0)."""
+        c = self.frames(self.theta(u))
+        a = self.act
+        w = self.S0["Q"][a] * self.fdt[a]
+        e = np.exp(c[2][a])
+        V0, V = float(w.sum()), float((w * e).sum())
+        gu = np.zeros((6, self.K))
+        pen = 0.0
+        if V0 > 0:
+            lv = math.log(V / V0)
+            ex = abs(lv) - math.log(VOL_TOL[self.box])
+            if ex > 0:
+                pen = W_VOL * ex * ex
+                g = np.zeros((6, len(self.t)))
+                g[2][a] = W_VOL * 2.0 * ex * math.copysign(1.0, lv) * (w * e) / V
+                gu = self.frames_T(g) * (2.0 * self.lim[:, None])
+        z = 2.0 * np.asarray(u, float) - 1.0
+        pen += prior * float((z * z).sum())
+        gu = gu + 4.0 * prior * z
+        return pen, gu, (V / V0 if V0 > 0 else 1.0)
+
     def scan_ratio(self, S):
         """Largest landing-point step per frame over the solver's own bound scan_safety min(h, r1, r2) (<= ~1 in the
         measured record)."""
@@ -174,7 +205,7 @@ class InletCorr:
         if not both.any():
             return 0.0
         step = np.hypot(np.diff(S["x"]), np.diff(S["y"]))[both]
-        lim = self.safety * np.minimum(self.h, np.minimum(np.maximum(S["r1"], 1.5 * self.h), np.maximum(S["r2"], 1.5 * self.h)))[1:][both]
+        lim = self.safety * np.minimum(self.h, np.minimum(S["r1"], S["r2"]))[1:][both]       # schedule.build's bound
         return float(np.max(step / lim))
 
     def series(self, S):
@@ -213,18 +244,22 @@ def full_P(D, num, sw):
     return P
 
 
-def step(D, P, tau, u):
-    scan = 0.0
+def step(D, P, tau, u, prior=PRIOR):
+    scan, pen, vol = 0.0, 0.0, 1.0
     if D.inl is not None and u is not None:
         S = D.inl.apply(u)
         assign(D, S)
         scan = D.inl.scan_ratio(S)
     D.tau = tau
     L, g, _ = D.loss_grad(P)
-    gu = D.inl.chain(D.sched_grad) if (D.inl is not None and u is not None) else None
+    gu = None
+    if D.inl is not None and u is not None:
+        gu = D.inl.chain(D.sched_grad)
+        pen, gp, vol = D.inl.penalty(u, prior)
+        L, gu = L + pen, gu + gp
     gvj = float(np.abs(D.sched_grad["vjx"]).sum() + np.abs(D.sched_grad["vjy"]).sum())
     viou = float(np.mean([v for _, v in D.vmetrics])) if D.vmetrics else float("nan")
-    return dict(L=float(L), g=g, gu=gu, viou=viou, scan=scan, gvj=gvj, timing=D.timing)
+    return dict(L=float(L), g=g, gu=gu, viou=viou, scan=scan, gvj=gvj, pen=pen, vol=vol, timing=D.timing)
 
 
 def separation(D, ML, frac=SEP_FRAC):
@@ -348,20 +383,33 @@ def render(D, sw, out, P0, P1, u1, label, every, movie, T):
         S = D.inl.apply(u1)
         assign(D, S)
         ser = D.inl.series(S)
-        inlet_figure(p, out, ser, D.inl.box)
+        try:
+            inlet_figure(p, out, ser, D.inl.box)
+        except Exception as e:                                   # noqa: BLE001
+            print(f"{p}: inlet figure failed ({e})", flush=True)
     _, C1, ML1 = RR.run_pour(D, P1, sw, every)
     r1 = dict(RR.score48(p, sw, D, ML1, T, D48=D48), **separation(D, ML1))
     msk = D.geo.mask_np
     lab0 = "起点（测量入口）"
-    stills(p, out, [(t_end, C0, msk), (t_end, C1, msk)], [lab0, label])
+    errs = []                                                    # a figure failing must not lose the scores
+
+    def guard(name, f):
+        try:
+            f()
+        except Exception as e:                                   # noqa: BLE001
+            errs.append(f"{name}: {type(e).__name__}: {e}")
+    guard("stills", lambda: stills(p, out, [(t_end, C0, msk), (t_end, C1, msk)], [lab0, label]))
     if movie:
-        RR.movies(p, out, (t_end, C1, msk, D.N), (t_end, C0, msk, D.N), label, lab0, every)
-    tobs = np.array([o["t"] for o in D.obs])
-    c128 = np.array([np.clip(RR.to_H(C1[int(o["k"])], msk, 128), 0, 1) for o in D.obs])
-    np.savez_compressed(os.path.join(out, f"{p}_c128.npz"), t=tobs, c=(c128 * 255 + 0.5).astype(np.uint8))
+        guard("movies", lambda: RR.movies(p, out, (t_end, C1, msk, D.N), (t_end, C0, msk, D.N), label, lab0, every))
+
+    def c128():
+        tobs = np.array([o["t"] for o in D.obs])
+        c = np.array([np.clip(RR.to_H(C1[int(o["k"])], msk, 128), 0, 1) for o in D.obs])
+        np.savez_compressed(os.path.join(out, f"{p}_c128.npz"), t=tobs, c=(c * 255 + 0.5).astype(np.uint8))
+    guard("c128", c128)
     if D.inl is not None:
         assign(D, D.inl.S0)
-    return dict(start=r0, best=r1, inlet=inlet_stats(ser))
+    return dict(start=r0, best=r1, inlet=inlet_stats(ser), errors=errs)
 
 
 def _worker(conn, p, sw, kw):
@@ -407,7 +455,10 @@ class Pour:
 
     def send(self, *msg):
         if self.process:
-            self.conn.send(msg)
+            try:
+                self.conn.send(msg)
+            except (BrokenPipeError, EOFError, OSError) as e:
+                self._dead = f"{type(e).__name__}: {e}"
         else:
             try:
                 fn = step if msg[0] == "step" else (lambda D, *a: render(D, self.sw, *a))
@@ -416,7 +467,16 @@ class Pour:
                 self._res = ("err", str(e))
 
     def recv(self):
-        st, r = self.conn.recv() if self.process else self._res
+        if self.process:
+            if getattr(self, "_dead", None):
+                raise RuntimeError(f"{self.p}: worker gone ({self._dead})")
+            try:
+                st, r = self.conn.recv()
+            except (EOFError, OSError) as e:
+                self._dead = f"{type(e).__name__}: {e}"
+                raise RuntimeError(f"{self.p}: worker gone ({self._dead})")
+        else:
+            st, r = self._res
         if st != "ok":
             raise RuntimeError(f"{self.p}: {r}")
         return r
@@ -457,6 +517,13 @@ def progress_png(out, recs):
     fig.tight_layout(); fig.savefig(os.path.join(out, "progress.png"), dpi=100); plt.close(fig)
 
 
+def _atomic_json(obj, fn, **kw):
+    tmp = fn + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(obj, f, default=float, **kw)
+    os.replace(tmp, fn)
+
+
 def run(a):
     from .render512 import load_closure
     mode = a.mode
@@ -468,6 +535,9 @@ def run(a):
         log(f"{mode}: done before ({out}/done.json), skipped")
         return
     num, sw = load_closure(a.init)
+    if box and (sw["circ"] or float(num.get("vj", 0.0)) > 0 or float(num.get("kappa_tc", 0.0)) > 0):
+        raise SystemExit("diag.py: a start closure with the surface current (circ) or the landing-point velocity (vj, "
+                         "kappa_tc) is not supported with an inlet correction: those fields are not re-derived from it")
     cal = tuple(a.cal.split(","))
     kw = dict(N=a.N, device=a.device, T=a.T, box=box)
     workers = (a.device or "cuda").startswith("cuda") if a.workers < 0 else a.workers > 0
@@ -504,6 +574,8 @@ def run(a):
         Z = np.load(stf, allow_pickle=False)
         if Z["x"].shape == x.shape:
             x, m1, m2, it = Z["x"], Z["m1"], Z["m2"], int(Z["it"])
+            if "lr" in Z.files and Z["lr"].shape == lr.shape:
+                lr = Z["lr"]
             recs = [json.loads(l) for l in open(os.path.join(out, "records.jsonl"))] if os.path.exists(
                 os.path.join(out, "records.jsonl")) else []
             recs = [r for r in recs if r["it"] < it]
@@ -526,7 +598,7 @@ def run(a):
         t0 = time.time()
         try:
             for p in cal:
-                pours[p].send("step", P, tau, ui_.get(p))
+                pours[p].send("step", P, tau, ui_.get(p), a.prior)
             res, errs = {}, []
             for p in cal:
                 try:
@@ -546,7 +618,6 @@ def run(a):
             lr *= 0.5
             x = x_prev.copy()
             continue
-        nfail = 0
         t_it = time.time() - t0
         L = float(np.mean([r["L"] for r in res.values()]))
         vI = float(np.mean([r["viou"] for r in res.values()]))
@@ -558,27 +629,44 @@ def run(a):
             if box:
                 gparts.append(res[p]["gu"].ravel() / len(cal))
         gx = np.concatenate(gparts)
+        if not (np.isfinite(L) and np.all(np.isfinite(gx))):         # treat like a failed forward: keep x, no Adam update
+            nfail += 1
+            if x_prev is None or nfail > 6:
+                for po in pours.values():
+                    po.close()
+                raise SystemExit(f"{mode} it {it}: non-finite loss or gradient"
+                                 + ("" if x_prev is not None else " at the start"))
+            log(f"it {it}: non-finite loss or gradient; halving the step")
+            lr *= 0.5
+            x = x_prev.copy()
+            continue
+        nfail = 0
         rec = dict(it=it, loss=L, viou=vI, tau=tau, wall_s=t_it, params={k: float(P[k]) for k in PKEYS},
-                   per={p: dict(loss=r["L"], viou=r["viou"], scan=r["scan"], gvj=r["gvj"], fwd_s=r["timing"]["forward_s"],
-                                bwd_s=r["timing"]["backward_s"]) for p, r in res.items()})
+                   per={p: dict(loss=r["L"], viou=r["viou"], scan=r["scan"], gvj=r["gvj"], pen=r.get("pen", 0.0),
+                                vol=r.get("vol", 1.0), fwd_s=r["timing"]["forward_s"], bwd_s=r["timing"]["backward_s"])
+                        for p, r in res.items()})
         recs.append(rec)
         with open(fn, "a") as f:
             f.write(json.dumps(rec) + "\n")
         log(f"{mode} it {it:3d}  loss {L:.4f}  vIoU {vI:.3f}  " + "  ".join(
-            f"{p} v{r['viou']:.3f}" + (f" scan {r['scan']:.2f}" if box else "") for p, r in res.items())
+            f"{p} v{r['viou']:.3f}" + (f" scan {r['scan']:.2f} vol x{r['vol']:.2f}" if box else "") for p, r in res.items())
             + f"  |g| {np.linalg.norm(gx):.2e}  {t_it:.0f} s")
         if best is None or vI > best["viou"]:
             best = dict(it=it, viou=vI, loss=L, params=dict(P), u_in={p: ui_[p].tolist() for p in ui_})
-            json.dump(best, open(os.path.join(out, "best.json"), "w"), default=float)
-            json.dump(dict(P, _note=f"diag {mode} best (it {it}, video IoU {vI:.4f})"),
-                      open(os.path.join(out, "best_closure.json"), "w"), indent=1, default=float)
+            _atomic_json(best, os.path.join(out, "best.json"))
+            # with the start closure's switches (e0, milk, sink, ...), so load_closure reproduces the same model
+            _atomic_json(dict(num, **{k: float(P[k]) for k in W.PARAMS if k in P},
+                              _note=f"diag {mode} best (it {it}, video IoU {vI:.4f}); inlet corrections in best.json"),
+                         os.path.join(out, "best_closure.json"), indent=1)
         m1 = b1 * m1 + (1 - b1) * gx
         m2 = b2 * m2 + (1 - b2) * gx ** 2
         mh, vh = m1 / (1 - b1 ** (it + 1)), m2 / (1 - b2 ** (it + 1))
         x_prev = x.copy()
         x = np.clip(x - lr * mh / (np.sqrt(vh) + eps), 0.0, 1.0)
         it += 1
-        np.savez(stf, x=x, m1=m1, m2=m2, it=it)
+        with open(stf + ".tmp", "wb") as f:
+            np.savez(f, x=x, m1=m1, m2=m2, it=it, lr=lr)
+        os.replace(stf + ".tmp", stf)
         progress_png(out, recs)
     # ---------------------------------------------------------------- render: start vs best
     if best is None:                                             # nothing free: the start itself
@@ -592,7 +680,14 @@ def run(a):
         u1 = np.array(best["u_in"][p]) if best["u_in"].get(p) is not None else None
         pours[p].send("render", out, base, P1, u1, label, a.every, a.movie, a.T)
     for p in cal:
-        ev[p] = pours[p].recv()
+        try:
+            ev[p] = pours[p].recv()
+        except RuntimeError as e:
+            ev[p] = dict(error=str(e))
+            log(f"{p}: render failed ({str(e)[:400]})")
+            continue
+        for er in ev[p].get("errors", []):
+            log(f"{p}: figure failed: {er[:300]}")
         b, s = ev[p]["best"], ev[p]["start"]
         log(f"{p}: J {s['J']:.3f} -> {b['J']:.3f}   separation {s['sep']:.2f} -> {b['sep']:.2f} "
             f"(kept {b['kept']}/{b['pairs']}, merged {b['merged']}, missing {b['missing']})"
@@ -614,9 +709,9 @@ def run(a):
                     f"{ev[p]['start']['sep']:.2f} -> {ev[p]['best']['sep']:.2f}")
             except Exception as e:                               # noqa: BLE001 -- report and go on
                 log(f"held-out {p}: failed ({e})")
-    json.dump(dict(mode=mode, init=os.path.abspath(a.init), N=a.N, best_it=best["it"], best_viou=best["viou"],
-                   params={k: float(P1[k]) for k in PKEYS}, eval=ev, iterations=it, hours=(time.time() - t_start) / 3600),
-              open(os.path.join(out, "done.json"), "w"), indent=1, default=float)
+    _atomic_json(dict(mode=mode, init=os.path.abspath(a.init), N=a.N, best_it=best["it"], best_viou=best["viou"],
+                      params={k: float(P1[k]) for k in PKEYS}, eval=ev, iterations=it, hours=(time.time() - t_start) / 3600),
+                 os.path.join(out, "done.json"), indent=1)
     log(f"== {mode} done in {(time.time() - t_start) / 3600:.2f} h -> {out}")
 
 
@@ -634,11 +729,53 @@ OPEN_J, OPEN_SEP = 0.80, 0.50      # pre-registered: a run 'opens the tulip' if 
 
 def opens(ev):
     b = ev.get("tulip", {}).get("best") if ev else None
-    return bool(b and b["J"] >= OPEN_J and b["sep"] >= OPEN_SEP)
+    return bool(b and np.isfinite(b.get("J", np.nan)) and b["J"] >= OPEN_J and b.get("sep", 0.0) >= OPEN_SEP)
+
+
+def decide(o):
+    """o: {mode: opens?} over the finished modes.  The pre-registered rule of README_diag256.md; a mode that did not
+    finish is unknown, never 'does not open'."""
+    done, op = set(o), {m for m in o if o[m]}
+    notes = []
+    if "params" in op and "both_wide" in done and "both_wide" not in op:
+        notes.append("注意：只放开参数能打开，可搜索范围更大的 D 反而没打开——D 的优化没收敛，D 的结论不可信。")
+    if "inlet" in op and "both" in done and "both" not in op:
+        notes.append("注意：只修正入口能打开，范围更大的 C 反而没打开——C 的优化没收敛。")
+    if not op and {"both_wide", "both"} <= done:
+        v = "1 物理模型的问题：参数随便放、入口放宽到测量误差的 2.5–3 倍，郁金香仍打不开。表层模型本身缺机制。"
+    elif "params" in op:
+        v = "2 物理参数的问题：入口按测量值，只放开参数就能打开。倒奶模型在误差内够用。"
+    elif "inlet" in op and "params" in done:
+        v = "3 倒奶模型的问题：参数固定、只在测量误差内修正入口就能打开；只放开参数打不开。"
+    elif "both" in op and {"params", "inlet"} <= done:
+        v = "2 + 3：参数和倒奶模型都有问题——两者一起放开（入口在误差内）才打开，单放一个都不够。"
+    elif op == {"both_wide"} and {"both", "params", "inlet"} <= done:
+        v = ("1（为主）+ 3：只有把入口改到超出测量误差才打开。要么倒奶误差比估计的大得多，要么表层模型缺机制、"
+             "靠扭曲入口来凑；看 D 的入口改动图判断改动像不像真实的手。")
+    else:
+        v = "结果不全，还不能下结论（未完成的试验见上表），或结果互相矛盾；见各试验的 run.log。"
+    return v, notes
+
+
+def _row(name, R):
+    if R is None:
+        return f"| {name} | 未完成 | | | | | |"
+    ev = R["eval"]
+
+    def js(p):
+        e = ev.get(p, {})
+        if "best" not in e:
+            return "失败", "失败"
+        return (f"{e['start']['J']:.3f} → {e['best']['J']:.3f}", f"{e['start']['sep']:.2f} → {e['best']['sep']:.2f}")
+    (tj, ts), (lj, ls) = js("tulip"), js("leaf")
+    inl = ev.get("tulip", {}).get("inlet")
+    ic = (f"{inl['shift_mm_p50']:.1f} mm / ×{inl['Q_ratio_p10']:.2f}–{inl['Q_ratio_p90']:.2f} / 总量 ×{inl['Q_total_ratio']:.2f}"
+          if inl else "—")
+    return f"| {name} | {tj} | {ts} | {lj} | {ls} | {ic} | {'是' if opens(ev) else '否'} |"
 
 
 def summary(root):
-    rows, R = [], {}
+    R = {}
     for m in MODES:
         fn = os.path.join(root, m, "done.json")
         if os.path.exists(fn):
@@ -647,44 +784,19 @@ def summary(root):
              f"判据（事先定）：郁金香 J ≥ {OPEN_J} 且 末段花瓣分离率 ≥ {OPEN_SEP} 记为“打开”。",
              "J 与标定同一把尺（0.25 IoU + 0.75 结构，按视频自身 0.25 s 一致性归一，1 = 像视频自己）；"
              "分离率 = 视频里成对分开的白色部件在模拟里也分开的比例（validate.part_separation，末 30 % 的观测帧）。", "",
-             "| 试验 | tulip J 起点→结果 | tulip 分离率 | leaf J | leaf 分离率 | 入口改动（tulip：落点中位 / Q 倍率 p10–p90） | 打开？ |",
+             "| 试验 | tulip J 起点→结果 | tulip 分离率 | leaf J | leaf 分离率 | 入口改动（tulip：落点中位 / Q 倍率 p10–p90 / 总量） | 打开？ |",
              "|---|---|---|---|---|---|---|"]
     name = {"params": "A 只放开参数（宽）", "inlet": "B 只修正入口（误差内）", "both": "C 参数+入口（误差内）",
             "both_wide": "D 参数+入口（放宽）"}
     for m in MODES:
-        if m not in R:
-            lines.append(f"| {name[m]} | 未完成 | | | | | |")
-            continue
-        ev = R[m]["eval"]
-        t, l = ev.get("tulip", {}), ev.get("leaf", {})
-        inl = t.get("inlet")
-        lines.append(f"| {name[m]} | {t['start']['J']:.3f} → {t['best']['J']:.3f} | {t['start']['sep']:.2f} → "
-                     f"{t['best']['sep']:.2f} | {l['start']['J']:.3f} → {l['best']['J']:.3f} | {l['start']['sep']:.2f} → "
-                     f"{l['best']['sep']:.2f} | " + (f"{inl['shift_mm_p50']:.1f} mm / ×{inl['Q_ratio_p10']:.2f}–"
-                                                    f"{inl['Q_ratio_p90']:.2f}" if inl else "—")
-                     + f" | {'是' if opens(ev) else '否'} |")
+        lines.append(_row(name[m], R.get(m)))
     if "params" in R:
-        ho = [p for p in HELDOUT if p in R["params"]["eval"]]
+        ho = [p for p in HELDOUT if "best" in R["params"]["eval"].get(p, {})]
         if ho:
             lines += ["", "留出三杯（只放开参数的结果冻结后直接跑，不参与任何选择）：" + "，".join(
                 f"{p} J {R['params']['eval'][p]['start']['J']:.3f} → {R['params']['eval'][p]['best']['J']:.3f}" for p in ho)]
-    o = {m: opens(R[m]["eval"]) for m in R}
-    lines += ["", "## 判定"]
-    if not R:
-        lines.append("没有完成的试验。")
-    elif "both_wide" in o and not o["both_wide"] and not o.get("both", False):
-        lines.append("1 物理模型的问题：参数随便放、入口放宽到测量误差的 2.5–3 倍，郁金香仍打不开。表层模型本身缺机制。")
-    elif o.get("both") and o.get("params"):
-        lines.append("2 物理参数的问题：入口按测量值，只放开参数就能打开（误差内修正入口也能）。倒奶模型在误差内够用。")
-    elif o.get("both") and not o.get("params") and o.get("inlet"):
-        lines.append("3 倒奶模型的问题：参数固定、只在测量误差内修正入口就能打开；只放开参数打不开。")
-    elif o.get("both") and not o.get("params") and not o.get("inlet"):
-        lines.append("2 + 3：参数和倒奶模型都有问题——两者一起放开（入口在误差内）才打开，单放一个都不够。")
-    elif o.get("both_wide") and not o.get("both"):
-        lines.append("1（为主）+ 3：只有把入口改到超出测量误差才打开。要么倒奶误差比估计的大得多，要么表层模型缺机制、"
-                     "靠扭曲入口来凑；看 D 的入口改动图判断改动是否像真实的手。")
-    else:
-        lines.append("结果不全或互相矛盾，见上表和各试验的 run.log。")
+    v, notes = decide({m: opens(R[m]["eval"]) for m in R})
+    lines += ["", "## 判定", v] + notes
     txt = "\n".join(lines) + "\n"
     open(os.path.join(root, "summary.md"), "w").write(txt)
     print(txt)
@@ -704,8 +816,9 @@ def gradcheck(a):
     print(f"zero correction reproduces the record bitwise: {same}")
     rng = np.random.default_rng(3)
     u = np.clip(0.5 + 0.15 * rng.standard_normal((6, D.inl.K)), 0.05, 0.95)
-    r = step(D, P, 0.05, u)
-    gu = r["gu"]
+    r = step(D, P, 0.05, u, 0.0)
+    pen0, gpen, _ = D.inl.penalty(u, 0.0)
+    gu = r["gu"] - gpen                                      # the solver chain alone (the penalty is host-side, exact)
     act_k = np.unique(np.r_[D.inl.j[D.inl.act], D.inl.j[D.inl.act] + 1])
     worst, ok = 0.0, same
     for v in range(6):
@@ -739,7 +852,7 @@ def step_loss(D, P, u):
     S = D.inl.apply(u)
     assign(D, S)
     D.tau = 0.05
-    L, _, _ = D.loss(P)
+    L, _, _ = D.loss(P, nsub=D.nsub)                         # the sub-steps of the adjoint's forward
     return float(L)
 
 
@@ -764,6 +877,7 @@ def main(argv=None):
     r.add_argument("--every", type=int, default=4)
     r.add_argument("--no-movie", dest="movie", action="store_false")
     r.add_argument("--no-heldout", dest="heldout", action="store_false")
+    r.add_argument("--prior", type=float, default=PRIOR, help="weak prior on the inlet knots (InletCorr.penalty)")
     s = sub.add_parser("summary")
     s.add_argument("--out", required=True)
     g = sub.add_parser("gradcheck")
