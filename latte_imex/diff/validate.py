@@ -9,8 +9,8 @@ separated by brown lines)?
 Forward run = the calibration's: cmafit._init / evaluate / run_fields (DiffPour tau 0.05, scales (0.3, 0.15, 0), score
 constants at the grid's physical size, the video's 0.25 s lag reference recomputed on the frames); parameters =
 DiffPour.s1 + the surface-current defaults + the closure's numbers, switches e0 / exit_cal / upwell / circ / circ_L /
-circ_rf / circ_r / milk from the closure (as cmafit --init and the best_closure.json it writes).  The time-weighted
-frame_ok means of iou / struct below are checked against evaluate() (summary 'calib_check').
+circ_rf / circ_r / milk / sink from the closure (as cmafit --init and the best_closure.json it writes).  The
+time-weighted frame_ok means of iou / struct below are checked against evaluate() (summary 'calib_check').
 
 Per observed frame (run.video_on_grid: exposure transients and frames after the simulated time are not observed; the
 sim state after the solver frame k whose end time is nearest the video time, cmafit.run_fields):
@@ -87,7 +87,7 @@ from scipy import ndimage as ndi
 from . import cmafit as CF
 from . import schedule as SC
 from . import score as SS
-from .wsolver import milk_code
+from .wsolver import milk_code, sink_code
 from ..rig import topo_metric as TM
 
 PATTERNS = CF.PATTERNS
@@ -289,7 +289,7 @@ def load_closure(fn, e0=None):
     sw = dict(e0=SC.e0_mode(e0 if e0 is not None else num.get("e0", 0.0)), exit_cal=bool(num.get("exit_cal", 0.0)),
               upwell=bool(num.get("upwell", 0.0)), circ=bool(num.get("circ", 0.0)),
               circ_shape=dict(L=num.get("circ_L", 0.4), r_f=num.get("circ_rf", 0.06), r=num.get("circ_r", 1.0)),
-              milk=milk_code(num.get("milk", 0.0)))
+              milk=milk_code(num.get("milk", 0.0)), sink=sink_code(num.get("sink", 0.0)))
     return num, sw
 
 
@@ -308,7 +308,7 @@ def validate_pour(p, num, sw, N=48, device="cpu", log=print):
     images) -- images: per frame index the arrays the sheet draws."""
     t0 = time.time()
     cfg = dict(pours=[p], N=N, device=device, e0=sw["e0"], exit_cal=sw["exit_cal"], upwell=sw["upwell"], circ=sw["circ"],
-               circ_shape=sw["circ_shape"], milk=sw.get("milk", 0))
+               circ_shape=sw["circ_shape"], milk=sw.get("milk", 0), sink=sw.get("sink", 0))
     CF._init(cfg)
     D = CF._D[p]
     P = closure_params(D, num, sw["circ"])

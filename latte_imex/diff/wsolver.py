@@ -37,6 +37,31 @@ YIELD_EPS, NU_MAX = 0.02, 0.5      # solver.Params.yield_eps, nu_max (Bingham fo
 # part's centre coefficient 1 - 4 |u| dt / h stays >= 0 (the bound the isotropic speed just meets).  Read once at
 # import (kernels.RUS_ISO is the numpy solver's copy; cuda_solver refuses 1).
 RUS_ISO = wp.constant(int(os.environ.get("LATTE_RUS_ISO", "0")))
+# Closure switch 'sink' (SINK_FORMS; WSolver(sink=...), run.DiffPour(sink=...), solver.Params.sink): the area flux
+# density ej that drives the entrainment sink kappa_e in k_exchange (brown area taken down at kappa_e ej (1 - c), the
+# foam at eps_f of that rate).
+#   0 v05     ej = (1 - chi) S Z K: the diving part of the received flow (V2_SURFACE_MODEL.md 10.2; the default)
+#   1 column  ej = 4 Q Z K / d = U_perp pi d Z K: the plunging column draws the surface in at the speed eps_c U_perp
+#             around its perimeter pi d, whether or not its own foam surfaces (mcd22 SPEC 2.5): kappa_e := eps_c (the
+#             inflow speed at the column edge over U_perp, independent range 0.005-0.08), eps_f := the share of white
+#             that is lost (0 in pulses: drawn-down foam rides the jet and resurfaces).  K is the landing kernel (at
+#             x_hit, not the deposit kernel), Q the received volume flux (record 'Q' = S_eff / kQ, without kappa_Q),
+#             d the jet diameter.  The area balance: int e dA = eps_c 4 Q Z / d <1 - c>_K per unit time.
+SINK_FORMS = ("v05", "column")
+
+
+def sink_code(v):
+    """Code (index in SINK_FORMS) of the entrainment-sink form given by name or by code (closure json: float)."""
+    if isinstance(v, str):
+        if v not in SINK_FORMS:
+            raise ValueError(f"sink form {v!r} not in {SINK_FORMS}")
+        return SINK_FORMS.index(v)
+    k = int(v or 0)
+    if k != v or not 0 <= k < len(SINK_FORMS):
+        raise ValueError(f"sink code {v!r} not in 0..{len(SINK_FORMS) - 1} {SINK_FORMS}")
+    return k
+
+
 SCHED = ("x", "y", "Q", "ux", "uy", "U", "d", "r1", "r2", "phi", "vjx", "vjy")
 A2 = wp.array2d(dtype=F)
 I2 = wp.array2d(dtype=wp.int32)
@@ -106,13 +131,14 @@ def k_kernel_raw(xc: A2, yc: A2, mask: I2, S: A1, Sy: A1, Sux: A1, Suy: A1, P: A
 @wp.kernel
 def k_fields(Kraw: A2, sums: A1, Kd: A2, sumsd: A1, mask: I2, xc: A2, yc: A2, P: A1, Sx: A1, Sy: A1, SQ: A1, Sux: A1,
              Suy: A1, SU: A1, Sd: A1, Sr1: A1, Sr2: A1, Svjx: A1, Svjy: A1, kq: wp.array(dtype=wp.int32), area: F,
-             v05: int, up: int, l0: A2, m0: A2, s: A2, Lam: A2, vsx: A2, vsy: A2, sm: A2, ej: A2):
+             v05: int, up: int, sink: int, l0: A2, m0: A2, s: A2, Lam: A2, vsx: A2, vsy: A2, sm: A2, ej: A2):
     """Solver.inlet_fields (closure 'chi', offcup 'account'): sm = chi S Z K_d (new milk, surfacing at the deposit kernel
     K_d, tau_s u_in ahead of the landing point; the landing kernel K if K_d misses the cup), s = sm (V0.5) or
     sm + (1 - chi) S Z K (up: the dived part resurfaces at the landing point as base material), + e_F chi S Z K (the
     landing crater's fountain: brown surface, no milk), Lam = kappa_c (1 - chi) S Z K, target v* (with vj: the
-    traction part pulls towards V_j + kappa_tc (u_in - V_j), V_j the landing point's own velocity), ej = (1 - chi) S Z K
-    (the diving flux, drives the entrainment sink kappa_e in k_exchange)."""
+    traction part pulls towards V_j + kappa_tc (u_in - V_j), V_j the landing point's own velocity), ej: the area flux
+    density that drives the entrainment sink kappa_e in k_exchange, by SINK_FORMS[sink]: (1 - chi) S Z K (0, the
+    diving flux) or 4 Q Z K / d (1, the plunging column's perimeter inflow)."""
     j, i = wp.tid()
     k = kq[0]
     tot = sums[1]
@@ -149,7 +175,10 @@ def k_fields(Kraw: A2, sums: A1, Kd: A2, sumsd: A1, mask: I2, xc: A2, yc: A2, P:
     s[j, i] = sv
     lam = P[KC] * (F(1.0) - chi) * S_rec * Kn
     Lam[j, i] = lam
-    ej[j, i] = (F(1.0) - chi) * S_rec * Kn
+    if sink != 0:                                   # column: surface inflow eps_c U_perp around the perimeter pi d
+        ej[j, i] = F(4.0) * SQ[k] * Z * Kn / d
+    else:
+        ej[j, i] = (F(1.0) - chi) * S_rec * Kn
     dx = xc[j, i] - Sx[k]
     dy = yc[j, i] - Sy[k]
     Rdep = wp.sqrt(wp.max(Sr1[k] * Sr2[k], F(1e-12)))
@@ -182,8 +211,11 @@ def k_exchange(l: A2, qx: A2, qy: A2, m: A2, Kb: A2, Db: A2, Wf: A2, ej: A2, P: 
     where the surface is brown (fraction 1 - c: the water surfaces beside the buoyant foam raft, not under it); the
     foam goes down at eps_f W.  k_X = (1 - xi_X) kappa_M: xi_X the share of the current's divergence taken up by the
     floating layer instead of exchanging it with the bulk (0: V2).  Exchanged material moves with the film.
-    Entrainment sink of the diving stream: the brown part also goes down at kappa_e ej / l (ej = (1 - chi) S Z K), i.e.
-    the brown area flux kappa_e ej (1 - c); the buoyant foam goes at eps_f of that rate.
+    Entrainment sink of the diving stream: the brown part also goes down at kappa_e ej / l, i.e. the brown area flux
+    kappa_e ej (1 - c); the buoyant foam goes at eps_f of that rate.  ej by the closure switch 'sink' (k_fields,
+    SINK_FORMS): 0 (1 - chi) S Z K, the diving flux; 1 4 Q Z K / d, the plunging column's perimeter inflow, then
+    kappa_e = eps_c (inflow speed at the column edge / U_perp) and eps_f = the share of the white that is lost (e_b =
+    eps_c (4 Q / d) Z K (1 - c), e_f = eps_f eps_c (4 Q / d) Z K c; mcd22 SPEC 2.5).
     Open brown surface (two-phase floating layer, k_stepA_B): brown compressed beyond its rest state l = 1 goes down
     (the coffee under the crema downwells), stretched brown is resupplied, db/dt = -lam_b (l - 1)(1 - c) = -W_o b with
     W_o = lam_b (l - 1) / l [1/s], applied as the factor exp(-dt W_o) (exact for frozen l, b >= 0 for either sign); it
@@ -1645,13 +1677,14 @@ class WSolver:
 
     def __init__(self, geo, cfl=0.5, max_substeps=64, cg_tol=1e-10, visc_tol=1e-8, cg_maxiter=500,
                  kernel_quadrature=3, explicit_mixing_limit=0.05, l_floor=1e-3, v05=True, check_every=1, graphs=True,
-                 up=False, milk=0):
+                 up=False, milk=0, sink=0):
         self.g = geo
         self.cfl, self.max_substeps = cfl, max_substeps
         self.cg_tol, self.visc_tol, self.cg_maxiter = cg_tol, visc_tol, cg_maxiter
         self.kq_default, self.mix_lim, self.l_floor, self.v05 = kernel_quadrature, explicit_mixing_limit, l_floor, int(v05)
         self.check_every = check_every
         self.up = int(up)                    # volume-conserving surface source (k_fields)
+        self.sink = sink_code(sink)          # form of the entrainment sink's flux ej (SINK_FORMS; set_sink)
         self.tape = None
         self.rec = False
         self.stats = dict(cg_mass=0, cg_visc=0, cg_adj=0, substeps=0, frames=0, retries=0)   # retries: frames redone
@@ -1682,6 +1715,13 @@ class WSolver:
         if k != self.milk:
             self.milk = k
             self.runner.graphs.clear()                       # captured sub-steps hold the old launches
+
+    def set_sink(self, sink):
+        """Form of the entrainment sink's area flux ej (k_fields): a name or code of SINK_FORMS."""
+        k = sink_code(sink)
+        if k != self.sink:
+            self.sink = k
+            self.runner.graphs.clear()                       # captured field launches hold the old switch
 
     def milk_faces(self, c, m, sm, Gx, Gy, l2, buf, launch):
         """Face values of c for k_milk into buf['cfx'], buf['cfy'] (+ buf['cfxh'], 'cfyh', 'Rp', 'Rm' for the FCT
@@ -1859,8 +1899,8 @@ class WSolver:
             self.L(k_kernel_raw, [g.xc, g.yc, g.mask, S["x"], S["y"], S["ux"], S["uy"], P, F(dep), S["r1"], S["r2"],
                                   S["phi"], self.kq, F(g.h)], [K_, s_])
         self.L(k_fields, [Kraw, sums, Kd, sumsd, g.mask, g.xc, g.yc, P, S["x"], S["y"], S["Q"], S["ux"], S["uy"], S["U"],
-                          S["d"], S["r1"], S["r2"], S["vjx"], S["vjy"], self.kq, F(g.h * g.h), self.v05, self.up, st["l"],
-                          st["m"]], out)
+                          S["d"], S["r1"], S["r2"], S["vjx"], S["vjy"], self.kq, F(g.h * g.h), self.v05, self.up,
+                          self.sink, st["l"], st["m"]], out)
         return out
 
     def substep(self, st, fl, P, nu_on, mix_on):
@@ -2009,7 +2049,8 @@ class WSolver:
                                   S["phi"], self.kq, F(g.h)], [fb[K_], fb[s_]], record=False)
         self.L(k_fields, [fb["Kraw"], fb["sums"], fb["Kd"], fb["sumsd"], g.mask, g.xc, g.yc, P, S["x"], S["y"], S["Q"],
                           S["ux"], S["uy"], S["U"], S["d"], S["r1"], S["r2"], S["vjx"], S["vjy"], self.kq, F(g.h * g.h),
-                          self.v05, self.up, fb["l"], fb["m"]], [fb["s"], fb["Lam"], fb["vsx"], fb["vsy"], fb["sm"], fb["ej"]],
+                          self.v05, self.up, self.sink, fb["l"], fb["m"]],
+               [fb["s"], fb["Lam"], fb["vsx"], fb["vsy"], fb["sm"], fb["ej"]],
                record=False)
 
     def _g_zero_fields(self):

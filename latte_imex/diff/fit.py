@@ -61,6 +61,14 @@ RAFT_START = {"alpha_u": 0.3}
 # traction towards the landing point's own velocity, kinematic deposition (mu_s = 1, foam surfaces tau_s u_in ahead) with
 # the landing crater's brown fountain e_F, and the yield stress of the whole floating layer (crema tau_b, foam tau_f)
 SINK_SPACE = {"kappa_e": (0.0, 3.0, "lin")}
+# ... with the closure switch sink = 1 ('column', wsolver.SINK_FORMS) kappa_e is eps_c, the surface inflow speed at the
+# plunging column's edge over U_perp (swallowed brown area eps_c (4 Q / d) Z <1 - c>_K per unit time; mcd22 SPEC 2.5).
+# Independent range 0.005-0.08: floor = the tail's white loss (50-70 mm^2/s) over pi d U_perp ~ 1.0e4 mm^2/s, ceiling =
+# the round-jet entrainment coefficient 0.05-0.08.  Start 0.032: the value at which the swallowed area equals the
+# deposited white area in leaf L2 (E_c = chi kappa_Q Q: 0.958 x 11.95 mL/s x 26.1 mm^2/mL = 299 mm^2/s against
+# pi d U_perp = 9370 mm^2/s), the local area balance of an area-incompressible layer.
+COLUMN_SINK_SPACE = {"kappa_e": (0.005, 0.08, "log")}
+COLUMN_SINK_START = {"kappa_e": 0.032}
 VJ_SPACE = {"kappa_tc": (0.0, 1.0, "lin")}
 KIN_SPACE = {"tau_s": (0.0, 0.15, "lin"), "e_F": (0.0, 0.6, "lin")}
 YIELD_SPACE = {"tau_b": (0.0, 0.06, "lin"), "tau_f": (0.0, 0.1, "lin")}
@@ -333,6 +341,11 @@ def main(argv=None):
     ap.add_argument("--milk", default="vl", choices=W.MILK_SCHEMES,
                     help="face value of c in the milk transport (wsolver.MILK_SCHEMES; written into best_closure.json); "
                          "only the schemes of MILK_GRAD (adjoint checked against finite differences)")
+    ap.add_argument("--sink", default="v05", choices=W.SINK_FORMS,
+                    help="form of the entrainment sink's area flux (wsolver.SINK_FORMS: v05 (1 - chi) S Z K, column "
+                         "4 Q Z K / d with kappa_e = eps_c; written into best_closure.json).  kappa_e is not fitted "
+                         "here: it is taken from the start closure (--init / --set); the gradients of the fitted "
+                         "parameters include the sink (test_grad --sink column)")
     ap.add_argument("--e0", default="jet", choices=("jet", "world", "none"),
                     help="landing point corrected by the measured stream foot (rig/stream_foot.py): 'jet' along / across "
                          "u_in (schedule.e0_offsets, the earlier fits), 'world' in the cup frame with the robust estimator "
@@ -360,7 +373,7 @@ def main(argv=None):
     cal = a.cal.split(",")
     kw = dict(N=a.N, device=a.device, w_gap=a.w_gap, tau=a.tau0, T_max=a.T, loss=a.loss, w_final=a.w_final,
               scales=tuple(float(x) for x in a.scales.split(",")), e0=SC.e0_mode(0 if a.e0 == "none" else a.e0), upwell=a.upwell,
-              circ=a.circ, w_flow=a.w_flow, milk=W.milk_code(a.milk))
+              circ=a.circ, w_flow=a.w_flow, milk=W.milk_code(a.milk), sink=W.sink_code(a.sink))
     workers = a.workers if a.workers >= 0 else (len(cal) if (a.device or "cuda").startswith("cuda") else 0)
     pours = {p: Pour(p, kw, process=workers > 0) for p in cal}
     log(f"{len(cal)} calibration pours, {'one worker process each' if workers > 0 else 'in-process'}")
@@ -373,11 +386,16 @@ def main(argv=None):
         ran_milk = W.milk_code(J0.get("milk", 0))         # the milk scheme is a switch of this run (--milk)
         if ran_milk != W.milk_code(a.milk):
             log(f"note: --init {a.init} ran the milk transport {W.MILK_SCHEMES[ran_milk]}; this run uses {a.milk}")
+        ran_sink = W.sink_code(J0.get("sink", 0))         # the sink form too (--sink; kappa_e = eps_c if 'column')
+        if ran_sink != W.sink_code(a.sink):
+            log(f"note: --init {a.init} ran the entrainment sink {W.SINK_FORMS[ran_sink]} (kappa_e "
+                f"{float(J0.get('kappa_e', 0.0)):g}); this run uses {a.sink}")
     for k, v in (x.split("=") for x in a.set.split(",") if x):
         base[k] = float(v)
     # the closure is the single source of the model switches: the render (real_program) reads them back
     base["e0"], base["upwell"], base["circ"] = float(SC.e0_code(0 if a.e0 == "none" else a.e0)), float(a.upwell), float(a.circ)
     base["milk"] = float(W.milk_code(a.milk))
+    base["sink"] = float(W.sink_code(a.sink))
     if not a.circ and any(base.get(k, 0.0) for k in ("kappa_M", "kappa_w")):
         log("no --circ: kappa_M, kappa_w of the start closure set to 0")
     if not a.circ:
@@ -385,6 +403,12 @@ def main(argv=None):
             base[k] = 0.0
     if not a.dep:
         base["tau_s"] = base["mu_s"] = 0.0
+    bad = [k for k in KEYS if SP[k][2] == "log" and not base[k] > 0.0]
+    if bad:                                          # (to_unit takes the log; lin keys are clipped into their box)
+        ap.error("start values outside the fit's log boxes: "
+                 + ", ".join(f"{k} {base[k]:g} (box {SP[k][0]:g}-{SP[k][1]:g})" for k in bad)
+                 + "; a closure that removed the term (e.g. the mcd closures' kappa_r 0) is not in this fit space "
+                   "(fit.py fits v05_adapter.SPACE)")
     u = to_unit(base)
     m1, m2 = np.zeros_like(u), np.zeros_like(u)
     b1, b2, eps = 0.9, 0.999, 1e-8

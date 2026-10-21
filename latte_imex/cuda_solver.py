@@ -923,6 +923,8 @@ class BatchCudaSolver:
                 raise ValueError("the CUDA back-end implements the 'chi' closure only")
             if int(P.milk):
                 raise ValueError("the CUDA back-end implements the van Leer milk transport only (Params.milk 0)")
+            if int(P.sink):
+                raise ValueError("the CUDA back-end has no column entrainment sink (Params.sink 0 only)")
         if int(os.environ.get("LATTE_RUS_ISO", "0")) != 0:
             raise ValueError("the CUDA back-end implements the per-direction Rusanov speed only (LATTE_RUS_ISO=0)")
         keys = lambda P: (P.visc, P.offcup, P.nu > 0, P.D > 0)
@@ -993,6 +995,8 @@ class BatchCudaSolver:
                 raise ValueError("reset: members must keep visc, offcup, closure and the presence of nu > 0, D > 0")
             if any(int(P.milk) for P in params):
                 raise ValueError("the CUDA back-end implements the van Leer milk transport only (Params.milk 0)")
+            if any(int(P.sink) for P in params):
+                raise ValueError("the CUDA back-end has no column entrainment sink (Params.sink 0 only)")
             self.Ps = params
             self.P = params[0]
             self.pm.copy_to_device(np.array([[P.cp ** 2, P.beta, P.nu, P.D] for P in self.Ps], np.float64))

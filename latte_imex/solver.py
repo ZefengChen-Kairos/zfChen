@@ -63,6 +63,11 @@ class Params:
     kappa_e: float = 0.0    # closure "chi": entrainment sink of the diving stream -- the plunging (1 - chi) part drags the brown
                             # surface down with it at the area flux kappa_e (1 - chi) S_rec K (1 - c); the buoyant foam stays
                             # (it goes at eps_f of that rate) and is gathered into the stream's wake (V2_SURFACE_MODEL.md 10.2)
+    sink: int = 0           # ... form of its area flux density ej (wsolver.SINK_FORMS): 0 'v05' (1 - chi) S_rec K
+                            # (above); 1 'column' 4 Q Z K / d with Q Z = S_rec / kappa_Q the received volume flux in the
+                            # cup (Inlet.S_eff = kappa_Q Q): the plunging column draws the surface in at eps_c U_perp
+                            # around its perimeter pi d whether or not its foam surfaces; kappa_e := eps_c, eps_f := the
+                            # share of white lost (mcd22 SPEC 2.5); not in cuda_solver (it raises)
     vj: bool = False        # closure "chi": the diving stream's traction pulls the film towards the landing point's own velocity
     kappa_tc: float = 0.3   # V_j (Inlet.v_hit) plus kappa_tc (u_in - V_j) instead of kappa_t u_in: the column moving through the
                             # surface drags it; its own horizontal momentum goes down with the dived milk
@@ -487,7 +492,12 @@ class Solver:
         if P.e_F:                             # landing crater: brown surface from the fountain (film, no milk)
             s = s + P.e_F * chi * S_rec * K
         Lam = P.kappa_c * (1.0 - chi) * S_rec * K
-        self._ej = (1.0 - chi) * S_rec * K    # diving flux: drives the entrainment sink kappa_e (substep)
+        if int(P.sink):                       # column: perimeter inflow 4 Q Z K / d (wsolver.k_fields, SINK_FORMS)
+            if P.kappa_Q <= 0:
+                raise ValueError("Params.sink 1 needs kappa_Q > 0 (the received volume flux is S_eff / kappa_Q)")
+            self._ej = 4.0 * (S_rec / P.kappa_Q) * K / d
+        else:
+            self._ej = (1.0 - chi) * S_rec * K    # diving flux: drives the entrainment sink kappa_e (substep)
         # target velocity
         dx = g.x - inlet.x_hit[0]
         dy = g.y - inlet.x_hit[1]

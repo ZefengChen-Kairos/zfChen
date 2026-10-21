@@ -17,6 +17,9 @@ u (upwell), e / j / k / y (fit.SINK / VJ / KIN / YIELD_SPACE), o (two-phase open
 lam_b brown subduction rate, fit.OPEN_SPACE); letters compose (e.g. 'co'); 'v05' = none.
 --milk: face value of c in the milk transport, a switch of the run like e0 (wsolver.MILK_SCHEMES: vl = van Leer, the
 default; mp5fct, thincfct, mp5fct_nb: sharper, bounded, conservative); written into best_closure.json as its code.
+--sink: form of the entrainment sink's area flux, a switch of the run (wsolver.SINK_FORMS: v05 = (1 - chi) S Z K, the
+default; column = 4 Q Z K / d, the plunging column's perimeter inflow, kappa_e = eps_c: with letter 'e' its box is
+fit.COLUMN_SINK_SPACE, the independent range 0.005-0.08); written into best_closure.json as its code.
 """
 from __future__ import annotations
 
@@ -30,15 +33,16 @@ import numpy as np
 
 from ..v05_adapter import SPACE
 from . import schedule as SC
-from .fit import (CIRC_SPACE, CIRC_START, DEP_SPACE, DEP_START, KIN_SPACE, MECH_START, OPEN_SPACE, OPEN_START, RAFT_SPACE,
-                  RAFT_START, SINK_SPACE, VJ_SPACE, YIELD_SPACE)
-from .wsolver import MILK_SCHEMES, milk_code
+from .fit import (CIRC_SPACE, CIRC_START, COLUMN_SINK_SPACE, COLUMN_SINK_START, DEP_SPACE, DEP_START, KIN_SPACE,
+                  MECH_START, OPEN_SPACE, OPEN_START, RAFT_SPACE, RAFT_START, SINK_SPACE, VJ_SPACE, YIELD_SPACE)
+from .wsolver import MILK_SCHEMES, SINK_FORMS, milk_code, sink_code
 from . import score as SS
 
 PATTERNS = ("tulip", "leaf", "heart", "push_heart", "swan")
 
 
-def model_space(model):
+def model_space(model, sink=0):
+    """(parameter boxes, switches) of a model string; sink: code of wsolver.SINK_FORMS (the meaning of kappa_e)."""
     f = "" if model == "v05" else model
     SP = dict(SPACE)
     if "c" in f:
@@ -50,8 +54,8 @@ def model_space(model):
     if "a" in f:
         SP.update(RAFT_SPACE)
     fix = {}
-    if "e" in f:                                     # entrainment sink of the diving stream
-        SP.update(SINK_SPACE)
+    if "e" in f:                                     # entrainment sink of the diving stream (column: eps_c)
+        SP.update(COLUMN_SINK_SPACE if sink else SINK_SPACE)
     if "j" in f:                                     # traction towards the landing point's velocity V_j
         SP.update(VJ_SPACE)
         fix["vj"] = 1.0
@@ -97,7 +101,7 @@ def _init(cfg):
     for p in cfg["pours"]:
         D = DiffPour(p, N=cfg["N"], device=cfg["device"], tau=0.05, scales=(0.3, 0.15, 0.0), e0=cfg["e0"],
                      exit_cal=cfg["exit_cal"], upwell=cfg["upwell"], circ=cfg["circ"], circ_shape=cfg["circ_shape"],
-                     milk=cfg.get("milk", 0), log=lambda *a: None)
+                     milk=cfg.get("milk", 0), sink=cfg.get("sink", 0), log=lambda *a: None)
         D.score_ref = SS.lag_reference([o["t"] for o in D.obs], [o["wo_np"] for o in D.obs], [o["vo_np"] for o in D.obs],
                                        D.geo.mask_np)
         _D[p] = D
@@ -135,6 +139,9 @@ def main(argv=None):
                          "so the kappa_M box and start are scaled by r (the same current amplitudes as at r = 1)")
     ap.add_argument("--milk", default="vl", choices=MILK_SCHEMES,
                     help="face value of c in the milk transport (wsolver.MILK_SCHEMES; written into best_closure.json)")
+    ap.add_argument("--sink", default="v05", choices=SINK_FORMS,
+                    help="form of the entrainment sink's area flux (wsolver.SINK_FORMS; written into "
+                         "best_closure.json); column: kappa_e = eps_c, box fit.COLUMN_SINK_SPACE with letter 'e'")
     ap.add_argument("--N", type=int, default=48)
     ap.add_argument("--gens", type=int, default=16)
     ap.add_argument("--pop", type=int, default=12)
@@ -154,7 +161,7 @@ def main(argv=None):
     log = lambda *x: print(*x, flush=True)
     cal = a.cal.split(",")
     test = [p for p in (a.test.split(",") if a.test else PATTERNS) if p not in cal]
-    SP, sw = model_space(a.model)
+    SP, sw = model_space(a.model, sink_code(a.sink))
     circ_start = dict(CIRC_START)
     if sw["circ"] and a.circ_r != 1.0:               # U_ss = (r - r L^2 lap + ...)^-1 F: amplitude kappa_M / r
         lo, hi, sc = SP["kappa_M"]
@@ -165,11 +172,14 @@ def main(argv=None):
         SP[k] = (lo, hi, SP[k][2] if k in SP else "lin")
     e0 = SC.e0_mode(0 if a.e0 == "none" else a.e0)
     cfg = dict(pours=cal, N=a.N, device=a.device, e0=e0, exit_cal=a.exit_cal,
-               circ_shape=dict(L=a.circ_L, r_f=a.circ_rf, r=a.circ_r), milk=milk_code(a.milk), **sw)
+               circ_shape=dict(L=a.circ_L, r_f=a.circ_rf, r=a.circ_r), milk=milk_code(a.milk), sink=sink_code(a.sink),
+               **sw)
     from .run import DiffPour
     base = dict(DiffPour(cal[0], N=16, device="cpu", log=lambda *x: None).s1)
     base.update(circ_start if sw["circ"] else {"kappa_M": 0.0, "eps_f": 0.0, "kappa_w": 0.0})
     base.update({k: v for k, v in dict(DEP_START, **RAFT_START, **MECH_START, **OPEN_START).items() if k in SP})
+    if cfg["sink"] and "kappa_e" in SP:
+        base.update(COLUMN_SINK_START)
     if a.init:
         J0 = json.load(open(a.init))
         base.update({k: float(v) for k, v in J0.items() if isinstance(v, (int, float)) and not k.startswith("_")})
@@ -186,6 +196,10 @@ def main(argv=None):
         ran_milk = milk_code(J0.get("milk", 0))           # the milk scheme too is a switch of this run (--milk)
         if ran_milk != cfg["milk"]:
             log(f"note: --init {a.init} ran the milk transport {MILK_SCHEMES[ran_milk]}; this run uses {a.milk}")
+        ran_sink = sink_code(J0.get("sink", 0))           # the sink form as well (--sink; kappa_e = eps_c if 'column')
+        if ran_sink != cfg["sink"]:
+            log(f"note: --init {a.init} ran the entrainment sink {SINK_FORMS[ran_sink]} (kappa_e "
+                f"{float(J0.get('kappa_e', 0.0)):g}); this run uses {a.sink}")
     base.update(sw.pop("fix"))                       # switches of the model letters (vj, mu_s = 1)
     for k, v in (x.split("=") for x in a.set.split(",") if x):
         base[k] = float(v)
@@ -193,12 +207,14 @@ def main(argv=None):
         lo, hi, _ = SP[k]
         base[k] = min(max(base[k], lo), hi)
     switches = dict(e0=float(SC.e0_code(e0)), exit_cal=float(a.exit_cal), upwell=float(sw["upwell"]), circ=float(sw["circ"]),
-                    circ_L=a.circ_L, circ_rf=a.circ_rf, circ_r=a.circ_r, milk=float(cfg["milk"]))
+                    circ_L=a.circ_L, circ_rf=a.circ_rf, circ_r=a.circ_r, milk=float(cfg["milk"]),
+                    sink=float(cfg["sink"]))
     log(f"CMA-ES {a.model}: {len(SP)} parameters, calibration {cal}, test {test}, N {a.N}, e0 {a.e0}, "
         f"objective {a.w_iou:g} IoU + {1 - a.w_iou:g} structure (normalised by the video's 0.25 s self-consistency), "
         f"{a.gens} x {a.pop}" + (f"; surface current r {a.circ_r:g} /s, L {a.circ_L:g}, r_f {a.circ_rf:g}, kappa_M box "
                                  f"{SP['kappa_M'][0]:g}-{SP['kappa_M'][1]:g}" if sw["circ"] else "")
-        + (f"; milk transport {a.milk}" if cfg["milk"] else ""))
+        + (f"; milk transport {a.milk}" if cfg["milk"] else "")
+        + (f"; entrainment sink {a.sink}" if cfg["sink"] else ""))
     es = cma.CMAEvolutionStrategy(to_unit(base, SP), a.sigma, dict(bounds=[0, 1], popsize=a.pop, seed=a.seed, verbose=-9))
     best = None
     pool = None

@@ -10,8 +10,8 @@ own scale: the objective of the N = 48 calibration is recomputed from the fine r
    reference).  At N = 48 the remap is the identity, so a closure scores what cmafit gave it.
    DIR/<p>_simN.mp4: the fine field, one pixel per cell (N x N), latte palette; DIR/<p>_compare.mp4: real top view |
    video white target | the closure at N | the baseline closure at N = 48, on one clock (30 fps).
-Forward run as the calibration's (cmafit._init: tau 0.05, scales (0.3, 0.15, 0), e0 / exit_cal / upwell / circ / milk
-switches from the closure json, parameters = DiffPour.s1 + surface-current defaults + the closure's numbers)."""
+Forward run as the calibration's (cmafit._init: tau 0.05, scales (0.3, 0.15, 0), e0 / exit_cal / upwell / circ / milk /
+sink switches from the closure json, parameters = DiffPour.s1 + surface-current defaults + the closure's numbers)."""
 from __future__ import annotations
 
 import argparse
@@ -38,13 +38,13 @@ NAMES_EN = dict(tulip="tulip (calibration)", leaf="leaf (calibration)", heart="h
 
 def load_closure(fn):
     """(numbers, switches) of a closure json (fit.py / cmafit best_closure.json or latte_imex/data/closures/*.json)."""
-    from .wsolver import milk_code
+    from .wsolver import milk_code, sink_code
     J = json.load(open(fn))
     num = {k: float(v) for k, v in J.items() if isinstance(v, (int, float)) and not k.startswith("_")}
     sw = dict(e0=SC.e0_mode(num.get("e0", 0.0)), exit_cal=bool(num.get("exit_cal", 0.0)), upwell=bool(num.get("upwell", 0.0)),
               circ=bool(num.get("circ", 0.0)), circ_shape=dict(L=num.get("circ_L", 0.4), r_f=num.get("circ_rf", 0.06),
                                                                r=num.get("circ_r", 1.0)),
-              milk=milk_code(num.get("milk", 0.0)))
+              milk=milk_code(num.get("milk", 0.0)), sink=sink_code(num.get("sink", 0.0)))
     return num, sw
 
 
@@ -52,7 +52,7 @@ def make_pour(p, sw, N, device, T=None):
     from .run import DiffPour
     return DiffPour(p, N=N, device=device, T_max=T, tau=0.05, scales=(0.3, 0.15, 0.0), e0=sw["e0"], exit_cal=sw["exit_cal"],
                     upwell=sw["upwell"], circ=sw["circ"], circ_shape=sw["circ_shape"], milk=sw.get("milk", 0),
-                    log=lambda *a: None)
+                    sink=sw.get("sink", 0), log=lambda *a: None)
 
 
 def run_pour(D, num, sw, every):

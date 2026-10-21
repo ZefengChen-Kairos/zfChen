@@ -2,11 +2,14 @@
 solver.Solver on the first frames of a real pour (same arrival record).
     python -m latte_imex.diff.test_parity [--pattern heart --N 64 --frames 150 --device cuda:0 --check-every 1]
                                           [--upwell --circ kappa_M,eps_f,kappa_w --set tau_s=0.05]
-                                          [--milk vl|mp5fct|thincfct|mp5fct_nb] [--save out.npz]
+                                          [--milk vl|mp5fct|thincfct|mp5fct_nb] [--sink v05|column] [--save out.npz]
 (--set takes any solver.Params value, e.g. xi_b=0.9,lam_b=10 (two-phase open layer) or circ_r=5 with --circ.)
 --milk: face value of c in the milk transport (wsolver.MILK_SCHEMES; both solvers).  Besides the Warp-numpy agreement it
 reports the numpy step C's clip (mass the clip to [0, l] removed / added, largest excursion: 0 = the scheme itself kept
-0 <= c <= 1 and conserved the milk) and the range of c in the final states."""
+0 <= c <= 1 and conserved the milk) and the range of c in the final states.
+--sink: form of the entrainment sink's area flux (wsolver.SINK_FORMS; both solvers; acts with kappa_e > 0, e.g.
+--sink column --set kappa_e=0.032).  The numpy reference recovers Q = S_eff / kappa_Q, so kappa_Q is not --set here
+(the record's Q divides by the script's kQ)."""
 import argparse
 import time
 
@@ -30,6 +33,8 @@ def main():
     ap.add_argument("--set", default="", help="closure values, e.g. tau_s=0.05")
     ap.add_argument("--milk", default="vl", choices=W.MILK_SCHEMES,
                     help="face value of c in step C (wsolver.MILK_SCHEMES)")
+    ap.add_argument("--sink", default="v05", choices=W.SINK_FORMS,
+                    help="form of the entrainment sink's area flux ej (wsolver.SINK_FORMS)")
     ap.add_argument("--save", default="", help="npz with the final states of numpy / frame / fast (bit-for-bit checks)")
     a = ap.parse_args()
     script, pour = SC.pour_script(a.pattern, a.N)
@@ -41,6 +46,9 @@ def main():
         script.params.update(zip(("kappa_M", "eps_f", "kappa_w"), map(float, a.circ.split(","))))
     script.params.update({k: float(v) for k, v in (x.split("=") for x in a.set.split(",") if x)})
     script.params["milk"] = W.milk_code(a.milk)
+    script.params["sink"] = W.sink_code(a.sink)
+    if "kappa_Q" in a.set:
+        ap.error("--set kappa_Q: the arrival record (S_eff, Q) was built with the script's kQ")
     P = Params(**script.params)
     print(f"{a.pattern}: {S['n']} frames, testing {n}; return law {S['return_law']}; params "
           + " ".join(f"{k} {getattr(P, k):.4g}" for k in W.PARAMS))
@@ -70,7 +78,8 @@ def main():
     ok &= lo >= -1e-12 and hi <= 1.0 + 1e-12                     # (round-off)
     saved = dict(np_l=ref.l, np_qx=ref.qx, np_qy=ref.qy, np_m=ref.m, np_nsub=np.array(nref))
     for path in ("frame", "fast"):
-        sol = W.WSolver(g, v05=S["return_law"] == "v05", check_every=a.check_every, up=a.upwell, milk=a.milk)
+        sol = W.WSolver(g, v05=S["return_law"] == "v05", check_every=a.check_every, up=a.upwell, milk=a.milk,
+                        sink=a.sink)
         if a.circ:
             from .run import circ_fields
             sol.set_circ(*circ_fields(S, g, dtype=np.float64, shape=dict(L=P.circ_L, r_f=P.circ_rf, r=P.circ_r)))
