@@ -132,7 +132,7 @@ def model_landing(p):
 
 
 def run(p, every=1, sheet_n=12, log=print):
-    from .real_program import CUP_R, cup_poses
+    from .real_program import CUP_R, cup_poses, tip_board_at
     rig = Rig(p)
     ct = json.load(open(f"{SCR}/{p}/cup_track.json"))
     C = cup_poses(p)
@@ -147,9 +147,11 @@ def run(p, every=1, sheet_n=12, log=print):
     dz_ = np.array([d["surf_z"] for d in D])
     M = model_landing(p)
     out, keep = [], []
+    # the search starts at the spout tip of the pose track the simulation uses (cup_track.json's 'tip' is the v1 track)
+    tips = tip_board_at(p, [o["t"] for o in ct])
     for fi in range(0, len(ct), every):
         o = ct[fi]
-        tip = np.array(o["tip"])
+        tip = tips[fi]
         # liquid surface: the registered plane (multi-view consistent, cup_register.py); else the raw depth surface
         zs = float(np.interp(o["t"], dt_, dz_)) if registered else float(o["surf_z_board"])
         A, foot, views = track(rig, o["t"], tip, zs)

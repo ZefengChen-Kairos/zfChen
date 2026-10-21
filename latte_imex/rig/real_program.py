@@ -102,8 +102,36 @@ def export(src, patterns=PATTERNS):
         print(p, len(z["t"]), "poses ->", os.path.join(RES, p, "pitcher_pose.npz"))
 
 
+# pitcher pose track: 'v2' (raw_data/rig/pose_v2; raw_data/rig/pose_v2/README.md: one continuous fit of both cameras'
+# tags + CAD-to-depth, no flips, ~0.2 deg / ~1 mm per instant in slow motion) or 'v1' (the per-sample tag track, kept
+# as pitcher_pose_v1.npz for reproducing earlier results): environment LATTE_POSE
+POSE_FILES = {"v2": "pitcher_pose.npz", "v1": "pitcher_pose_v1.npz"}
+
+
+POSE_DEFAULT = "v1"         # switched to "v2" once the fill and the stream feet are re-derived with v2
+
+
+def pose_version():
+    v = os.environ.get("LATTE_POSE", POSE_DEFAULT)
+    if v not in POSE_FILES:
+        raise ValueError(f"LATTE_POSE={v}: one of {tuple(POSE_FILES)}")
+    return v
+
+
+def stream_foot_file(p):
+    """The measured stream feet (stream_foot.py) belonging to the active pose track (its search starts at the tip)."""
+    return os.path.join(RES, p, "stream_foot_v1.json" if pose_version() == "v1" else "stream_foot.json")
+
+
+def tip_board_at(p, t):
+    """Spout tip in the board frame [m] of the active pose track at take times t (linear between its samples)."""
+    z = np.load(os.path.join(RES, p, POSE_FILES[pose_version()]))
+    t = np.atleast_1d(np.asarray(t, float))
+    return np.stack([np.interp(t, z["t"], z["tip_board"][:, k]) for k in range(3)], 1)
+
+
 def load_take(p):
-    z = np.load(os.path.join(RES, p, "pitcher_pose.npz"))
+    z = np.load(os.path.join(RES, p, POSE_FILES[pose_version()]))
     P = {k: z[k] for k in ("t", "rotvec", "pos", "tip_p")}
     with open(os.path.join(RES, p, "disc.json")) as f:
         D = json.load(f)

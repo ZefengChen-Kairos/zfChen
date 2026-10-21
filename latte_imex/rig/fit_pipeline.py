@@ -221,7 +221,8 @@ def _solve_one(args):
     RP.TIP_OVERRIDE = TIP_KONA
     RP.SIM_SUB = sub
     RP._FP.clear()
-    fill = json.load(open(os.path.join(RP.RES, "full_pour_kona_poured165.json")))[p]["fill_at_cut_mL"]
+    J = json.load(open(os.path.join(RP.RES, "full_pour_kona_poured165.json")))[p]
+    fill = J["fill_at_cut_v1_mL"] if (RP.pose_version() == "v1" and "fill_at_cut_v1_mL" in J) else J["fill_at_cut_mL"]
     od, info = RP.solve(p, N, "pitcher", video=True, V0=fill * 1e-6, log=lambda *x: None, closure=closure)
     return p, od, info
 

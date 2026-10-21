@@ -183,8 +183,8 @@ def e0_world_offsets(p, prog, grid=False):
     constant offset into landing-point jitter.  grid: also return (t grid, offsets, kept frame times)."""
     import json
     import os
-    from ..rig.real_program import RES
-    fn = os.path.join(RES, p, "stream_foot.json")
+    from ..rig.real_program import stream_foot_file
+    fn = stream_foot_file(p)
     if not os.path.exists(fn):
         return None
     rows = []
@@ -226,8 +226,8 @@ def e0_offsets(p):
     the input, not a fit to the pattern (V1 plan 4.1).  None if the pour has no stream_foot.json."""
     import json
     import os
-    from ..rig.real_program import RES
-    fn = os.path.join(RES, p, "stream_foot.json")
+    from ..rig.real_program import stream_foot_file
+    fn = stream_foot_file(p)
     if not os.path.exists(fn):
         return None
     allf = [r for r in json.load(open(fn))["frames"] if "along" in r]

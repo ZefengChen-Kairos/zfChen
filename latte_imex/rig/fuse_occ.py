@@ -118,7 +118,10 @@ class PourData:
         self.pt, self.pP = T["t"][o][keep], T["poses"][o][keep]
         self.slerp = Slerp(self.pt, Rotation.from_rotvec(self.pP[:, :3]))
         self.solid = pitcher_solid(p, scr, self.tip_p)
-        fn = os.path.join(RES, p, "stream_foot.json")
+        # the stream feet measured from the same pose track as this fusion's pitcher (pours/<p>/tip.npz = the v1 track)
+        fn = os.path.join(RES, p, "stream_foot_v1.json")
+        if not os.path.exists(fn):
+            fn = os.path.join(RES, p, "stream_foot.json")
         self.foot_off = {}                                # frame -> horizontal stream-foot offset from the tip [m]
         if os.path.exists(fn):
             F = json.load(open(fn))["frames"]
