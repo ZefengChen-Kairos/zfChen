@@ -422,7 +422,7 @@ def main(argv=None):
     recs, best = [], None
     fn = os.path.join(a.out, "records.jsonl")
     open(fn, "w").close()
-    it = 0
+    it, u_prev, nfail = 0, None, 0
     while it < a.iters:
         tau = a.tau0 * (a.tau1 / a.tau0) ** (it / max(a.iters - 1, 1))
         P = from_unit(u, base)
@@ -442,10 +442,18 @@ def main(argv=None):
             if errs:
                 raise RuntimeError("; ".join(errs))
         except RuntimeError as e:                       # non-finite state: back off
+            nfail += 1
+            if u_prev is None or nfail > 6:               # the start itself fails, or six halvings did not help
+                for po in pours.values():
+                    po.close()
+                raise SystemExit(f"it {it}: forward failed ({e}); "
+                                 + ("the start closure fails at this grid, nothing to back off to" if u_prev is None
+                                    else "still failing after 6 step halvings") + "; stopped")
             log(f"it {it}: forward failed ({e}); halving the step")
             lr *= 0.5
             u = u_prev
             continue
+        nfail = 0
         L = float(np.mean([r[0] for r in res.values()]))
         gth = np.mean([[r[1][k] for k in KEYS] for r in res.values()], axis=0)
         gu = gth * dtheta_du(P)
