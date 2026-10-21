@@ -338,7 +338,11 @@ def limited_face_value(c, G, grid, axis):
 
 # --------------------------------------------------------------------------- solver
 class Solver:
-    def __init__(self, params: Params, num: Numerics):
+    def __init__(self, params: Params, num: Numerics, age=False):
+        """age: the white surfacing-time tracer ma (diagnostic, no feedback; wsolver.k_age): after step C
+            ma <- ma + dt s_m t - dt div(G c_face a_up),  a = ma / m (0 where m < 1e-12),  clipped to [0, m t],
+        t the frame-start time, G c_face the milk step's face flux of m; AGE = ma / m where m >= 1e-3.  Refused unless
+        the deposit is the only white source and nothing removes white (wsolver.age_allowed)."""
         self.P = params
         self.num = num
         self.g = Grid(num.N, num.cup_radius)
@@ -365,6 +369,25 @@ class Solver:
             raise ValueError(f"Params.visc must be 'symmetric' or 'componentwise', got {params.visc!r}")
         if params.offcup not in ("account", "renormalise"):
             raise ValueError(f"Params.offcup must be 'account' or 'renormalise', got {params.offcup!r}")
+        self.age = bool(age)
+        self.ma = None
+        if self.age:
+            why = []
+            if params.closure != "chi" or params.tau_d > 0:
+                why.append(f"closure {params.closure!r} / tau_d {params.tau_d:g} (the tracer is defined for the 'chi' "
+                           f"closure's direct deposit only)")
+            if params.kappa_e and params.eps_f:
+                why.append(f"kappa_e {params.kappa_e:g} with eps_f {params.eps_f:g} (white sink)")
+            if params.kappa_w and params.eps_f:
+                why.append(f"kappa_w {params.kappa_w:g} with eps_f {params.eps_f:g} (white sink)")
+            if params.kappa_M:
+                why.append(f"kappa_M {params.kappa_M:g} (surface current)")
+            if int(params.sink):
+                why.append(f"sink {params.sink:g}")
+            if why:
+                raise ValueError("age (surfacing-time tracer) refused: " + "; ".join(why))
+            self.ma = np.zeros((num.N, num.N))
+        self.age_src = self.age_clip = 0.0   # tracer budget: int dt t s_m dA summed, and what the clip took (signed)
         self.l_floor = 1e-3
         self._kernel_cache = {}
         self.brown_net = 0.0
@@ -714,6 +737,17 @@ class Solver:
         self.stats["clip_mass"] += float(over[mask].sum() * g.area)
         self.stats["clip_max"] = max(self.stats.get("clip_max", 0.0), float(over[mask].max(initial=0.0)))
         m_new = np.clip(m_new, 0.0, l_new)
+        ma_new = None
+        if self.age:                                         # surfacing-time moment (diagnostic; wsolver.k_age)
+            a_ag = np.where(m >= 1e-12, self.ma / np.where(m >= 1e-12, m, 1.0), 0.0)
+            ax_up = np.where(Gx_m >= 0.0, a_ag[:, :-1], a_ag[:, 1:])
+            ay_up = np.where(Gy_m >= 0.0, a_ag[:-1, :], a_ag[1:, :])
+            v_ag = K.div(np.ascontiguousarray(Gx_m * cfx * ax_up), np.ascontiguousarray(Gy_m * cfy * ay_up), 1.0,
+                         np.empty((N, N)))
+            ma_raw = self.ma + dt * s_m * self.t - dt * v_ag * (1.0 / h)
+            ma_new = np.where(mask, np.minimum(np.maximum(ma_raw, 0.0), m_new * self.t), 0.0)
+            age_src = dt * self.t * float(np.where(mask, s_m, 0.0).sum()) * g.area
+            age_clip = float((ma_raw - ma_new)[mask].sum()) * g.area
 
         # outside the cup keep the reference state
         l_new = np.where(mask, l_new, 1.0)
@@ -801,6 +835,10 @@ class Solver:
                 and np.isfinite(m_new).all() and l_new[mask].min() > self.l_floor):
             return False
         self.l, self.qx, self.qy, self.m = l_new, qx_new, qy_new, m_new
+        if ma_new is not None:
+            self.ma = ma_new
+            self.age_src += age_src
+            self.age_clip += age_clip
         if P.closure == "skin":
             self.f, self.ft = f_new, ft_new
         if tl_new is not None:
@@ -1104,7 +1142,8 @@ class Solver:
         nsub = int(math.ceil(frame_dt / dt_cfl))
         nsub = max(1, min(nsub, self.num.max_substeps))
         saved = (self.l.copy(), self.qx.copy(), self.qy.copy(), self.m.copy(), self.deposited, self.msub.copy(),
-                 self.f.copy(), self.ft.copy(), getattr(self, "brown_net", 0.0))
+                 self.f.copy(), self.ft.copy(), getattr(self, "brown_net", 0.0), None if self.ma is None else self.ma.copy(),
+                 self.age_src, self.age_clip)
         for attempt in range(8):
             dt = frame_dt / nsub
             ok = True
@@ -1120,6 +1159,9 @@ class Solver:
             self.msub = saved[5].copy()
             self.f, self.ft = saved[6].copy(), saved[7].copy()
             self.brown_net = saved[8]
+            if saved[9] is not None:
+                self.ma = saved[9].copy()
+            self.age_src, self.age_clip = saved[10], saved[11]
             self.stats["retries"] += 1
             nsub *= 2
         else:

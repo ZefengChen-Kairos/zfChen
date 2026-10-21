@@ -291,7 +291,7 @@ class DiffPour:
     def __init__(self, p, N=128, device=None, T_max=None, w_gap=2.0, tau=0.05, check_every=None, graphs=True,
                  loss="video", w_final=0.0, scales=(0.0,), e0=False, upwell=False, circ=False, w_flow=0.0,
                  flow_scale=0.15, flow_u0=0.05, exit_cal=False, circ_shape=None, milk=0, sink=0, visc_tr=0,
-                 log=print):
+                 age=False, log=print):
         self.p, self.N, self.log = p, N, log
         wp.init()
         script, pour = SC.pour_script(p, N, e0=e0, exit_cal=exit_cal)
@@ -303,9 +303,11 @@ class DiffPour:
             check_every = 4 if self.geo.dev.is_cuda else 1
         # milk: face value of c in the milk transport (wsolver.MILK_SCHEMES, name or code; 0 'vl', the calibrated one);
         # sink: form of the entrainment sink's area flux (wsolver.SINK_FORMS: 0 'v05' (1 - chi) S Z K, 1 'column'
-        # 4 Q Z K / d, the plunging column's perimeter inflow); visc_tr: the floating sheet's trace stress (k_sym_Td)
+        # 4 Q Z K / d, the plunging column's perimeter inflow); visc_tr: the floating sheet's trace stress (k_sym_Td);
+        # age: the white surfacing-time tracer (wsolver.k_age, a diagnostic: loss()'s snapshots self.sol.snaps[k] then
+        # hold 'ma', AGE = ma / m where m >= 1e-3; the dynamics, the loss and the gradient are unchanged)
         self.sol = W.WSolver(self.geo, v05=self.S["return_law"] == "v05", check_every=check_every, graphs=graphs,
-                             up=upwell, milk=milk, sink=sink, visc_tr=visc_tr)
+                             up=upwell, milk=milk, sink=sink, visc_tr=visc_tr, age=age)
         dev = self.geo.dev
         self.Sw = {k: wp.array(self.S[k], dtype=F, device=dev, requires_grad=True) for k in W.SCHED}
         self.circ, self.circ_shape = circ, dict(circ_shape or {})
@@ -360,6 +362,7 @@ class DiffPour:
             + (f", milk transport {W.MILK_SCHEMES[self.sol.milk]}" if self.sol.milk else "")
             + (f", entrainment sink {W.SINK_FORMS[self.sol.sink]}" if self.sol.sink else "")
             + (", sheet trace stress" if self.sol.visc_tr else "")
+            + (", surfacing-time tracer (diagnostic)" if self.sol.age else "")
             + (f" ({len(self.obs)} observed frames, scales {self.scales} R; no-white reference loss "
                f"{self.L_brown:.4f})" if self.obs else ""))
 

@@ -562,6 +562,74 @@ def k_milk(m: A2, sm: A2, Gx: A2, Gy: A2, cfx: A2, cfy: A2, l2: A2, qxn: A2, qyn
         m3[j, i] = F(0.0)
 
 
+# ---------------------------------------------------------------------------- diagnostic: white surfacing-time tracer
+# WSolver(age=True) (fgr23 SPEC2 3, 5.1): the moment ma = m a of the surfacing time a of the white, carried by the milk
+# step's own face flux of m (G c_face, the face values of whichever MILK_SCHEMES runs) with the upwind a and sourced at
+# the surfacing time t (the frame-start time tnow; frames are ~7 ms apart):
+#     d(ma)/dt + div(G c_face a_up) = s_m t,    a = ma / m (0 where m < 1e-12),   0 <= ma <= m t (clip)
+# AGE = ma / m where m >= 1e-3.  The deposit is the only white source and nothing else removes white (WSolver refuses
+# age otherwise: age_allowed), so the isochrones AGE = t_b are the material lines laid at the surfacing time t_b.  Not a
+# model term: it reads the state and writes only ma (no feedback, bitwise-neutral), the fast path only, no gradient.
+# Not carried by the explicit mixing step k_mix (D; Stage 1 D 1e-7): the spec's tracer equation has no mixing term.
+@wp.func
+def age_of(ma: A2, m: A2, j: int, i: int):
+    a = F(0.0)
+    if m[j, i] >= F(1e-12):
+        a = ma[j, i] / m[j, i]
+    return a
+
+
+@wp.func
+def age_up(ma: A2, m: A2, G: F, jL: int, iL: int, jR: int, iR: int):
+    """Upwind surfacing time on a face (left / lower cell for G >= 0, as k_limit)."""
+    a = F(0.0)
+    if G >= F(0.0):
+        a = age_of(ma, m, jL, iL)
+    else:
+        a = age_of(ma, m, jR, iR)
+    return a
+
+
+@wp.kernel
+def k_age(ma: A2, m: A2, sm: A2, Gx: A2, Gy: A2, cfx: A2, cfy: A2, m3: A2, mask: I2, dta: A1, tnow: A1, inv_h: F,
+          N: int, ma3: A2):
+    """Surfacing-time moment after step C: ma3 = ma + dt s_m t - dt div(G c_face a_up), clipped to [0, m3 t]."""
+    j, i = wp.tid()
+    if mask[j, i] == 0:
+        ma3[j, i] = F(0.0)
+        return
+    dt = dta[0]
+    tn = tnow[0]
+    v = F(0.0)
+    if i < N - 1:
+        v += Gx[j, i] * cfx[j, i] * age_up(ma, m, Gx[j, i], j, i, j, i + 1)
+    if i > 0:
+        v -= Gx[j, i - 1] * cfx[j, i - 1] * age_up(ma, m, Gx[j, i - 1], j, i - 1, j, i)
+    if j < N - 1:
+        v += Gy[j, i] * cfy[j, i] * age_up(ma, m, Gy[j, i], j, i, j + 1, i)
+    if j > 0:
+        v -= Gy[j - 1, i] * cfy[j - 1, i] * age_up(ma, m, Gy[j - 1, i], j - 1, i, j, i)
+    a3 = ma[j, i] + dt * sm[j, i] * tn - dt * v * inv_h
+    ma3[j, i] = wp.min(wp.max(a3, F(0.0)), m3[j, i] * tn)
+
+
+def age_allowed(Pnp, sink):
+    """None if the surfacing-time tracer is exact for these closure values, else the reason it is refused: it needs the
+    deposit as the only white source and no white removal, i.e. no white sink in k_exchange (the foam goes down at
+    eps_f W, W = (1 - xi_X) kappa_M sigma- + kappa_w kappa_Q W_n + kappa_e ej / l: kappa_e = 0 or eps_f = 0; kappa_w = 0
+    or eps_f = 0), no surface current kappa_M (SPEC2 5.1: kappa_M == 0) and the default entrainment-sink form (sink 0)."""
+    why = []
+    if Pnp[KJ] != 0 and Pnp[KE] != 0:
+        why.append(f"kappa_e {Pnp[KJ]:g} with eps_f {Pnp[KE]:g} (white sink)")
+    if Pnp[KW] != 0 and Pnp[KE] != 0:
+        why.append(f"kappa_w {Pnp[KW]:g} with eps_f {Pnp[KE]:g} (white sink)")
+    if Pnp[KM] != 0:
+        why.append(f"kappa_M {Pnp[KM]:g} (surface current)")
+    if int(sink) != 0:
+        why.append(f"sink form {SINK_FORMS[int(sink)]}")
+    return "; ".join(why) or None
+
+
 # ---------------------------------------------------------------------------- milk face value: sharper schemes
 # Closure switch 'milk' (MILK_SCHEMES; WSolver(milk=...), run.DiffPour(milk=...), solver.Params.milk, kernels.milk_faces):
 #   0 vl         k_limit above (van Leer, the calibrated default)
@@ -1743,11 +1811,13 @@ class WSolver:
                per launch, or taken from the persistent pool (pool_begin / pool_end) so that the whole replay of a
                frame, forward + backward, can be one CUDA graph (run.DiffPour._replay); its PCG solves run on the same
                CGOp as the fast path.
-    rec: allocate gradients and register the adjoints of the PCG solves on `tape` (set by the caller)."""
+    rec: allocate gradients and register the adjoints of the PCG solves on `tape` (set by the caller).
+    age: the white surfacing-time tracer ma (k_age; a diagnostic of the fast path: fast_forward's snapshots then hold
+    'ma'; the recorded path and the adjoint ignore it)."""
 
     def __init__(self, geo, cfl=0.5, max_substeps=64, cg_tol=1e-10, visc_tol=1e-8, cg_maxiter=500,
                  kernel_quadrature=3, explicit_mixing_limit=0.05, l_floor=1e-3, v05=True, check_every=1, graphs=True,
-                 up=False, milk=0, sink=0, visc_tr=0):
+                 up=False, milk=0, sink=0, visc_tr=0, age=False):
         self.g = geo
         self.cfl, self.max_substeps = cfl, max_substeps
         self.cg_tol, self.visc_tol, self.cg_maxiter = cg_tol, visc_tol, cg_maxiter
@@ -1779,6 +1849,20 @@ class WSolver:
         self._blocks, self._views, self._blocks1, self._views1 = [], [], [], []
         self.pool_i = self.pool1_i = 0
         self.milk = milk_code(milk)          # face value of c in step C (MILK_SCHEMES; set_milk)
+        self.age = bool(age)                 # surfacing-time tracer (k_age; set_age)
+        self.tnow = wp.zeros(1, dtype=F, device=dev)   # frame-start time read by k_age
+        self._tnow = None
+
+    def set_age(self, age):
+        """Surfacing-time tracer of the white on (True) or off (False): a diagnostic, the dynamics are unchanged."""
+        if bool(age) != self.age:
+            self.age = bool(age)
+            self.runner.graphs.clear()                       # captured sub-steps hold the old launch sequence
+
+    def set_tnow(self, t):
+        if self._tnow != t:
+            self.tnow.assign(np.array([t], np.float64))
+            self._tnow = t
 
     def set_milk(self, milk):
         """Face value of c in step C: a name or code of MILK_SCHEMES (module comment above k_face_hi)."""
@@ -2115,6 +2199,8 @@ class WSolver:
             self.fb["P"] = wp.zeros(len(PARAMS), dtype=F, device=g.dev)
             self.fb["S"] = {}
         fb = self.fb
+        if self.age and "ma" not in fb:                      # surfacing-time moment (+ frame save, step output)
+            fb.update({k: wp.zeros((g.N, g.N), dtype=F, device=g.dev) for k in ("ma", "ma0", "ma3")})
         wp.copy(fb["P"], P)
         n = S["x"].shape[0]
         if not fb["S"] or fb["S"]["x"].shape[0] != n:
@@ -2155,7 +2241,7 @@ class WSolver:
 
     def _g_save(self, back=False):
         fb = self.fb
-        for a in ("l", "qx", "qy", "m"):
+        for a in ("l", "qx", "qy", "m") + (("ma",) if self.age else ()):
             if back:
                 self.cp(fb[a + "0"], fb[a])
             else:
@@ -2189,6 +2275,9 @@ class WSolver:
         self.milk_faces(fb["c"], fb["m"], fb["sm"], fb["Gx"], fb["Gy"], fb["l2"], fb, R)
         R(k_milk, [fb["m"], fb["sm"], fb["Gx"], fb["Gy"], fb["cfx"], fb["cfy"], fb["l2"], fb["qxn"], fb["qyn"], g.mask, dt, ih, N],
           [V.c["l3"], fb["qx3"], fb["qy3"], fb["m3"]])
+        if self.age:                                    # diagnostic: reads m, m3 and the milk step's faces, writes ma3
+            R(k_age, [fb["ma"], fb["m"], fb["sm"], fb["Gx"], fb["Gy"], fb["cfx"], fb["cfy"], fb["m3"], g.mask, dt,
+                      self.tnow, ih, N], [fb["ma3"]])
         if nu_on:
             R(k_visc_nu, [fb["qx3"], fb["qy3"], V.c["l3"], fb["m3"], g.mask, g.fx, g.fy, P, ih, N], [fb["nuc"]])
             R(k_visc_coefs, [V.c["l3"], g.fx, g.fy, g.cm, g.geo, P, fb["nuc"], N], [V.c["wx"], V.c["wy"], V.c["wc"], V.c["ww"]])
@@ -2210,6 +2299,8 @@ class WSolver:
         else:
             self.cp(fb["m3"], fb["m"])
         self.cp(V.c["l3"], fb["l"])
+        if self.age:
+            self.cp(fb["ma3"], fb["ma"])
         if self.ex_on:
             R(k_exchange, [fb["l"], fb["qx"], fb["qy"], fb["m"], self.Kb, self.Db, self.Wf, fb["ej"], fb["P"], self.dta, g.mask],
               [fb["l"], fb["qx"], fb["qy"], fb["m"]])
@@ -2256,15 +2347,24 @@ class WSolver:
     def fast_forward(self, P, Pnp, S, sched, keep=True, nsub=None, frames=None, snap=()):
         """Whole pour on persistent buffers.  P, S: device arrays (copied in); sched: host schedule (fdt, q, active).
         Returns final state (device arrays, copies), checkpoints (device arrays, state at each frame start) and the
-        sub-step counts; with snap (frame indices) self.snaps = {k: state after frame k}.
+        sub-step counts; with snap (frame indices) self.snaps = {k: state after frame k}, with age on including 'ma'
+        (the surfacing-time moment, k_age; AGE = ma / m where m >= 1e-3).
         Host synchronisation: none with nsub given; otherwise one read-back per frame (acceptance of this frame +
         the CFL speed of the next, computed in the same graph)."""
         self.snaps = {}
         snap = set(snap)
+        if self.age:
+            why = age_allowed(Pnp, self.sink)
+            if why:
+                raise ValueError(f"age (surfacing-time tracer) refused: {why}")
         self._fast_setup(P, S)
         self.set_ex(Pnp)
         R, fb = self.runner, self.fb
         R("init", lambda: self.L(k_init_state, [], [fb["l"], fb["qx"], fb["qy"], fb["m"]], record=False))
+        if self.age:
+            R("init_age", lambda: self.L(k_set0, [fb["ma"]], record=False))
+        snap_keys = ("l", "qx", "qy", "m") + (("ma",) if self.age else ())
+        t_frame = 0.0                                      # frame-start time (k_age's surfacing time)
         nu_on = Pnp[NU] > 0
         ck, ns = [], []
         n = sched["n"] if frames is None else min(frames, sched["n"])
@@ -2283,6 +2383,8 @@ class WSolver:
         for k in range(n):
             if keep:
                 ck.append(self.clone_state({a: fb[a] for a in ("l", "qx", "qy", "m")}))
+            if self.age:
+                self.set_tnow(t_frame)
             if nsub is not None:
                 n_ = nsub[k]
                 self.set_dt(fdt(k) / n_)
@@ -2316,6 +2418,7 @@ class WSolver:
                     raise RuntimeError(f"frame {k} failed after retries")
             ns.append(n_)
             if k in snap:
-                self.snaps[k] = self.clone_state({a: fb[a] for a in ("l", "qx", "qy", "m")})
+                self.snaps[k] = self.clone_state({a: fb[a] for a in snap_keys})
             self.stats["frames"] += 1
+            t_frame += fdt(k)
         return self.clone_state({a: fb[a] for a in ("l", "qx", "qy", "m")}), ck, ns
