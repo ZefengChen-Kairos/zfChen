@@ -108,7 +108,7 @@ def export(src, patterns=PATTERNS):
 POSE_FILES = {"v2": "pitcher_pose.npz", "v1": "pitcher_pose_v1.npz"}
 
 
-POSE_DEFAULT = "v1"         # switched to "v2" once the fill and the stream feet are re-derived with v2
+POSE_DEFAULT = "v2"         # since 2026-10-21 (fill and stream feet re-derived with v2); "v1" reproduces earlier results
 
 
 def pose_version():
