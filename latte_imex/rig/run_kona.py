@@ -7,7 +7,9 @@ os.environ["PITCHER_GEOM"] = "/home/user/zfChen/latte_imex/pitcher_geom/pitcher_
 sys.path.insert(0, "/home/user/zfChen")
 import latte_imex.rig.real_program as RP
 p = sys.argv[1]
-fill = json.load(open("/home/user/zfChen/raw_data/rig/results/full_pour_kona_poured165.json"))[p]["fill_at_cut_mL"]
+J = json.load(open("/home/user/zfChen/raw_data/rig/results/full_pour_kona_poured165.json"))[p]
+import latte_imex.rig.real_program as RP0
+fill = J["fill_at_cut_v1_mL"] if (RP0.pose_version() == "v1" and "fill_at_cut_v1_mL" in J) else J["fill_at_cut_mL"]
 RP.SIM_SUB = "sim_kona"
 from latte_imex.rig.full_pour import TIP_KONA
 RP.TIP_OVERRIDE = TIP_KONA
