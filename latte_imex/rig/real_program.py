@@ -119,8 +119,9 @@ def pose_version():
 
 
 def stream_foot_file(p):
-    """The measured stream feet (stream_foot.py) belonging to the active pose track (its search starts at the tip)."""
-    return os.path.join(RES, p, "stream_foot_v1.json" if pose_version() == "v1" else "stream_foot.json")
+    """The measured stream feet (stream_foot.py).  The same measurement for both pose tracks: stream_foot.json, whose
+    search is anchored at the v1 tip (stream_foot.py explains why; stream_foot_v1.json is a byte copy)."""
+    return os.path.join(RES, p, "stream_foot.json")
 
 
 def tip_board_at(p, t):

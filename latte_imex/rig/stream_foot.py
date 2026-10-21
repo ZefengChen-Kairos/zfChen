@@ -147,8 +147,15 @@ def run(p, every=1, sheet_n=12, log=print):
     dz_ = np.array([d["surf_z"] for d in D])
     M = model_landing(p)
     out, keep = [], []
-    # the search starts at the spout tip of the pose track the simulation uses (cup_track.json's 'tip' is the v1 track)
-    tips = tip_board_at(p, [o["t"] for o in ct])
+    # The search is anchored at cup_track.json's tip (the v1 pose track), whatever track the simulation uses: the
+    # Viterbi start window and TOP_OK were tuned on that anchor.  Re-anchored at the v2 tip (about 5 mm away, at the
+    # true spout) the tracker latched onto other bright features in part of the frames -- leaf 1-3 s: feet 15-25 mm
+    # towards the pitcher, outside the growing white blob, at lower quality (0.5-0.7 vs 0.8-0.9); 10-20 % of the
+    # frames moved > 10 mm (raw_data/rig/results/<p>/stream_foot_v2tip.json keeps that run).  The foot is a
+    # measurement of the stream, not of the pitcher; anchoring it robustly at the true spout is open work
+    # (start window around the predicted stream at the top slice, not around the tip).
+    tips = np.array([o["tip"] for o in ct]) if os.environ.get("STREAM_FOOT_ANCHOR", "v1") == "v1" else \
+        tip_board_at(p, [o["t"] for o in ct])
     for fi in range(0, len(ct), every):
         o = ct[fi]
         tip = tips[fi]
