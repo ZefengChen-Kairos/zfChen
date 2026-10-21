@@ -26,15 +26,17 @@ Film coupling (solver.py, diff/wsolver.py), all with the unit current (kappa_M =
 W_n: the received flow's area (abar: the relaxed received flow) leaving where the current goes down (sigma- / its
 integral; along the wall when there is no current): kappa_w = 1 removes the area the inlet adds.  kappa_M, eps_f,
 kappa_w are the closure parameters (multipliers of these unit fields in the Warp solver: exact gradients); R_C, L_C,
-R_F are the default shape constants (L_C and R_F calibrated as closure values circ_L, circ_rf: solver.Params,
-diff/run.DiffPour(circ_shape=...), diff/cmafit.py --circ-L).  kappa_M = kappa_w = 0 is V1/V0.5."""
+R_F are the default shape constants (calibrated as closure values circ_r, circ_L, circ_rf: solver.Params,
+diff/run.DiffPour(circ_shape=dict(r, L, r_f)), diff/cmafit.py --circ-r --circ-L --circ-rf; not differentiated).
+kappa_M = kappa_w = 0 is V1/V0.5."""
 from __future__ import annotations
 
 import math
 
 import numpy as np
 
-R_C = 1.0                # spin-down rate of the current [1/s] (measured: the mean surface current dies within ~1 s)
+R_C = 1.0                # spin-down rate of the current [1/s] (old optical flow: the mean surface current dies within ~1 s;
+                         # the current frames: the broad forward motion stops within ~0.35 s of a stream stop -> circ_r)
 L_C = 0.4                # momentum spreading length sqrt(nu / r) [solver units; cup diameter 0.98]
 R_F = 0.06               # radius of the momentum kernel around the landing point
 PEN = 50.0               # wall normal penalty (x nu / h^2)

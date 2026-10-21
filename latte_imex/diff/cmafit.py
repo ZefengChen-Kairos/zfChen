@@ -11,8 +11,10 @@ mechanism spaces of the chosen model).  After the fit the frozen closure is scor
         --gens 16 --pop 12 [--device cuda:0] [--workers 2] [--w-iou 0.25] [--init closure.json] [--set k=v,...]
 
 --model letters: d (tau_s: foam surfaces ahead of the landing point), m (mu_s: jet momentum the surfacing foam has
-lost), c (surface current driven by the stream's momentum: kappa_M, eps_f, kappa_w, xi_X; its shape --circ-L, --circ-rf),
-a (alpha_u: underplating, new foam surfacing under an existing raft thickens it), u (upwell); 'v05' = none.
+lost), c (surface current driven by the stream's momentum: kappa_M, eps_f, kappa_w, xi_X; its shape --circ-r (spin-down
+rate [1/s]), --circ-L, --circ-rf), a (alpha_u: underplating, new foam surfacing under an existing raft thickens it),
+u (upwell), e / j / k / y (fit.SINK / VJ / KIN / YIELD_SPACE), o (two-phase open floating layer: xi_b brown softness,
+lam_b brown subduction rate, fit.OPEN_SPACE); letters compose (e.g. 'co'); 'v05' = none.
 """
 from __future__ import annotations
 
@@ -26,8 +28,8 @@ import numpy as np
 
 from ..v05_adapter import SPACE
 from . import schedule as SC
-from .fit import (CIRC_SPACE, CIRC_START, DEP_SPACE, DEP_START, KIN_SPACE, MECH_START, RAFT_SPACE, RAFT_START, SINK_SPACE,
-                  VJ_SPACE, YIELD_SPACE)
+from .fit import (CIRC_SPACE, CIRC_START, DEP_SPACE, DEP_START, KIN_SPACE, MECH_START, OPEN_SPACE, OPEN_START, RAFT_SPACE,
+                  RAFT_START, SINK_SPACE, VJ_SPACE, YIELD_SPACE)
 from . import score as SS
 
 PATTERNS = ("tulip", "leaf", "heart", "push_heart", "swan")
@@ -55,6 +57,8 @@ def model_space(model):
         fix["mu_s"] = 1.0
     if "y" in f:                                     # yield stress of the floating layer
         SP.update(YIELD_SPACE)
+    if "o" in f:                                     # two-phase open floating layer (soft, subducting brown surface)
+        SP.update(OPEN_SPACE)
     return SP, dict(circ="c" in f, upwell="u" in f, fix=fix)
 
 
@@ -123,6 +127,9 @@ def main(argv=None):
     ap.add_argument("--exit-cal", dest="exit_cal", action="store_true")
     ap.add_argument("--circ-L", dest="circ_L", type=float, default=0.4, help="surface current spreading length (circulation.L_C)")
     ap.add_argument("--circ-rf", dest="circ_rf", type=float, default=0.06, help="surface current forcing radius (circulation.R_F)")
+    ap.add_argument("--circ-r", dest="circ_r", type=float, default=1.0,
+                    help="surface current spin-down rate [1/s] (circulation.R_C); the steady current goes as kappa_M / r, "
+                         "so the kappa_M box and start are scaled by r (the same current amplitudes as at r = 1)")
     ap.add_argument("--N", type=int, default=48)
     ap.add_argument("--gens", type=int, default=16)
     ap.add_argument("--pop", type=int, default=12)
@@ -143,15 +150,21 @@ def main(argv=None):
     cal = a.cal.split(",")
     test = [p for p in (a.test.split(",") if a.test else PATTERNS) if p not in cal]
     SP, sw = model_space(a.model)
+    circ_start = dict(CIRC_START)
+    if sw["circ"] and a.circ_r != 1.0:               # U_ss = (r - r L^2 lap + ...)^-1 F: amplitude kappa_M / r
+        lo, hi, sc = SP["kappa_M"]
+        SP["kappa_M"] = (lo * a.circ_r, hi * a.circ_r, sc)
+        circ_start["kappa_M"] *= a.circ_r
     for k, v in (x.split("=") for x in a.bound.split(",") if x):
         lo, hi = map(float, v.split(":"))
         SP[k] = (lo, hi, SP[k][2] if k in SP else "lin")
     e0 = SC.e0_mode(0 if a.e0 == "none" else a.e0)
-    cfg = dict(pours=cal, N=a.N, device=a.device, e0=e0, exit_cal=a.exit_cal, circ_shape=dict(L=a.circ_L, r_f=a.circ_rf), **sw)
+    cfg = dict(pours=cal, N=a.N, device=a.device, e0=e0, exit_cal=a.exit_cal,
+               circ_shape=dict(L=a.circ_L, r_f=a.circ_rf, r=a.circ_r), **sw)
     from .run import DiffPour
     base = dict(DiffPour(cal[0], N=16, device="cpu", log=lambda *x: None).s1)
-    base.update(CIRC_START if sw["circ"] else {"kappa_M": 0.0, "eps_f": 0.0, "kappa_w": 0.0})
-    base.update({k: v for k, v in dict(DEP_START, **RAFT_START, **MECH_START).items() if k in SP})
+    base.update(circ_start if sw["circ"] else {"kappa_M": 0.0, "eps_f": 0.0, "kappa_w": 0.0})
+    base.update({k: v for k, v in dict(DEP_START, **RAFT_START, **MECH_START, **OPEN_START).items() if k in SP})
     if a.init:
         base.update({k: float(v) for k, v in json.load(open(a.init)).items() if isinstance(v, (int, float)) and not k.startswith("_")})
     base.update(sw.pop("fix"))                       # switches of the model letters (vj, mu_s = 1)
@@ -161,10 +174,11 @@ def main(argv=None):
         lo, hi, _ = SP[k]
         base[k] = min(max(base[k], lo), hi)
     switches = dict(e0=float(SC.e0_code(e0)), exit_cal=float(a.exit_cal), upwell=float(sw["upwell"]), circ=float(sw["circ"]),
-                    circ_L=a.circ_L, circ_rf=a.circ_rf)
+                    circ_L=a.circ_L, circ_rf=a.circ_rf, circ_r=a.circ_r)
     log(f"CMA-ES {a.model}: {len(SP)} parameters, calibration {cal}, test {test}, N {a.N}, e0 {a.e0}, "
         f"objective {a.w_iou:g} IoU + {1 - a.w_iou:g} structure (normalised by the video's 0.25 s self-consistency), "
-        f"{a.gens} x {a.pop}")
+        f"{a.gens} x {a.pop}" + (f"; surface current r {a.circ_r:g} /s, L {a.circ_L:g}, r_f {a.circ_rf:g}, kappa_M box "
+                                 f"{SP['kappa_M'][0]:g}-{SP['kappa_M'][1]:g}" if sw["circ"] else ""))
     es = cma.CMAEvolutionStrategy(to_unit(base, SP), a.sigma, dict(bounds=[0, 1], popsize=a.pop, seed=a.seed, verbose=-9))
     best = None
     pool = None

@@ -23,8 +23,9 @@ import warp as wp
 wp.config.quiet = True
 F = wp.float64
 PARAMS = ("cp", "beta", "nu", "D", "kappa_Q", "kappa_c", "kappa_t", "kappa_r", "B_dep", "p_dep", "kappa_M", "eps_f",
-          "kappa_w", "tau_s", "mu_s", "xi_X", "tau_f", "alpha_u", "kappa_e", "kappa_tc", "vj", "e_F", "tau_b")
-CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW, TS, MS, XX, TF, AU, KJ, KTC, VJ, EF, YB = range(23)
+          "kappa_w", "tau_s", "mu_s", "xi_X", "tau_f", "alpha_u", "kappa_e", "kappa_tc", "vj", "e_F", "tau_b",
+          "xi_b", "lam_b")          # appended last: closures without them load unchanged (DiffPour.s1 fills 0 = V0.5)
+CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW, TS, MS, XX, TF, AU, KJ, KTC, VJ, EF, YB, XB, LB = range(25)
 YIELD_EPS, NU_MAX = 0.02, 0.5      # solver.Params.yield_eps, nu_max (Bingham foam raft, tau_f > 0)
 SCHED = ("x", "y", "Q", "ux", "uy", "U", "d", "r1", "r2", "phi", "vjx", "vjy")
 A2 = wp.array2d(dtype=F)
@@ -162,7 +163,11 @@ def k_exchange(l: A2, qx: A2, qy: A2, m: A2, Kb: A2, Db: A2, Wf: A2, ej: A2, P: 
     foam goes down at eps_f W.  k_X = (1 - xi_X) kappa_M: xi_X the share of the current's divergence taken up by the
     floating layer instead of exchanging it with the bulk (0: V2).  Exchanged material moves with the film.
     Entrainment sink of the diving stream: the brown part also goes down at kappa_e ej / l (ej = (1 - chi) S Z K), i.e.
-    the brown area flux kappa_e ej (1 - c); the buoyant foam goes at eps_f of that rate."""
+    the brown area flux kappa_e ej (1 - c); the buoyant foam goes at eps_f of that rate.
+    Open brown surface (two-phase floating layer, k_stepA_B): brown compressed beyond its rest state l = 1 goes down
+    (the coffee under the crema downwells), stretched brown is resupplied, db/dt = -lam_b (l - 1)(1 - c) = -W_o b with
+    W_o = lam_b (l - 1) / l [1/s], applied as the factor exp(-dt W_o) (exact for frozen l, b >= 0 for either sign); it
+    never acts on the foam m (the raft cannot go down)."""
     j, i = wp.tid()
     fl = F(1.0)
     fm = F(1.0)
@@ -172,7 +177,8 @@ def k_exchange(l: A2, qx: A2, qy: A2, m: A2, Kb: A2, Db: A2, Wf: A2, ej: A2, P: 
         kX = (F(1.0) - P[XX]) * P[KM]
         W = kX * Db[j, i] + P[KW] * P[KQ] * Wf[j, i] + P[KJ] * ej[j, i] / L
         fm = wp.exp(-dta[0] * P[KE] * W)
-        b = (L - m[j, i]) * wp.exp(-dta[0] * W) + dta[0] * kX * Kb[j, i] * (F(1.0) - c)
+        Wo = P[LB] * (L - F(1.0)) / L                     # open-surface subduction (> 0) / upwelling (< 0) of the brown
+        b = (L - m[j, i]) * wp.exp(-dta[0] * (W + Wo)) + dta[0] * kX * Kb[j, i] * (F(1.0) - c)
         fl = (b + m[j, i] * fm) / L
     lo[j, i] = l[j, i] * fl
     qxo[j, i] = qx[j, i] * fl
@@ -219,14 +225,54 @@ def k_rusanov(qx: A2, qy: A2, ux: A2, uy: A2, fx: I2, fy: I2, Fxqx: A2, Fxqy: A2
         Fyqy[j, i] = F(0.5) * (qy[j, i] * vL + qy[j + 1, i] * vR) - F(0.5) * a * (qy[j + 1, i] - qy[j, i])
 
 
+@wp.func
+def cgrad_x(a: A2, fx: I2, nfx: A2, j: int, i: int, N: int, inv_h: F):
+    """x component of the cell gradient of a: mean of the active x-face differences (k_qgrad's stencil, 0 without one)."""
+    g = F(0.0)
+    if i < N - 1:
+        if fx[j, i] != 0:
+            g += (a[j, i + 1] - a[j, i]) * inv_h
+    if i > 0:
+        if fx[j, i - 1] != 0:
+            g += (a[j, i] - a[j, i - 1]) * inv_h
+    if nfx[j, i] > F(0.0):
+        g = g / nfx[j, i]
+    else:
+        g = F(0.0)
+    return g
+
+
+@wp.func
+def cgrad_y(a: A2, fy: I2, nfy: A2, j: int, i: int, N: int, inv_h: F):
+    """y component of the cell gradient of a (as cgrad_x)."""
+    g = F(0.0)
+    if j < N - 1:
+        if fy[j, i] != 0:
+            g += (a[j + 1, i] - a[j, i]) * inv_h
+    if j > 0:
+        if fy[j - 1, i] != 0:
+            g += (a[j, i] - a[j - 1, i]) * inv_h
+    if nfy[j, i] > F(0.0):
+        g = g / nfy[j, i]
+    else:
+        g = F(0.0)
+    return g
+
+
 @wp.kernel
-def k_stepA_B(qx: A2, qy: A2, Fxqx: A2, Fxqy: A2, Fyqx: A2, Fyqy: A2, s: A2, Lam: A2, vsx: A2, vsy: A2, ls: A2,
-              P: A1, dta: A1, inv_h: F, N: int, Vbx: A2, Vby: A2, sm: A2, ux: A2, uy: A2, ax: A2, ay: A2, coef: A2):
+def k_stepA_B(qx: A2, qy: A2, Fxqx: A2, Fxqy: A2, Fyqx: A2, Fyqy: A2, s: A2, Lam: A2, vsx: A2, vsy: A2, ls: A2, c: A2,
+              P: A1, dta: A1, inv_h: F, N: int, Vbx: A2, Vby: A2, sm: A2, ux: A2, uy: A2, fx: I2, fy: I2, nfx: A2,
+              nfy: A2, ax: A2, ay: A2, coef: A2):
     """q* = q - dt div(F) (step A), then stepB_prepare: theta = 1 + dt (beta + Lam/l),
-    a = (q* + dt ((1-mu_s) sm + Lam) v* + dt (s - (1-mu_s) sm) u + dt beta l kappa_M U)/theta, coef = cp^2 l / theta:
-    the new milk sm arrives with the jet target v* except the share mu_s of it that surfaces at rest relative to the
-    film (its jet momentum lost under water), the base material s - sm (dived milk resurfacing) with the film's own
-    velocity u (V0.5: s = sm, mu_s = 0)."""
+    a = (q* + dt ((1-mu_s) sm + Lam) v* + dt (s - (1-mu_s) sm) u + dt beta l kappa_M U - dt f_i)/theta,
+    coef = cp^2 g(c) l / theta: the new milk sm arrives with the jet target v* except the share mu_s of it that surfaces
+    at rest relative to the film (its jet momentum lost under water), the base material s - sm (dived milk resurfacing)
+    with the film's own velocity u (V0.5: s = sm, mu_s = 0).
+    Two-phase floating layer: the foam raft and the brown surface (crema / open coffee) both at rest at l = 1, the brown
+    softer, effective pressure Pi(l, c) = 1/2 cp^2 [g(c) l^2 + 1 - g(c)], g(c) = 1 - xi_b (1 - c) (area moduli: foam cp^2,
+    brown (1 - xi_b) cp^2 [D_L^2/s^2]); -grad Pi = -cp^2 g l grad l (implicit, through coef) - f_i with the interface
+    force f_i = 1/2 cp^2 (l^2 - 1) xi_b grad c (explicit, frame-start l and c, cell gradient as k_qgrad): compressed
+    (l > 1) stiff foam pushes into the soft brown, stretched (l < 1) it is pulled back.  xi_b = 0: V0.5."""
     j, i = wp.tid()
     dt = dta[0]
     qxs = qx[j, i] - dt * divF(Fxqx, Fyqx, j, i, N, inv_h)
@@ -237,9 +283,11 @@ def k_stepA_B(qx: A2, qy: A2, Fxqx: A2, Fxqy: A2, Fyqx: A2, Fyqy: A2, s: A2, Lam
     f = dt * (smv + Lam[j, i])
     fb = dt * (s[j, i] - smv)
     g = dt * P[BETA] * L * P[KM]                         # drag towards the surface current (circulation.py; 0: at rest)
-    ax[j, i] = (qxs + f * vsx[j, i] + fb * ux[j, i] + g * Vbx[j, i]) / theta
-    ay[j, i] = (qys + f * vsy[j, i] + fb * uy[j, i] + g * Vby[j, i]) / theta
-    coef[j, i] = P[CP] * P[CP] * L / theta
+    gc = F(1.0) - P[XB] * (F(1.0) - c[j, i])            # stiffness of the local mixture, g(c)
+    fp = dt * F(0.5) * P[CP] * P[CP] * (L * L - F(1.0)) * P[XB]
+    ax[j, i] = (qxs + f * vsx[j, i] + fb * ux[j, i] + g * Vbx[j, i] - fp * cgrad_x(c, fx, nfx, j, i, N, inv_h)) / theta
+    ay[j, i] = (qys + f * vsy[j, i] + fb * uy[j, i] + g * Vby[j, i] - fp * cgrad_y(c, fy, nfy, j, i, N, inv_h)) / theta
+    coef[j, i] = P[CP] * P[CP] * L * gc / theta
 
 
 @wp.kernel
@@ -1266,13 +1314,15 @@ class WSolver:
         self.up = int(up)                    # volume-conserving surface source (k_fields)
         self.tape = None
         self.rec = False
-        self.stats = dict(cg_mass=0, cg_visc=0, cg_adj=0, substeps=0, frames=0)
+        self.stats = dict(cg_mass=0, cg_visc=0, cg_adj=0, substeps=0, frames=0, retries=0)   # retries: frames redone
+                                             # with twice the sub-steps (non-finite state or l below l_floor)
         dev = geo.dev
         self.dta = wp.zeros(1, dtype=F, device=dev)
         self.kq = wp.zeros(2, dtype=wp.int32, device=dev)
         self.Vbx, self.Vby, self.Kb, self.Db, self.Wf = (wp.zeros((geo.N, geo.N), dtype=F, device=dev) for _ in range(5))
         self.circ, self._ck = None, None     # unit surface-current fields of the frames (set_circ)
-        self.ex_on = False                   # vertical exchange step on (surface current or entrainment sink; set_ex)
+        self.ex_on = False                   # vertical exchange step on (surface current, entrainment sink, open brown
+                                             # surface; set_ex)
         self._dt = None
         self._kq = None
         import os
@@ -1347,8 +1397,9 @@ class WSolver:
             a.zero_()
 
     def set_ex(self, Pnp):
-        """The end-of-sub-step exchange runs with the surface current or the entrainment sink (kappa_e > 0)."""
-        self.ex_on = bool(self.circ is not None or Pnp[KJ] > 0)
+        """The end-of-sub-step exchange runs with the surface current, the entrainment sink (kappa_e > 0) or the open
+        brown surface (lam_b > 0)."""
+        self.ex_on = bool(self.circ is not None or Pnp[KJ] > 0 or Pnp[LB] > 0)
 
     def set_kq(self, k, q):
         if self.circ is not None and self._ck != k:
@@ -1458,8 +1509,8 @@ class WSolver:
         Fs = [self.new() for _ in range(4)]
         self.L(k_rusanov, [st["qx"], st["qy"], ux, uy, g.fx, g.fy], Fs)
         ax, ay, coef = self.new(), self.new(), self.new()
-        self.L(k_stepA_B, [st["qx"], st["qy"], *Fs, s, Lam, vsx, vsy, ls, P, dt, ih, N, self.Vbx, self.Vby, sm, ux, uy],
-               [ax, ay, coef])
+        self.L(k_stepA_B, [st["qx"], st["qy"], *Fs, s, Lam, vsx, vsy, ls, c, P, dt, ih, N, self.Vbx, self.Vby, sm, ux, uy,
+                           g.fx, g.fy, g.nfx, g.nfy], [ax, ay, coef])
         Gex, Gey = self.new(), self.new()
         self.L(k_massflux, [ax, ay, st["l"], ls, g.fx, g.fy], [Gex, Gey])
         kx, ky, diag = self.new(), self.new(), self.new()
@@ -1543,6 +1594,7 @@ class WSolver:
                         np.isfinite(out[c].numpy()).all() for c in ("qx", "qy", "m")):
                     break
                 nsub *= 2
+                self.stats["retries"] += 1
             else:
                 raise RuntimeError(f"frame {k} failed after retries")
         else:
@@ -1625,8 +1677,8 @@ class WSolver:
         R(k_prim, [fb["l"], fb["qx"], fb["qy"], fb["m"], g.mask], [fb["ls"], fb["ux"], fb["uy"], fb["c"]])
         R(k_rusanov, [fb["qx"], fb["qy"], fb["ux"], fb["uy"], g.fx, g.fy], [fb["Fxqx"], fb["Fxqy"], fb["Fyqx"], fb["Fyqy"]])
         R(k_stepA_B, [fb["qx"], fb["qy"], fb["Fxqx"], fb["Fxqy"], fb["Fyqx"], fb["Fyqy"], fb["s"], fb["Lam"], fb["vsx"],
-                      fb["vsy"], fb["ls"], P, dt, ih, N, self.Vbx, self.Vby, fb["sm"], fb["ux"], fb["uy"]],
-          [fb["ax"], fb["ay"], fb["coef"]])
+                      fb["vsy"], fb["ls"], fb["c"], P, dt, ih, N, self.Vbx, self.Vby, fb["sm"], fb["ux"], fb["uy"], g.fx, g.fy,
+                      g.nfx, g.nfy], [fb["ax"], fb["ay"], fb["coef"]])
         R(k_massflux, [fb["ax"], fb["ay"], fb["l"], fb["ls"], g.fx, g.fy], [fb["Gex"], fb["Gey"]])
         R(k_facecoef, [fb["coef"], g.fx, g.fy, dt], [M.c["kx"], M.c["ky"]])
         R(k_massdiag, [M.c["kx"], M.c["ky"], dt, ih2, N], [M.d[0]])
@@ -1767,6 +1819,7 @@ class WSolver:
                     self.set_kq(k, int(sched["q"][k]))
                     R(f"fields{int(act(k))}", lambda: self._g_fields() if act(k) else self._g_zero_fields())
                     n_ *= 2
+                    self.stats["retries"] += 1
                 else:
                     raise RuntimeError(f"frame {k} failed after retries")
             ns.append(n_)

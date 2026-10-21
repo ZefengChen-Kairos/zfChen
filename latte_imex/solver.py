@@ -58,6 +58,8 @@ class Params:
     circ_L: float = 0.4     # surface current: momentum spreading length sqrt(nu / r) (circulation.L_C) and radius of the
     circ_rf: float = 0.06   # momentum kernel (circulation.R_F) [D_L]; a short L_C keeps the stream's forward current near the
                             # landing point, where it parts sideways and fans the new foam out
+    circ_r: float = 1.0     # surface current: spin-down rate (circulation.R_C) [1/s]; the video's broad forward motion stops
+                            # within ~0.35 s of a stream stop (r ~ 3-10), the default 1 /s is the old optical-flow value
     kappa_e: float = 0.0    # closure "chi": entrainment sink of the diving stream -- the plunging (1 - chi) part drags the brown
                             # surface down with it at the area flux kappa_e (1 - chi) S_rec K (1 - c); the buoyant foam stays
                             # (it goes at eps_f of that rate) and is gathered into the stream's wake (V2_SURFACE_MODEL.md 10.2)
@@ -68,6 +70,11 @@ class Params:
                             # (film, no milk), joining at the film velocity; keeps successive layers apart (with mu_s = 1)
     tau_b: float = 0.0      # yield stress of the brown floating layer (crema) [D_L^2/s^2]: the Bingham viscosity of tau_f
                             # becomes nu + (tau_b (1 - c) + tau_f c) / (2 |D|_e + yield_eps)
+    xi_b: float = 0.0       # closure "chi", two-phase floating layer: softness of the brown surface (crema / open coffee)
+                            # against the foam raft, both at rest at l = 1: effective pressure Pi = 1/2 cp^2 [g(c) l^2 + 1 -
+                            # g(c)], g(c) = 1 - xi_b (1 - c) (brown area modulus (1 - xi_b) cp^2); 0 = V0.5
+    lam_b: float = 0.0      # ... open brown surface: brown compressed beyond l = 1 goes down, stretched brown is resupplied,
+                            # db/dt = -lam_b (l - 1)(1 - c) [1/s] (the foam never goes down); 0 = closed (V0.5)
     tau_s: float = 0.0      # closure "chi": the deposited foam surfaces tau_s u_in ahead of the landing point (carried by the
                             # plunging stream's horizontal velocity for its rise time; the deposit kernel K_d), [s]
     mu_s: float = 0.0       # closure "chi": share of the jet momentum the surfacing foam has lost (it arrives with the film
@@ -615,6 +622,15 @@ class Solver:
             gbx, gby = g.cell_grad(msub_new)
             a_x = a_x - dt * coef * P.sub_pressure * gbx
             a_y = a_y - dt * coef * P.sub_pressure * gby
+        if P.xi_b:
+            # two-phase floating layer (wsolver.k_stepA_B): Pi = 1/2 cp^2 [g(c) l^2 + 1 - g(c)], g = 1 - xi_b (1 - c); the
+            # implicit part cp^2 g l grad l through coef, the interface force 1/2 cp^2 (l^2 - 1) xi_b grad c explicit
+            th = 1.0 + dt * (beta_B + Lam / lsafe)
+            gcx, gcy = g.cell_grad(c)
+            fp = dt * 0.5 * P.cp * P.cp * (lsafe * lsafe - 1.0) * P.xi_b
+            a_x = a_x - fp * gcx / th
+            a_y = a_y - fp * gcy / th
+            coef = coef * (1.0 - P.xi_b * (1.0 - c))
         # explicit part of face flux
         Gex = np.empty((N, N - 1)); Gey = np.empty((N - 1, N))
         K.mass_fluxes(a_x, a_y, l, lsafe, g.fx, g.fy, Gex, Gey, None, None)
@@ -744,7 +760,8 @@ class Solver:
             m_new = np.where(mask, lsn * np.clip(c_new, 0.0, 1.0), 0.0)
 
         jet = P.kappa_e > 0 and getattr(self, "_ej", None) is not None
-        if getattr(self, "_sink", None) is not None or jet:   # vertical exchange: surface current, entrainment sink
+        if getattr(self, "_sink", None) is not None or jet or P.lam_b > 0:
+            # vertical exchange: surface current, entrainment sink, open brown surface
             Ls = np.where(mask, l_new, 1.0)
             cc = np.clip(m_new / Ls, 0.0, 1.0)
             W = self._sink if getattr(self, "_sink", None) is not None else np.zeros_like(Ls)
@@ -752,7 +769,8 @@ class Solver:
                 W = W + P.kappa_e * self._ej / Ls             # brown area flux kappa_e (1 - chi) S_rec K (1 - c)
             up = self._up if getattr(self, "_up", None) is not None else np.zeros_like(Ls)
             fm = np.where(mask, np.exp(-dt * P.eps_f * W), 1.0)    # foam (buoyant: eps_f ~ 0)
-            b = (Ls - m_new) * np.exp(-dt * W) + dt * up * (1.0 - cc)    # brown: down + upwelled water
+            Wb = W + P.lam_b * (Ls - 1.0) / Ls if P.lam_b > 0 else W   # brown only: subduction (l > 1) / upwelling (l < 1)
+            b = (Ls - m_new) * np.exp(-dt * Wb) + dt * up * (1.0 - cc)    # brown: down + upwelled water
             fl = np.where(mask, (b + m_new * fm) / Ls, 1.0)
             l_new, qx_new, qy_new, m_new = l_new * fl, qx_new * fl, qy_new * fl, m_new * fm
         # accept only finite, positive-layer states; otherwise the frame is retried with a smaller step
@@ -1025,7 +1043,7 @@ class Solver:
         if self.P.kappa_M or self.P.kappa_w:   # surface current of this frame (circulation.py)
             if getattr(self, "circ", None) is None:
                 from .circulation import SurfaceCurrent
-                self.circ = SurfaceCurrent(g.x, g.y, g.mask, g.h, L=self.P.circ_L, r_f=self.P.circ_rf)
+                self.circ = SurfaceCurrent(g.x, g.y, g.mask, g.h, r=self.P.circ_r, L=self.P.circ_L, r_f=self.P.circ_rf)
             act = bool(inlet.active and inlet.S_eff > 0)
             Zr = getattr(self, "last_Z", 1.0) if self.P.offcup == "account" else 1.0
             U, up, dn, Wn = self.circ.step(frame_dt, act, inlet.S_eff * Zr / self.P.kappa_Q if act else 0.0,

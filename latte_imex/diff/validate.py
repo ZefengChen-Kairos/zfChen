@@ -9,7 +9,7 @@ separated by brown lines)?
 Forward run = the calibration's: cmafit._init / evaluate / run_fields (DiffPour tau 0.05, scales (0.3, 0.15, 0), score
 constants at the grid's physical size, the video's 0.25 s lag reference recomputed on the frames); parameters =
 DiffPour.s1 + the surface-current defaults + the closure's numbers, switches e0 / exit_cal / upwell / circ / circ_L /
-circ_rf from the closure (as cmafit --init and the best_closure.json it writes).  The time-weighted frame_ok means of
+circ_rf / circ_r from the closure (as cmafit --init and the best_closure.json it writes).  The time-weighted frame_ok means of
 iou / struct below are checked against evaluate() (summary 'calib_check').
 
 Per observed frame (run.video_on_grid: exposure transients and frames after the simulated time are not observed; the
@@ -287,7 +287,7 @@ def load_closure(fn, e0=None):
     num = {k: float(v) for k, v in J.items() if isinstance(v, (int, float)) and not k.startswith("_")}
     sw = dict(e0=SC.e0_mode(e0 if e0 is not None else num.get("e0", 0.0)), exit_cal=bool(num.get("exit_cal", 0.0)),
               upwell=bool(num.get("upwell", 0.0)), circ=bool(num.get("circ", 0.0)),
-              circ_shape=dict(L=num.get("circ_L", 0.4), r_f=num.get("circ_rf", 0.06)))
+              circ_shape=dict(L=num.get("circ_L", 0.4), r_f=num.get("circ_rf", 0.06), r=num.get("circ_r", 1.0)))
     return num, sw
 
 

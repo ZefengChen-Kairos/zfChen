@@ -511,8 +511,10 @@ class DiffPour:
         self._seed and leave dL/d(state at the frame start) in self._seed; dL/dP and dL/d(schedule) accumulate in
         self._Pg.grad and self.Sw[...].grad.  All arrays come from the solver's pool and dt / frame index are read from
         device arrays, so on CUDA the whole replay (forward launches, PCG solves with their adjoint solves, backward
-        launches) is captured once per (sub-steps, active, viscosity, mixing) into one graph and replayed -- the first
-        frame of each kind runs eagerly (sizes the pool), the second captures."""
+        launches) is captured once per (sub-steps, active, viscosity, mixing, exchange) into one graph and replayed -- the
+        first frame of each kind runs eagerly (sizes the pool), the second captures.  (The exchange flag is part of the
+        key: kappa_e or lam_b switching between 0 and > 0 on the same DiffPour must not replay a graph without / with the
+        exchange step.)"""
         sol = self.sol
         cs = ("l", "qx", "qy", "m")
 
@@ -608,7 +610,7 @@ class DiffPour:
             fdt, q, act = float(S["fdt"][k]), int(S["q"][k]), bool(S["active"][k])
             sol.set_dt(fdt / ns[k])
             sol.set_kq(k, q)
-            self._replay(k, fdt, q, act, ns[k], Pnp, (ns[k], act, nu_on, sol.mix_on(Pnp, fdt / ns[k])))
+            self._replay(k, fdt, q, act, ns[k], Pnp, (ns[k], act, nu_on, sol.mix_on(Pnp, fdt / ns[k]), sol.ex_on))
             if k + 1 < n:
                 ck[k + 1] = None                   # free the checkpoint (no longer needed as an observed state)
         sol.rec, sol.tape = False, None

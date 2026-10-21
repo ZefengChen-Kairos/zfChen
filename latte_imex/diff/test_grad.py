@@ -1,6 +1,7 @@
 """Gradient check: the adjoint dL/dtheta of the Warp solver against central finite differences of the same forward
 (sub-step counts frozen, so both differentiate the same discrete map).
-    python -m latte_imex.diff.test_grad [--pattern heart --N 32 --T 1.5 --eps 1e-5]"""
+    python -m latte_imex.diff.test_grad [--pattern heart --N 32 --T 1.5 --eps 1e-5]
+                                        [--set xi_b=0.7,lam_b=5 --keys xi_b,lam_b,cp]   (two-phase open layer)"""
 import argparse
 
 import numpy as np
@@ -46,10 +47,14 @@ def main():
         rel = abs(g[k] - fd) / max(abs(fd), abs(g[k]), 1e-12)
         # with the current on, the landing point also moves the current (host fields, not differentiated): partial
         partial = bool(a.circ) and k.startswith("foot")
-        if (abs(fd) > 1e-9 or abs(g[k]) > 1e-9) and not partial:
+        # kappa_e, lam_b = 0 without the current: the exchange step is switched off (WSolver.set_ex), the FD crosses
+        # the switch; check them at a value > 0 (--set lam_b=5,xi_b=0.7: the two-phase open layer)
+        gate = k in ("kappa_e", "lam_b") and P[k] == 0.0 and not a.circ
+        if (abs(fd) > 1e-9 or abs(g[k]) > 1e-9) and not partial and not gate:
             worst = max(worst, rel)
         print(f"  {k:8s} adjoint {g[k]: .6e}  FD {fd: .6e}  rel diff {rel:.1e}"
-              + ("  (partial: the current's dependence on the landing point is not differentiated)" if partial else ""))
+              + ("  (partial: the current's dependence on the landing point is not differentiated)" if partial else "")
+              + ("  (not compared: the exchange step is off at 0)" if gate else ""))
     # schedule entries (per-frame arrival record): the hit point x and the flow Q of a few pouring frames
     D._apply_foot(P)            # the parameter loop left the last perturbed landing-point shift applied
     act = np.where(D.S["active"])[0]

@@ -1,7 +1,8 @@
 """Forward parity: both paths of the Warp solver (recorded `frame`, fast graph path `fast_forward`) against
 solver.Solver on the first frames of a real pour (same arrival record).
     python -m latte_imex.diff.test_parity [--pattern heart --N 64 --frames 150 --device cuda:0 --check-every 1]
-                                          [--upwell --circ kappa_M,eps_f,kappa_w --set tau_s=0.05]"""
+                                          [--upwell --circ kappa_M,eps_f,kappa_w --set tau_s=0.05]
+(--set takes any solver.Params value, e.g. xi_b=0.9,lam_b=10 (two-phase open layer) or circ_r=5 with --circ.)"""
 import argparse
 import time
 
@@ -55,7 +56,7 @@ def main():
         sol = W.WSolver(g, v05=S["return_law"] == "v05", check_every=a.check_every, up=a.upwell)
         if a.circ:
             from .run import circ_fields
-            sol.set_circ(*circ_fields(S, g, dtype=np.float64, shape=dict(L=P.circ_L, r_f=P.circ_rf)))
+            sol.set_circ(*circ_fields(S, g, dtype=np.float64, shape=dict(L=P.circ_L, r_f=P.circ_rf, r=P.circ_r)))
         nw = []
         t0 = time.time()
         if path == "frame":

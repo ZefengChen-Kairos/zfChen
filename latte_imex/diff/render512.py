@@ -41,7 +41,8 @@ def load_closure(fn):
     J = json.load(open(fn))
     num = {k: float(v) for k, v in J.items() if isinstance(v, (int, float)) and not k.startswith("_")}
     sw = dict(e0=SC.e0_mode(num.get("e0", 0.0)), exit_cal=bool(num.get("exit_cal", 0.0)), upwell=bool(num.get("upwell", 0.0)),
-              circ=bool(num.get("circ", 0.0)), circ_shape=dict(L=num.get("circ_L", 0.4), r_f=num.get("circ_rf", 0.06)))
+              circ=bool(num.get("circ", 0.0)), circ_shape=dict(L=num.get("circ_L", 0.4), r_f=num.get("circ_rf", 0.06),
+                                                               r=num.get("circ_r", 1.0)))
     return num, sw
 
 

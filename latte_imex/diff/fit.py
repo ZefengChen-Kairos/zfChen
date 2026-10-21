@@ -65,6 +65,12 @@ VJ_SPACE = {"kappa_tc": (0.0, 1.0, "lin")}
 KIN_SPACE = {"tau_s": (0.0, 0.15, "lin"), "e_F": (0.0, 0.6, "lin")}
 YIELD_SPACE = {"tau_b": (0.0, 0.06, "lin"), "tau_f": (0.0, 0.1, "lin")}
 MECH_START = {"kappa_e": 0.5, "kappa_tc": 0.3, "tau_s": 0.08, "e_F": 0.3, "tau_b": 0.02, "tau_f": 0.02}
+# two-phase open floating layer (wsolver.k_stepA_B, k_exchange; solver.Params): softness of the brown surface xi_b
+# (brown area modulus (1 - xi_b) cp^2) and its subduction / upwelling rate lam_b [1/s].  lam_b = 0 (closed brown) is
+# outside the log box: it is reached by fixed-parameter runs, not by the fit.  Start: xi_b inside the plausible
+# 0.5-0.8 (surfactant elasticity of an open coffee surface against the foam raft's rho g' h_f^2), lam_b the pilot's 10.
+OPEN_SPACE = {"xi_b": (0.0, 0.98, "lin"), "lam_b": (0.3, 50.0, "log")}
+OPEN_START = {"xi_b": 0.65, "lam_b": 10.0}
 
 
 def use_foot(on, circ=False, dep=False):
