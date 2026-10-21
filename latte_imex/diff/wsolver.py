@@ -47,6 +47,11 @@ RUS_ISO = wp.constant(int(os.environ.get("LATTE_RUS_ISO", "0")))
 #             that is lost (0 in pulses: drawn-down foam rides the jet and resurfaces).  K is the landing kernel (at
 #             x_hit, not the deposit kernel), Q the received volume flux (record 'Q' = S_eff / kQ, without kappa_Q),
 #             d the jet diameter.  The area balance: int e dA = eps_c 4 Q Z / d <1 - c>_K per unit time.
+#             Known limit (mcd22 probe, ADDENDUM_1): the brown under the column goes at the fixed rate
+#             kappa_e ej / l whatever the step; where that rate exceeds the crema's refill (~ cp sqrt(1 - xi_b) / r_col,
+#             sink / refill >= 2: eps_c 0.08, xi_b 0.97, or the thin tail kernels at N 144) the layer empties
+#             (l < l_floor) and the frame fails: the layer state has no open-coffee phase.  The swallowed area is
+#             first order in the sub-step (exchange split from the transport; test_sink time-step study).
 SINK_FORMS = ("v05", "column")
 
 
