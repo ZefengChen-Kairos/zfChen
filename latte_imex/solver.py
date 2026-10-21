@@ -601,7 +601,7 @@ class Solver:
         # ---- A: explicit Rusanov momentum advection (l frozen) --------------
         N = g.N
         Fx_qx = np.empty((N, N - 1)); Fx_qy = np.empty((N, N - 1)); Fy_qx = np.empty((N - 1, N)); Fy_qy = np.empty((N - 1, N))
-        K.rusanov_fluxes(qx, qy, ux, uy, g.fx, g.fy, Fx_qx, Fx_qy, Fy_qx, Fy_qy)
+        K.rusanov_fluxes(qx, qy, ux, uy, g.fx, g.fy, Fx_qx, Fx_qy, Fy_qx, Fy_qy, K.RUS_ISO)
         qx_s = qx - dt * g.div(Fx_qx, Fy_qx)
         qy_s = qy - dt * g.div(Fx_qy, Fy_qy)
         if P.closure == "twolayer" and getattr(self, "Ub", None) is not None:

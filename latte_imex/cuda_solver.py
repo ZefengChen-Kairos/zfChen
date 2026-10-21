@@ -923,6 +923,8 @@ class BatchCudaSolver:
                 raise ValueError("the CUDA back-end implements the 'chi' closure only")
             if int(P.milk):
                 raise ValueError("the CUDA back-end implements the van Leer milk transport only (Params.milk 0)")
+        if int(os.environ.get("LATTE_RUS_ISO", "0")) != 0:
+            raise ValueError("the CUDA back-end implements the per-direction Rusanov speed only (LATTE_RUS_ISO=0)")
         keys = lambda P: (P.visc, P.offcup, P.nu > 0, P.D > 0)
         if len({keys(P) for P in self.Ps}) != 1:
             raise ValueError("batch members must share visc, offcup and the presence of nu > 0, D > 0")

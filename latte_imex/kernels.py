@@ -3,6 +3,7 @@
 All arrays are [iy, ix] cell-centred (N, N); x-faces (N, N-1); y-faces (N-1, N).
 """
 import math
+import os
 
 import numpy as np
 try:
@@ -56,15 +57,23 @@ def apply_diffusion(phi, kx, ky, fx, fy, a, b, inv_h2, out):
     return out
 
 
+# Numerics switch, closure-independent (LATTE_RUS_ISO, read once at import; diff/wsolver.RUS_ISO is the Warp copy):
+# Rusanov momentum dissipation speed 2 max(|u_n|) per face (0, default, V0.5) or the rotation-invariant 2 max(|u|) (1).
+# Passed to rusanov_fluxes as an argument so numba's on-disk cache never freezes it.
+RUS_ISO = int(os.environ.get("LATTE_RUS_ISO", "0"))
+
+
 @njit(parallel=True, cache=True)
-def rusanov_fluxes(qx, qy, ux, uy, fx, fy, Fx_qx, Fx_qy, Fy_qx, Fy_qy):
-    """Step A face fluxes, alpha = 2 max(|u_L|, |u_R|)."""
+def rusanov_fluxes(qx, qy, ux, uy, fx, fy, Fx_qx, Fx_qy, Fy_qx, Fy_qy, iso=0):
+    """Step A face fluxes, alpha = 2 max(|u_n,L|, |u_n,R|) (iso 0) or 2 max(|u_L|, |u_R|) (iso 1, RUS_ISO)."""
     N = qx.shape[0]
     for j in prange(N):
         for i in range(N - 1):
             if fx[j, i]:
                 uL = ux[j, i]; uR = ux[j, i + 1]
                 a = 2.0 * max(abs(uL), abs(uR))
+                if iso != 0:
+                    a = 2.0 * max(math.sqrt(uL * uL + uy[j, i] * uy[j, i]), math.sqrt(uR * uR + uy[j, i + 1] * uy[j, i + 1]))
                 Fx_qx[j, i] = 0.5 * (qx[j, i] * uL + qx[j, i + 1] * uR) - 0.5 * a * (qx[j, i + 1] - qx[j, i])
                 Fx_qy[j, i] = 0.5 * (qy[j, i] * uL + qy[j, i + 1] * uR) - 0.5 * a * (qy[j, i + 1] - qy[j, i])
             else:
@@ -74,6 +83,8 @@ def rusanov_fluxes(qx, qy, ux, uy, fx, fy, Fx_qx, Fx_qy, Fy_qx, Fy_qy):
             if fy[j, i]:
                 vL = uy[j, i]; vR = uy[j + 1, i]
                 a = 2.0 * max(abs(vL), abs(vR))
+                if iso != 0:
+                    a = 2.0 * max(math.sqrt(vL * vL + ux[j, i] * ux[j, i]), math.sqrt(vR * vR + ux[j + 1, i] * ux[j + 1, i]))
                 Fy_qx[j, i] = 0.5 * (qx[j, i] * vL + qx[j + 1, i] * vR) - 0.5 * a * (qx[j + 1, i] - qx[j, i])
                 Fy_qy[j, i] = 0.5 * (qy[j, i] * vL + qy[j + 1, i] * vR) - 0.5 * a * (qy[j + 1, i] - qy[j, i])
             else:

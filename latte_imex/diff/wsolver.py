@@ -16,6 +16,7 @@ the number of sub-steps per frame (CFL, from the forward pass) and the PCG itera
 from __future__ import annotations
 
 import math
+import os
 
 import numpy as np
 import warp as wp
@@ -27,6 +28,15 @@ PARAMS = ("cp", "beta", "nu", "D", "kappa_Q", "kappa_c", "kappa_t", "kappa_r", "
           "xi_b", "lam_b")          # appended last: closures without them load unchanged (DiffPour.s1 fills 0 = V0.5)
 CP, BETA, NU, DM, KQ, KC, KT, KR, BDEP, PDEP, KM, KE, KW, TS, MS, XX, TF, AU, KJ, KTC, VJ, EF, YB, XB, LB = range(25)
 YIELD_EPS, NU_MAX = 0.02, 0.5      # solver.Params.yield_eps, nu_max (Bingham foam raft, tau_f > 0)
+# Numerics switch, closure-independent (an accuracy choice for the same equations, not a model term): the dissipation
+# speed of the Rusanov momentum flux in step A.  LATTE_RUS_ISO=0 (default, V0.5): a = 2 max(|u_n,L|, |u_n,R|), the
+# largest eigenvalue of the face-normal flux (q_n q / l); the tangential momentum on a face with u_n = 0 then gets no
+# dissipation, which makes the dissipation grid-direction dependent (a four-fold grid-locked mode).  LATTE_RUS_ISO=1:
+# a = 2 max(|u_L|, |u_R|), |u| the cell speed (rotation invariant; >= the V0.5 speed, so still an upwind bound).  The
+# per-cell dissipation sum rises from 2 (|u_x| + |u_y|) to 4 |u|; at the code's dt <= 0.25 h / max|u| the dissipative
+# part's centre coefficient 1 - 4 |u| dt / h stays >= 0 (the bound the isotropic speed just meets).  Read once at
+# import (kernels.RUS_ISO is the numpy solver's copy; cuda_solver refuses 1).
+RUS_ISO = wp.constant(int(os.environ.get("LATTE_RUS_ISO", "0")))
 SCHED = ("x", "y", "Q", "ux", "uy", "U", "d", "r1", "r2", "phi", "vjx", "vjy")
 A2 = wp.array2d(dtype=F)
 I2 = wp.array2d(dtype=wp.int32)
@@ -51,6 +61,16 @@ def divF(Fx: A2, Fy: A2, j: int, i: int, N: int, inv_h: F):
 @wp.func
 def vl(r: F):
     return (r + wp.abs(r)) / (F(1.0) + wp.abs(r))
+
+
+@wp.func
+def speed(a: F, b: F):
+    """|(a, b)| with a finite adjoint at 0 (the Rusanov speed of LATTE_RUS_ISO=1)."""
+    s = a * a + b * b
+    r = F(0.0)
+    if s > F(0.0):
+        r = wp.sqrt(s)
+    return r
 
 
 # ============================================================================ inlet fields
@@ -205,7 +225,8 @@ def k_prim(l: A2, qx: A2, qy: A2, m: A2, mask: I2, ls: A2, ux: A2, uy: A2, c: A2
 
 @wp.kernel
 def k_rusanov(qx: A2, qy: A2, ux: A2, uy: A2, fx: I2, fy: I2, Fxqx: A2, Fxqy: A2, Fyqx: A2, Fyqy: A2):
-    """Step A face fluxes (x faces stored at [j, i] for the face i | i+1, y faces at [j, i] for j | j+1)."""
+    """Step A face fluxes (x faces stored at [j, i] for the face i | i+1, y faces at [j, i] for j | j+1); dissipation
+    speed per RUS_ISO."""
     j, i = wp.tid()
     Fxqx[j, i] = F(0.0)
     Fxqy[j, i] = F(0.0)
@@ -215,12 +236,16 @@ def k_rusanov(qx: A2, qy: A2, ux: A2, uy: A2, fx: I2, fy: I2, Fxqx: A2, Fxqy: A2
         uL = ux[j, i]
         uR = ux[j, i + 1]
         a = F(2.0) * wp.max(wp.abs(uL), wp.abs(uR))
+        if RUS_ISO != 0:
+            a = F(2.0) * wp.max(speed(uL, uy[j, i]), speed(uR, uy[j, i + 1]))
         Fxqx[j, i] = F(0.5) * (qx[j, i] * uL + qx[j, i + 1] * uR) - F(0.5) * a * (qx[j, i + 1] - qx[j, i])
         Fxqy[j, i] = F(0.5) * (qy[j, i] * uL + qy[j, i + 1] * uR) - F(0.5) * a * (qy[j, i + 1] - qy[j, i])
     if fy[j, i] != 0:
         vL = uy[j, i]
         vR = uy[j + 1, i]
         a = F(2.0) * wp.max(wp.abs(vL), wp.abs(vR))
+        if RUS_ISO != 0:
+            a = F(2.0) * wp.max(speed(vL, ux[j, i]), speed(vR, ux[j + 1, i]))
         Fyqx[j, i] = F(0.5) * (qx[j, i] * vL + qx[j + 1, i] * vR) - F(0.5) * a * (qx[j + 1, i] - qx[j, i])
         Fyqy[j, i] = F(0.5) * (qy[j, i] * vL + qy[j + 1, i] * vR) - F(0.5) * a * (qy[j + 1, i] - qy[j, i])
 
