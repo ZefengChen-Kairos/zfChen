@@ -4,6 +4,7 @@
                                         [--set xi_b=0.7,lam_b=5 --keys xi_b,lam_b,cp]   (two-phase open layer)
                                         [--milk mp5fct]   (milk transport scheme, wsolver.MILK_SCHEMES)
                                         [--sink column --set kappa_e=0.032]   (entrainment sink form, SINK_FORMS)
+                                        [--visc-tr]   (trace stress of the floating sheet, k_sym_Td)
 A non-finite adjoint or FD value fails the check.  With the FCT milk schemes (mp5fct, thincfct, mp5fct_nb) the loss is
 only piecewise smooth (the limiter's min / max switches: 17 kinks within +-2e-5 relative of kappa_Q on tulip N 32): an
 FD step of 1e-5 straddles kinks (kappa_Q 1e-3 - 6e-3 off at N 32, 5e-2 at N 48); --eps 1e-7 compares the local
@@ -33,10 +34,11 @@ def main():
     ap.add_argument("--set", default="", help="closure values, e.g. tau_s=0.05")
     ap.add_argument("--milk", default="vl", choices=W.MILK_SCHEMES, help="face value of c in the milk transport")
     ap.add_argument("--sink", default="v05", choices=W.SINK_FORMS, help="form of the entrainment sink's area flux")
+    ap.add_argument("--visc-tr", dest="visc_tr", action="store_true", help="trace stress of the floating sheet")
     a = ap.parse_args()
     D = DiffPour(a.pattern, N=a.N, device=a.device, T_max=a.T, tau=0.1, scales=[float(x) for x in a.scales.split(",")],
                  upwell=a.upwell, circ=bool(a.circ), w_flow=a.w_flow,
-                 loss=a.loss, milk=a.milk, sink=a.sink)
+                 loss=a.loss, milk=a.milk, sink=a.sink, visc_tr=int(a.visc_tr))
     P = dict(D.s1, foot_a=0.05, foot_b=-0.02)
     P.update({k: float(v) for k, v in (x.split("=") for x in a.set.split(",") if x)})
     if a.circ:

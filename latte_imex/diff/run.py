@@ -290,7 +290,8 @@ def target_on_grid(p, geo):
 class DiffPour:
     def __init__(self, p, N=128, device=None, T_max=None, w_gap=2.0, tau=0.05, check_every=None, graphs=True,
                  loss="video", w_final=0.0, scales=(0.0,), e0=False, upwell=False, circ=False, w_flow=0.0,
-                 flow_scale=0.15, flow_u0=0.05, exit_cal=False, circ_shape=None, milk=0, sink=0, log=print):
+                 flow_scale=0.15, flow_u0=0.05, exit_cal=False, circ_shape=None, milk=0, sink=0, visc_tr=0,
+                 log=print):
         self.p, self.N, self.log = p, N, log
         wp.init()
         script, pour = SC.pour_script(p, N, e0=e0, exit_cal=exit_cal)
@@ -302,9 +303,9 @@ class DiffPour:
             check_every = 4 if self.geo.dev.is_cuda else 1
         # milk: face value of c in the milk transport (wsolver.MILK_SCHEMES, name or code; 0 'vl', the calibrated one);
         # sink: form of the entrainment sink's area flux (wsolver.SINK_FORMS: 0 'v05' (1 - chi) S Z K, 1 'column'
-        # 4 Q Z K / d, the plunging column's perimeter inflow)
+        # 4 Q Z K / d, the plunging column's perimeter inflow); visc_tr: the floating sheet's trace stress (k_sym_Td)
         self.sol = W.WSolver(self.geo, v05=self.S["return_law"] == "v05", check_every=check_every, graphs=graphs,
-                             up=upwell, milk=milk, sink=sink)
+                             up=upwell, milk=milk, sink=sink, visc_tr=visc_tr)
         dev = self.geo.dev
         self.Sw = {k: wp.array(self.S[k], dtype=F, device=dev, requires_grad=True) for k in W.SCHED}
         self.circ, self.circ_shape = circ, dict(circ_shape or {})
@@ -358,6 +359,7 @@ class DiffPour:
             + (", landing point: E0 measured stream foot" if e0 else "")
             + (f", milk transport {W.MILK_SCHEMES[self.sol.milk]}" if self.sol.milk else "")
             + (f", entrainment sink {W.SINK_FORMS[self.sol.sink]}" if self.sol.sink else "")
+            + (", sheet trace stress" if self.sol.visc_tr else "")
             + (f" ({len(self.obs)} observed frames, scales {self.scales} R; no-white reference loss "
                f"{self.L_brown:.4f})" if self.obs else ""))
 
@@ -521,7 +523,7 @@ class DiffPour:
         graph and replayed -- the first frame of each kind runs eagerly (sizes the pool), the second captures.  (The
         exchange flag is part of the key: kappa_e or lam_b switching between 0 and > 0 on the same DiffPour must not
         replay a graph without / with the exchange step; the same for WSolver.set_milk, whose FCT schemes also take more
-        pool slots, and WSolver.set_sink, a launch argument of k_fields.)"""
+        pool slots, WSolver.set_sink, a launch argument of k_fields, and WSolver.set_visc_tr.)"""
         sol = self.sol
         cs = ("l", "qx", "qy", "m")
 
@@ -617,7 +619,7 @@ class DiffPour:
             fdt, q, act = float(S["fdt"][k]), int(S["q"][k]), bool(S["active"][k])
             sol.set_dt(fdt / ns[k])
             sol.set_kq(k, q)
-            key = (ns[k], act, nu_on, sol.mix_on(Pnp, fdt / ns[k]), sol.ex_on, sol.milk, sol.sink)
+            key = (ns[k], act, nu_on, sol.mix_on(Pnp, fdt / ns[k]), sol.ex_on, sol.milk, sol.sink, sol.visc_tr)
             self._replay(k, fdt, q, act, ns[k], Pnp, key)
             if k + 1 < n:
                 ck[k + 1] = None                   # free the checkpoint (no longer needed as an observed state)

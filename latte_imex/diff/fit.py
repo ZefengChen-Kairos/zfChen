@@ -346,6 +346,9 @@ def main(argv=None):
                          "4 Q Z K / d with kappa_e = eps_c; written into best_closure.json).  kappa_e is not fitted "
                          "here: it is taken from the start closure (--init / --set); the gradients of the fitted "
                          "parameters include the sink (test_grad --sink column)")
+    ap.add_argument("--visc-tr", dest="visc_tr", action="store_true",
+                    help="the floating sheet's trace stress 2 nu l (div u) I in the viscous operator "
+                         "(wsolver.k_sym_Td; written into best_closure.json)")
     ap.add_argument("--e0", default="jet", choices=("jet", "world", "none"),
                     help="landing point corrected by the measured stream foot (rig/stream_foot.py): 'jet' along / across "
                          "u_in (schedule.e0_offsets, the earlier fits), 'world' in the cup frame with the robust estimator "
@@ -373,7 +376,7 @@ def main(argv=None):
     cal = a.cal.split(",")
     kw = dict(N=a.N, device=a.device, w_gap=a.w_gap, tau=a.tau0, T_max=a.T, loss=a.loss, w_final=a.w_final,
               scales=tuple(float(x) for x in a.scales.split(",")), e0=SC.e0_mode(0 if a.e0 == "none" else a.e0), upwell=a.upwell,
-              circ=a.circ, w_flow=a.w_flow, milk=W.milk_code(a.milk), sink=W.sink_code(a.sink))
+              circ=a.circ, w_flow=a.w_flow, milk=W.milk_code(a.milk), sink=W.sink_code(a.sink), visc_tr=int(a.visc_tr))
     workers = a.workers if a.workers >= 0 else (len(cal) if (a.device or "cuda").startswith("cuda") else 0)
     pours = {p: Pour(p, kw, process=workers > 0) for p in cal}
     log(f"{len(cal)} calibration pours, {'one worker process each' if workers > 0 else 'in-process'}")
@@ -390,12 +393,15 @@ def main(argv=None):
         if ran_sink != W.sink_code(a.sink):
             log(f"note: --init {a.init} ran the entrainment sink {W.SINK_FORMS[ran_sink]} (kappa_e "
                 f"{float(J0.get('kappa_e', 0.0)):g}); this run uses {a.sink}")
+        if W.switch01(J0.get("visc_tr", 0), "visc_tr") != int(a.visc_tr):
+            log(f"note: --init {a.init} ran visc_tr {int(J0.get('visc_tr', 0))}; this run uses {int(a.visc_tr)}")
     for k, v in (x.split("=") for x in a.set.split(",") if x):
         base[k] = float(v)
     # the closure is the single source of the model switches: the render (real_program) reads them back
     base["e0"], base["upwell"], base["circ"] = float(SC.e0_code(0 if a.e0 == "none" else a.e0)), float(a.upwell), float(a.circ)
     base["milk"] = float(W.milk_code(a.milk))
     base["sink"] = float(W.sink_code(a.sink))
+    base["visc_tr"] = float(a.visc_tr)
     if not a.circ and any(base.get(k, 0.0) for k in ("kappa_M", "kappa_w")):
         log("no --circ: kappa_M, kappa_w of the start closure set to 0")
     if not a.circ:

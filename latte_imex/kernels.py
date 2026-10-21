@@ -340,6 +340,72 @@ def sym_visc_apply(ux, uy, lsn, wx, wy, T, ww, nbx, nby, mask, dt, inv_h, outx, 
             outy[j, i] = l * v + dt * kv
 
 
+# Closure switch visc_tr (wsolver's comment above k_sym_Td): the floating sheet's trace stress 2 nu l (div u) I, from
+#   + 1/2 sum over active corners h^2 wt (u_x + v_y)^2,  wt = 2 nu l_corner = 2 wc  (div from the corner's 2 x 2 cells)
+@njit(parallel=True, cache=True)
+def sym_corner_div(ux, uy, wc, inv_h, Td):
+    """Td = 2 wc (u_x + v_y) on the (N-1, N-1) cell corners (wsolver.k_sym_Td)."""
+    M = Td.shape[0]
+    for j in prange(M):
+        for i in range(M):
+            w = wc[j, i]
+            if w != 0.0:
+                g = (ux[j, i + 1] + ux[j + 1, i + 1] - ux[j, i] - ux[j + 1, i]
+                     + uy[j + 1, i] + uy[j + 1, i + 1] - uy[j, i] - uy[j, i + 1]) * 0.5 * inv_h
+                Td[j, i] = 2.0 * w * g
+            else:
+                Td[j, i] = 0.0
+
+
+@njit(parallel=True, cache=True)
+def sym_visc_apply_tr(ux, uy, lsn, wx, wy, T, Td, ww, nbx, nby, mask, dt, inv_h, outx, outy):
+    """sym_visc_apply with the trace stress Td (sym_corner_div): the same operations in the same order as
+    wsolver.k_sym_apply with tr = 1 (the corner terms of T, then of Td with the sign pattern of u_x + v_y)."""
+    N = ux.shape[0]
+    inv_h2 = inv_h * inv_h
+    for j in prange(N):
+        for i in range(N):
+            u = ux[j, i]; v = uy[j, i]
+            if not mask[j, i]:
+                outx[j, i] = u; outy[j, i] = v
+                continue
+            ku = 0.0; kv = 0.0
+            if i < N - 1:
+                ku -= wx[j, i] * (ux[j, i + 1] - u)
+            if i > 0:
+                ku -= wx[j, i - 1] * (ux[j, i - 1] - u)
+            if j < N - 1:
+                kv -= wy[j, i] * (uy[j + 1, i] - v)
+            if j > 0:
+                kv -= wy[j - 1, i] * (uy[j - 1, i] - v)
+            ku *= inv_h2; kv *= inv_h2
+            c = 0.0; d = 0.0
+            if j < N - 1 and i < N - 1:
+                c -= T[j, i]; d -= T[j, i]
+            if j < N - 1 and i > 0:
+                c -= T[j, i - 1]; d += T[j, i - 1]
+            if j > 0 and i < N - 1:
+                c += T[j - 1, i]; d -= T[j - 1, i]
+            if j > 0 and i > 0:
+                c += T[j - 1, i - 1]; d += T[j - 1, i - 1]
+            if j < N - 1 and i < N - 1:          # corner (j, i): this cell is lower-left (u -, v -)
+                c -= Td[j, i]; d -= Td[j, i]
+            if j < N - 1 and i > 0:              # corner (j, i-1): lower-right (u +, v -)
+                c += Td[j, i - 1]; d -= Td[j, i - 1]
+            if j > 0 and i < N - 1:              # corner (j-1, i): upper-left (u -, v +)
+                c -= Td[j - 1, i]; d += Td[j - 1, i]
+            if j > 0 and i > 0:                  # corner (j-1, i-1): upper-right (u +, v +)
+                c += Td[j - 1, i - 1]; d += Td[j - 1, i - 1]
+            ku += 0.5 * inv_h * c; kv += 0.5 * inv_h * d
+            w = ww[j, i]
+            if w != 0.0:
+                un = w * (u * nbx[j, i] + v * nby[j, i])
+                ku += un * nbx[j, i]; kv += un * nby[j, i]
+            l = lsn[j, i]
+            outx[j, i] = l * u + dt * ku
+            outy[j, i] = l * v + dt * kv
+
+
 # --------------------------------------------------------------------------- milk face value: sharper schemes
 # numpy/numba reference of wsolver.k_face_hi / k_fct_R / k_fct_face (same operations in the same order); x faces
 # (N, N-1), y faces through the transposed arrays (milk_faces).  solver.Params.milk: code of MILK_SCHEMES (wsolver's

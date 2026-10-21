@@ -925,6 +925,8 @@ class BatchCudaSolver:
                 raise ValueError("the CUDA back-end implements the van Leer milk transport only (Params.milk 0)")
             if int(P.sink):
                 raise ValueError("the CUDA back-end has no column entrainment sink (Params.sink 0 only)")
+            if int(P.visc_tr):
+                raise ValueError("the CUDA back-end has no trace stress of the floating sheet (Params.visc_tr 0 only)")
         if int(os.environ.get("LATTE_RUS_ISO", "0")) != 0:
             raise ValueError("the CUDA back-end implements the per-direction Rusanov speed only (LATTE_RUS_ISO=0)")
         keys = lambda P: (P.visc, P.offcup, P.nu > 0, P.D > 0)
@@ -997,6 +999,8 @@ class BatchCudaSolver:
                 raise ValueError("the CUDA back-end implements the van Leer milk transport only (Params.milk 0)")
             if any(int(P.sink) for P in params):
                 raise ValueError("the CUDA back-end has no column entrainment sink (Params.sink 0 only)")
+            if any(int(P.visc_tr) for P in params):
+                raise ValueError("the CUDA back-end has no trace stress of the floating sheet (Params.visc_tr 0 only)")
             self.Ps = params
             self.P = params[0]
             self.pm.copy_to_device(np.array([[P.cp ** 2, P.beta, P.nu, P.D] for P in self.Ps], np.float64))

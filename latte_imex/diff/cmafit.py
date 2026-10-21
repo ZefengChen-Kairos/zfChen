@@ -20,6 +20,8 @@ default; mp5fct, thincfct, mp5fct_nb: sharper, bounded, conservative); written i
 --sink: form of the entrainment sink's area flux, a switch of the run (wsolver.SINK_FORMS: v05 = (1 - chi) S Z K, the
 default; column = 4 Q Z K / d, the plunging column's perimeter inflow, kappa_e = eps_c: with letter 'e' its box is
 fit.COLUMN_SINK_SPACE, the independent range 0.005-0.08); written into best_closure.json as its code.
+--visc-tr: the floating sheet's trace stress 2 nu l (div u) I in the viscous operator (wsolver.k_sym_Td), a switch of
+the run; written into best_closure.json (visc_tr 0 / 1).
 """
 from __future__ import annotations
 
@@ -35,7 +37,7 @@ from ..v05_adapter import SPACE
 from . import schedule as SC
 from .fit import (CIRC_SPACE, CIRC_START, COLUMN_SINK_SPACE, COLUMN_SINK_START, DEP_SPACE, DEP_START, KIN_SPACE,
                   MECH_START, OPEN_SPACE, OPEN_START, RAFT_SPACE, RAFT_START, SINK_SPACE, VJ_SPACE, YIELD_SPACE)
-from .wsolver import MILK_SCHEMES, SINK_FORMS, milk_code, sink_code
+from .wsolver import MILK_SCHEMES, SINK_FORMS, milk_code, sink_code, switch01
 from . import score as SS
 
 PATTERNS = ("tulip", "leaf", "heart", "push_heart", "swan")
@@ -101,7 +103,8 @@ def _init(cfg):
     for p in cfg["pours"]:
         D = DiffPour(p, N=cfg["N"], device=cfg["device"], tau=0.05, scales=(0.3, 0.15, 0.0), e0=cfg["e0"],
                      exit_cal=cfg["exit_cal"], upwell=cfg["upwell"], circ=cfg["circ"], circ_shape=cfg["circ_shape"],
-                     milk=cfg.get("milk", 0), sink=cfg.get("sink", 0), log=lambda *a: None)
+                     milk=cfg.get("milk", 0), sink=cfg.get("sink", 0), visc_tr=cfg.get("visc_tr", 0),
+                     log=lambda *a: None)
         D.score_ref = SS.lag_reference([o["t"] for o in D.obs], [o["wo_np"] for o in D.obs], [o["vo_np"] for o in D.obs],
                                        D.geo.mask_np)
         _D[p] = D
@@ -142,6 +145,9 @@ def main(argv=None):
     ap.add_argument("--sink", default="v05", choices=SINK_FORMS,
                     help="form of the entrainment sink's area flux (wsolver.SINK_FORMS; written into "
                          "best_closure.json); column: kappa_e = eps_c, box fit.COLUMN_SINK_SPACE with letter 'e'")
+    ap.add_argument("--visc-tr", dest="visc_tr", action="store_true",
+                    help="the floating sheet's trace stress 2 nu l (div u) I in the viscous operator (written into "
+                         "best_closure.json)")
     ap.add_argument("--N", type=int, default=48)
     ap.add_argument("--gens", type=int, default=16)
     ap.add_argument("--pop", type=int, default=12)
@@ -173,7 +179,7 @@ def main(argv=None):
     e0 = SC.e0_mode(0 if a.e0 == "none" else a.e0)
     cfg = dict(pours=cal, N=a.N, device=a.device, e0=e0, exit_cal=a.exit_cal,
                circ_shape=dict(L=a.circ_L, r_f=a.circ_rf, r=a.circ_r), milk=milk_code(a.milk), sink=sink_code(a.sink),
-               **sw)
+               visc_tr=int(a.visc_tr), **sw)
     from .run import DiffPour
     base = dict(DiffPour(cal[0], N=16, device="cpu", log=lambda *x: None).s1)
     base.update(circ_start if sw["circ"] else {"kappa_M": 0.0, "eps_f": 0.0, "kappa_w": 0.0})
@@ -200,6 +206,8 @@ def main(argv=None):
         if ran_sink != cfg["sink"]:
             log(f"note: --init {a.init} ran the entrainment sink {SINK_FORMS[ran_sink]} (kappa_e "
                 f"{float(J0.get('kappa_e', 0.0)):g}); this run uses {a.sink}")
+        if switch01(J0.get("visc_tr", 0), "visc_tr") != cfg["visc_tr"]:
+            log(f"note: --init {a.init} ran visc_tr {int(J0.get('visc_tr', 0))}; this run uses {cfg['visc_tr']}")
     base.update(sw.pop("fix"))                       # switches of the model letters (vj, mu_s = 1)
     for k, v in (x.split("=") for x in a.set.split(",") if x):
         base[k] = float(v)
@@ -208,13 +216,13 @@ def main(argv=None):
         base[k] = min(max(base[k], lo), hi)
     switches = dict(e0=float(SC.e0_code(e0)), exit_cal=float(a.exit_cal), upwell=float(sw["upwell"]), circ=float(sw["circ"]),
                     circ_L=a.circ_L, circ_rf=a.circ_rf, circ_r=a.circ_r, milk=float(cfg["milk"]),
-                    sink=float(cfg["sink"]))
+                    sink=float(cfg["sink"]), visc_tr=float(cfg["visc_tr"]))
     log(f"CMA-ES {a.model}: {len(SP)} parameters, calibration {cal}, test {test}, N {a.N}, e0 {a.e0}, "
         f"objective {a.w_iou:g} IoU + {1 - a.w_iou:g} structure (normalised by the video's 0.25 s self-consistency), "
         f"{a.gens} x {a.pop}" + (f"; surface current r {a.circ_r:g} /s, L {a.circ_L:g}, r_f {a.circ_rf:g}, kappa_M box "
                                  f"{SP['kappa_M'][0]:g}-{SP['kappa_M'][1]:g}" if sw["circ"] else "")
         + (f"; milk transport {a.milk}" if cfg["milk"] else "")
-        + (f"; entrainment sink {a.sink}" if cfg["sink"] else ""))
+        + (f"; entrainment sink {a.sink}" if cfg["sink"] else "") + ("; sheet trace stress" if cfg["visc_tr"] else ""))
     es = cma.CMAEvolutionStrategy(to_unit(base, SP), a.sigma, dict(bounds=[0, 1], popsize=a.pop, seed=a.seed, verbose=-9))
     best = None
     pool = None

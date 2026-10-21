@@ -62,6 +62,14 @@ def sink_code(v):
     return k
 
 
+def switch01(v, name):
+    """0 / 1 of an on-off closure switch given as bool, int or float (closure json)."""
+    k = int(v or 0)
+    if k != v or k not in (0, 1):
+        raise ValueError(f"{name} must be 0 or 1, got {v!r}")
+    return k
+
+
 SCHED = ("x", "y", "Q", "ux", "uy", "U", "d", "r1", "r2", "phi", "vjx", "vjy")
 A2 = wp.array2d(dtype=F)
 I2 = wp.array2d(dtype=wp.int32)
@@ -966,9 +974,31 @@ def k_sym_T(ux: A2, uy: A2, wc: A2, inv_h: F, N: int, T: A2):
             T[j, i] = w * g
 
 
+# Closure switch 'visc_tr' (WSolver(visc_tr=...), run.DiffPour(visc_tr=...), solver.Params.visc_tr; mcd22 SPEC 1.4,
+# B5): the trace term of the floating viscous sheet.  Free top, slip bottom, incompressible sheet: the depth-integrated
+# stress is 2 nu l (D + (div u) I) (eps_zz = -div u), so the operator becomes div[2 nu l (D + (div u) I)].  Discrete
+# form, as the rest of K = G^T W G: the dissipation gains 1/2 sum h^2 wt (u_x + v_y)^2 on the active corners with
+# wt = 2 nu l_corner = 2 wc (div from the corner's 2 x 2 cells, as the shear u_y + v_x of k_sym_T): symmetric positive
+# semi-definite, compact, free at the wall like the shear (no corner rows across it).  Td = 2 wc div (k_sym_Td) enters
+# k_sym_apply / sym_apply_at with the transposed sign pattern of T; k_visc_diag adds 0.5 ih2 sum(wc).  The adjoint
+# follows from the operator-apply kernels (Td from wc, a coefficient of the solve).  visc_tr 0 (default): the V0.5
+# operator div(2 nu l D), bit-identical.
 @wp.kernel
-def k_sym_apply(ux: A2, uy: A2, l3: A2, wx: A2, wy: A2, T: A2, ww: A2, nbx: A2, nby: A2, mask: I2, dta: A1, inv_h: F,
-                N: int, ox: A2, oy: A2):
+def k_sym_Td(ux: A2, uy: A2, wc: A2, inv_h: F, N: int, Td: A2):
+    """Td = 2 wc (u_x + v_y) on the cell corners (the trace stress of the floating sheet, closure switch visc_tr)."""
+    j, i = wp.tid()
+    Td[j, i] = F(0.0)
+    if j < N - 1 and i < N - 1:
+        w = wc[j, i]
+        if w != F(0.0):
+            g = (ux[j, i + 1] + ux[j + 1, i + 1] - ux[j, i] - ux[j + 1, i]
+                 + uy[j + 1, i] + uy[j + 1, i + 1] - uy[j, i] - uy[j, i + 1]) * F(0.5) * inv_h
+            Td[j, i] = F(2.0) * w * g
+
+
+@wp.kernel
+def k_sym_apply(ux: A2, uy: A2, l3: A2, wx: A2, wy: A2, T: A2, Td: A2, tr: int, ww: A2, nbx: A2, nby: A2, mask: I2,
+                dta: A1, inv_h: F, N: int, ox: A2, oy: A2):
     j, i = wp.tid()
     dt = dta[0]
     u = ux[j, i]
@@ -1004,6 +1034,19 @@ def k_sym_apply(ux: A2, uy: A2, l3: A2, wx: A2, wy: A2, T: A2, ww: A2, nbx: A2, 
     if j > 0 and i > 0:
         c += T[j - 1, i - 1]
         d += T[j - 1, i - 1]
+    if tr != 0:                                     # trace stress (visc_tr): the sign pattern of u_x + v_y
+        if j < N - 1 and i < N - 1:
+            c -= Td[j, i]
+            d -= Td[j, i]
+        if j < N - 1 and i > 0:
+            c += Td[j, i - 1]
+            d -= Td[j, i - 1]
+        if j > 0 and i < N - 1:
+            c -= Td[j - 1, i]
+            d += Td[j - 1, i]
+        if j > 0 and i > 0:
+            c += Td[j - 1, i - 1]
+            d += Td[j - 1, i - 1]
     ku += F(0.5) * inv_h * c
     kv += F(0.5) * inv_h * d
     w = ww[j, i]
@@ -1017,7 +1060,7 @@ def k_sym_apply(ux: A2, uy: A2, l3: A2, wx: A2, wy: A2, T: A2, ww: A2, nbx: A2, 
 
 
 @wp.kernel
-def k_visc_diag(l3: A2, wx: A2, wy: A2, wc: A2, ww: A2, nbx: A2, nby: A2, mask: I2, dta: A1, inv_h: F, N: int,
+def k_visc_diag(l3: A2, wx: A2, wy: A2, wc: A2, ww: A2, nbx: A2, nby: A2, mask: I2, dta: A1, inv_h: F, N: int, tr: int,
                 dx: A2, dy: A2):
     j, i = wp.tid()
     dt = dta[0]
@@ -1045,8 +1088,12 @@ def k_visc_diag(l3: A2, wx: A2, wy: A2, wc: A2, ww: A2, nbx: A2, nby: A2, mask: 
         c4 += wc[j - 1, i]
     if j > 0 and i > 0:
         c4 += wc[j - 1, i - 1]
-    dx[j, i] = l3[j, i] + dt * (ex * ih2 + F(0.25) * ih2 * c4 + ww[j, i] * nbx[j, i] * nbx[j, i])
-    dy[j, i] = l3[j, i] + dt * (ey * ih2 + F(0.25) * ih2 * c4 + ww[j, i] * nby[j, i] * nby[j, i])
+    if tr != 0:                                     # + the trace stress (visc_tr): weight 2 wc per corner
+        dx[j, i] = l3[j, i] + dt * (ex * ih2 + F(0.75) * ih2 * c4 + ww[j, i] * nbx[j, i] * nbx[j, i])
+        dy[j, i] = l3[j, i] + dt * (ey * ih2 + F(0.75) * ih2 * c4 + ww[j, i] * nby[j, i] * nby[j, i])
+    else:
+        dx[j, i] = l3[j, i] + dt * (ex * ih2 + F(0.25) * ih2 * c4 + ww[j, i] * nbx[j, i] * nbx[j, i])
+        dy[j, i] = l3[j, i] + dt * (ey * ih2 + F(0.25) * ih2 * c4 + ww[j, i] * nby[j, i] * nby[j, i])
 
 
 @wp.kernel
@@ -1361,8 +1408,8 @@ def km_apply_dot(p: A2, kx: A2, ky: A2, fx: I2, fy: I2, dta: A1, inv_h2: F, N: i
 
 
 @wp.func
-def sym_apply_at(ux: A2, uy: A2, l3: A2, wx: A2, wy: A2, T: A2, ww: A2, nbx: A2, nby: A2, mask: I2, dt: F, inv_h: F,
-                 N: int, j: int, i: int):
+def sym_apply_at(ux: A2, uy: A2, l3: A2, wx: A2, wy: A2, T: A2, Td: A2, tr: int, ww: A2, nbx: A2, nby: A2, mask: I2,
+                 dt: F, inv_h: F, N: int, j: int, i: int):
     u = ux[j, i]
     v = uy[j, i]
     if mask[j, i] == 0:
@@ -1394,6 +1441,19 @@ def sym_apply_at(ux: A2, uy: A2, l3: A2, wx: A2, wy: A2, T: A2, ww: A2, nbx: A2,
     if j > 0 and i > 0:
         c += T[j - 1, i - 1]
         d += T[j - 1, i - 1]
+    if tr != 0:                                     # trace stress (visc_tr), as k_sym_apply
+        if j < N - 1 and i < N - 1:
+            c -= Td[j, i]
+            d -= Td[j, i]
+        if j < N - 1 and i > 0:
+            c += Td[j, i - 1]
+            d -= Td[j, i - 1]
+        if j > 0 and i < N - 1:
+            c -= Td[j - 1, i]
+            d += Td[j - 1, i]
+        if j > 0 and i > 0:
+            c += Td[j - 1, i - 1]
+            d += Td[j - 1, i - 1]
     ku += F(0.5) * inv_h * c
     kv += F(0.5) * inv_h * d
     w = ww[j, i]
@@ -1406,16 +1466,16 @@ def sym_apply_at(ux: A2, uy: A2, l3: A2, wx: A2, wy: A2, T: A2, ww: A2, nbx: A2,
 
 
 @wp.kernel
-def kv_apply_dot(px: A2, py: A2, l3: A2, wx: A2, wy: A2, T: A2, ww: A2, nbx: A2, nby: A2, mask: I2, dta: A1, inv_h: F,
-                 N: int, Apx: A2, Apy: A2, sc: A1):
-    """[Apx, Apy] = (L + dt K) p (symmetric viscosity, T from k_sym_T) and pAp (tile sum)."""
+def kv_apply_dot(px: A2, py: A2, l3: A2, wx: A2, wy: A2, T: A2, Td: A2, tr: int, ww: A2, nbx: A2, nby: A2, mask: I2,
+                 dta: A1, inv_h: F, N: int, Apx: A2, Apy: A2, sc: A1):
+    """[Apx, Apy] = (L + dt K) p (symmetric viscosity, T from k_sym_T, Td from k_sym_Td with tr) and pAp (tile sum)."""
     blk, lane = wp.tid()
     dt = dta[0]
     acc = F(0.0)
     for e in range(lane, TBc, wp.block_dim()):
         j, i, ok = cell_of(blk, e, N)
         if ok:
-            o = sym_apply_at(px, py, l3, wx, wy, T, ww, nbx, nby, mask, dt, inv_h, N, j, i)
+            o = sym_apply_at(px, py, l3, wx, wy, T, Td, tr, ww, nbx, nby, mask, dt, inv_h, N, j, i)
             Apx[j, i] = o[0]
             Apy[j, i] = o[1]
             acc += px[j, i] * o[0] + py[j, i] * o[1]
@@ -1531,6 +1591,7 @@ class CGOp:
         self.r, self.p, self.Ap, self.z = [z() for _ in range(n)], [z() for _ in range(n)], [z() for _ in range(n)], [z() for _ in range(n)]
         self.c = {k: z() for k in coef_names}
         self.T = z()
+        self.Td = z()                                       # trace stress on the corners (visc_tr; k_sym_Td)
         self.rows = wp.zeros(g.N, dtype=F, device=g.dev)
         self.sc = wp.zeros(8, dtype=F, device=g.dev)       # device mode scalars (S_* slots)
         self.scc = wp.zeros(8, dtype=F, device=g.dev)      # chunk mode: rz, pAp, alpha, rz_new, beta, rr, bb
@@ -1648,8 +1709,10 @@ def _apply_dot_visc(op, src):
     g, s = op.sol.g, op.sol
     ih = F(1.0 / g.h)
     op._L(k_sym_T, [src[0], src[1], op.c["wc"], ih, g.N, op.T])
-    op._T(kv_apply_dot, [src[0], src[1], op.c["l3"], op.c["wx"], op.c["wy"], op.T, op.c["ww"], g.nbx, g.nby, g.mask,
-                         s.dta, ih, g.N, op.Ap[0], op.Ap[1], op.sc])
+    if s.visc_tr:
+        op._L(k_sym_Td, [src[0], src[1], op.c["wc"], ih, g.N, op.Td])
+    op._T(kv_apply_dot, [src[0], src[1], op.c["l3"], op.c["wx"], op.c["wy"], op.T, op.Td, s.visc_tr, op.c["ww"], g.nbx,
+                         g.nby, g.mask, s.dta, ih, g.N, op.Ap[0], op.Ap[1], op.sc])
 
 
 def _apply_mass(op, src, dst):
@@ -1661,8 +1724,10 @@ def _apply_visc(op, src, dst):
     g, s = op.sol.g, op.sol
     ih = F(1.0 / g.h)
     op._L(k_sym_T, [src[0], src[1], op.c["wc"], ih, g.N, op.T])
-    op._L(k_sym_apply, [src[0], src[1], op.c["l3"], op.c["wx"], op.c["wy"], op.T, op.c["ww"], g.nbx, g.nby, g.mask,
-                        s.dta, ih, g.N, dst[0], dst[1]])
+    if s.visc_tr:
+        op._L(k_sym_Td, [src[0], src[1], op.c["wc"], ih, g.N, op.Td])
+    op._L(k_sym_apply, [src[0], src[1], op.c["l3"], op.c["wx"], op.c["wy"], op.T, op.Td, s.visc_tr, op.c["ww"], g.nbx,
+                        g.nby, g.mask, s.dta, ih, g.N, dst[0], dst[1]])
 
 
 # ============================================================================ solver
@@ -1677,7 +1742,7 @@ class WSolver:
 
     def __init__(self, geo, cfl=0.5, max_substeps=64, cg_tol=1e-10, visc_tol=1e-8, cg_maxiter=500,
                  kernel_quadrature=3, explicit_mixing_limit=0.05, l_floor=1e-3, v05=True, check_every=1, graphs=True,
-                 up=False, milk=0, sink=0):
+                 up=False, milk=0, sink=0, visc_tr=0):
         self.g = geo
         self.cfl, self.max_substeps = cfl, max_substeps
         self.cg_tol, self.visc_tol, self.cg_maxiter = cg_tol, visc_tol, cg_maxiter
@@ -1685,6 +1750,7 @@ class WSolver:
         self.check_every = check_every
         self.up = int(up)                    # volume-conserving surface source (k_fields)
         self.sink = sink_code(sink)          # form of the entrainment sink's flux ej (SINK_FORMS; set_sink)
+        self.visc_tr = switch01(visc_tr, "visc_tr")   # trace term of the floating sheet (k_sym_Td; set_visc_tr)
         self.tape = None
         self.rec = False
         self.stats = dict(cg_mass=0, cg_visc=0, cg_adj=0, substeps=0, frames=0, retries=0)   # retries: frames redone
@@ -1722,6 +1788,13 @@ class WSolver:
         if k != self.sink:
             self.sink = k
             self.runner.graphs.clear()                       # captured field launches hold the old switch
+
+    def set_visc_tr(self, visc_tr):
+        """Trace term 2 nu l (div u) I of the floating-sheet stress on (1) or off (0, V0.5)."""
+        k = switch01(visc_tr, "visc_tr")
+        if k != self.visc_tr:
+            self.visc_tr = k
+            self.runner.graphs.clear()                       # captured viscosity launches hold the old switch
 
     def milk_faces(self, c, m, sm, Gx, Gy, l2, buf, launch):
         """Face values of c for k_milk into buf['cfx'], buf['cfy'] (+ buf['cfxh'], 'cfyh', 'Rp', 'Rm' for the FCT
@@ -1949,12 +2022,17 @@ class WSolver:
             X0x, X0y, bx, by = self.new(), self.new(), self.new(), self.new()
             self.L(k_visc_rhs, [qx3, qy3, l3, g.mask], [X0x, X0y, bx, by])
             dx, dy = self.new(), self.new()
-            self.L(k_visc_diag, [l3, wx, wy, wc, ww, g.nbx, g.nby, g.mask, dt, ih, N], [dx, dy])
+            self.L(k_visc_diag, [l3, wx, wy, wc, ww, g.nbx, g.nby, g.mask, dt, ih, N, self.visc_tr], [dx, dy])
 
             def A_visc(xs, outs):
                 T = self.new()
                 self.L(k_sym_T, [xs[0], xs[1], wc, ih, N], [T])
-                self.L(k_sym_apply, [xs[0], xs[1], l3, wx, wy, T, ww, g.nbx, g.nby, g.mask, dt, ih, N], [outs[0], outs[1]])
+                Td = T                                   # (not read with visc_tr 0)
+                if self.visc_tr:
+                    Td = self.new()
+                    self.L(k_sym_Td, [xs[0], xs[1], wc, ih, N], [Td])
+                self.L(k_sym_apply, [xs[0], xs[1], l3, wx, wy, T, Td, self.visc_tr, ww, g.nbx, g.nby, g.mask, dt, ih,
+                                     N], [outs[0], outs[1]])
 
             Xx, Xy = self.solve(self.opV, dict(l3=l3, wx=wx, wy=wy, wc=wc, ww=ww), A_visc, [bx, by], [dx, dy], [X0x, X0y],
                                 self.visc_tol, "cg_visc")
@@ -2110,8 +2188,8 @@ class WSolver:
             R(k_visc_nu, [fb["qx3"], fb["qy3"], V.c["l3"], fb["m3"], g.mask, g.fx, g.fy, P, ih, N], [fb["nuc"]])
             R(k_visc_coefs, [V.c["l3"], g.fx, g.fy, g.cm, g.geo, P, fb["nuc"], N], [V.c["wx"], V.c["wy"], V.c["wc"], V.c["ww"]])
             R(k_visc_rhs, [fb["qx3"], fb["qy3"], V.c["l3"], g.mask], [V.x[0], V.x[1], V.b[0], V.b[1]])
-            R(k_visc_diag, [V.c["l3"], V.c["wx"], V.c["wy"], V.c["wc"], V.c["ww"], g.nbx, g.nby, g.mask, dt, ih, N],
-              [V.d[0], V.d[1]])
+            R(k_visc_diag, [V.c["l3"], V.c["wx"], V.c["wy"], V.c["wc"], V.c["ww"], g.nbx, g.nby, g.mask, dt, ih, N,
+                            self.visc_tr], [V.d[0], V.d[1]])
 
     def _g_post(self, nu_on, mix_on):
         g, fb, V = self.g, self.fb, self.opV

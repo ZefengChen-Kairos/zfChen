@@ -125,6 +125,9 @@ class Params:
     nu_max: float = 0.5       # cap of the effective viscosity [D_L^2/s]
     # ---- switches of the 'chi' closure (old behaviour: visc="componentwise", offcup="renormalise")
     visc: str = "symmetric"     # "symmetric": div(2 nu l S(u)), S = sym grad u, implicit, coupled ; "componentwise": div(nu l grad u_i)
+    visc_tr: int = 0            # closure "chi", visc "symmetric": 1 = the floating sheet's trace stress,
+                                # div(2 nu l (S(u) + (div u) I)) (free top, slip bottom, incompressible sheet;
+                                # wsolver.k_sym_Td, mcd22 SPEC 1.4 B5); 0 = div(2 nu l S(u)) (V0.5); not in cuda_solver
     offcup: str = "account"     # "account": source S_eff Z, (1 - Z) S_eff spilled ; "renormalise": footprint renormalised to the cup
 
     def as_dict(self):
@@ -857,11 +860,17 @@ class Solver:
         wx, wy, wc, ww, nbx, nby = self.sym_visc_coefs(lsn, nuc)
         T = np.empty((N - 1, N - 1))
         mask = g.mask
+        tr = int(self.P.visc_tr)
+        Td = np.empty((N - 1, N - 1)) if tr else None
 
         def apply(X):
             out = np.empty_like(X)
             K.sym_corner_T(X[:N], X[N:], wc, inv_h, T)
-            K.sym_visc_apply(X[:N], X[N:], lsn, wx, wy, T, ww, nbx, nby, mask, dt, inv_h, out[:N], out[N:])
+            if tr:                               # + the trace stress of the floating sheet (Params.visc_tr)
+                K.sym_corner_div(X[:N], X[N:], wc, inv_h, Td)
+                K.sym_visc_apply_tr(X[:N], X[N:], lsn, wx, wy, T, Td, ww, nbx, nby, mask, dt, inv_h, out[:N], out[N:])
+            else:
+                K.sym_visc_apply(X[:N], X[N:], lsn, wx, wy, T, ww, nbx, nby, mask, dt, inv_h, out[:N], out[N:])
             return out
 
         c4 = np.zeros((N, N))
@@ -869,8 +878,9 @@ class Solver:
         ex = np.zeros((N, N)); ex[:, :-1] += wx; ex[:, 1:] += wx
         ey = np.zeros((N, N)); ey[:-1, :] += wy; ey[1:, :] += wy
         ih2 = inv_h * inv_h
-        du = lsn + dt * (ex * ih2 + 0.25 * ih2 * c4 + ww * nbx * nbx)
-        dv = lsn + dt * (ey * ih2 + 0.25 * ih2 * c4 + ww * nby * nby)
+        sh = 0.75 if tr else 0.25                # corner weights: shear wc (+ trace 2 wc)
+        du = lsn + dt * (ex * ih2 + sh * ih2 * c4 + ww * nbx * nbx)
+        dv = lsn + dt * (ey * ih2 + sh * ih2 * c4 + ww * nby * nby)
         diag = np.concatenate([np.where(mask, du, 1.0), np.where(mask, dv, 1.0)])
         return apply, diag
 

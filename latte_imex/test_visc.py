@@ -5,6 +5,8 @@
 
 Symmetric viscosity: l u+ - dt div(2 nu l S(u+)) = l u-, S = sym grad u (V1 3.3-3.4), K = G^T W G with face-normal
 strain rows (u_x on x faces, v_y on y faces), corner shear rows (u_y + v_x on 2x2 cells) and wall rows (u.n_b).
+Params.visc_tr = 1 (the floating sheet's trace stress, div(2 nu l (S(u) + (div u) I))) adds corner rows of u_x + v_y
+with weight 2 nu l_corner: the same checks are run with it (tr=1), the compression mode then decays at 4 nu k^2.
 """
 import math
 import os
@@ -16,6 +18,7 @@ from .solver import Solver, Params, Numerics, Inlet, kernel_fraction
 
 
 def _solver(N, nu=1e-3, **kw):
+    kw["visc_tr"] = int(kw.pop("tr", 0))
     return Solver(Params(nu=nu, closure="chi", return_law="v05", **kw), Numerics(N=N))
 
 
@@ -34,10 +37,10 @@ def _Ku(sol, ux, uy, lsn=None, wall=True):
     return np.where(g.mask, Y[:N], 0.0), np.where(g.mask, Y[N:], 0.0)
 
 
-def test_rigid(N=64, verbose=True):
+def test_rigid(N=64, verbose=True, tr=0):
     """Rigid translation: zero stress at every cell off the wall (the wall rows hold the no-penetration);
     rigid rotation about the cup centre: zero stress everywhere, wall included (u.n_b = 0)."""
-    sol = _solver(N, nu=2e-3)
+    sol = _solver(N, nu=2e-3, tr=tr)
     g = sol.g
     l = np.where(g.mask, 1.0 + 0.3 * np.cos(5 * g.x) * np.sin(3 * g.y), 1.0)       # non-uniform layer
     cm, geo, _, _ = g.sym_geometry()
@@ -48,16 +51,16 @@ def test_rigid(N=64, verbose=True):
     kx, ky = _Ku(sol, -g.y, g.x, l)
     rot = float(max(np.abs(kx).max(), np.abs(ky).max()))
     if verbose:
-        print(f"rigid: translation max|Ku| interior {tr:.1e} (wall cells {wall_tr:.1e}, no-penetration), "
-              f"rotation max|Ku| everywhere {rot:.1e}", flush=True)
+        print(f"rigid{' (trace stress)' if sol.P.visc_tr else ''}: translation max|Ku| interior {tr:.1e} (wall cells "
+              f"{wall_tr:.1e}, no-penetration), rotation max|Ku| everywhere {rot:.1e}", flush=True)
     assert tr < 1e-12 and rot < 1e-12 and wall_tr > 1e-3
     return dict(translation_interior=tr, rotation=rot)
 
 
-def test_momentum(N=48, verbose=True):
+def test_momentum(N=48, verbose=True, tr=0):
     """Without the wall rows the viscous force sums to zero for any u (interior momentum conservation): every face /
     corner flux enters two cells with opposite signs."""
-    sol = _solver(N)
+    sol = _solver(N, tr=tr)
     g = sol.g
     rng = np.random.default_rng(1)
     l = np.where(g.mask, 1 + 0.5 * rng.random((N, N)), 1.0)
@@ -70,10 +73,10 @@ def test_momentum(N=48, verbose=True):
     return dict(sum_x=res[0], sum_y=res[1])
 
 
-def test_spd_nullspace(N=14, verbose=True):
+def test_spd_nullspace(N=14, verbose=True, tr=0):
     """Dense matrix at small N: A = L + dt K symmetric; K positive semi-definite with null space = {2 translations,
     1 rotation} without the wall rows (no checkerboard mode) and = {rotation} with them."""
-    sol = _solver(N, nu=1.0)
+    sol = _solver(N, nu=1.0, tr=tr)
     g = sol.g
     rng = np.random.default_rng(2)
     l = np.where(g.mask, 1 + 0.5 * rng.random((N, N)), 1.0)
@@ -118,9 +121,9 @@ def test_spd_nullspace(N=14, verbose=True):
     return out
 
 
-def test_energy(N=48, verbose=True):
+def test_energy(N=48, verbose=True, tr=0):
     """One implicit step never increases the discrete kinetic energy 1/2 sum l |u|^2 (any u, any l, any dt)."""
-    sol = _solver(N, nu=5e-3)
+    sol = _solver(N, nu=5e-3, tr=tr)
     g = sol.g
     rng = np.random.default_rng(3)
     worst = -1.0
@@ -139,20 +142,23 @@ def test_energy(N=48, verbose=True):
     return dict(max_ratio=worst)
 
 
-def test_decay(N=128, verbose=True):
+def test_decay(N=128, verbose=True, tr=0):
     """Sinusoidal modes, l = 1: shear u = (0, sin kx) decays at nu k^2, compression u = (sin kx, 0) at 2 nu k^2
-    (the grad div u part of div(2 nu S)); measured in the cup interior (r < 0.3) over 20 implicit steps against
-    exp(-rate t) and against the discrete backward-Euler factor 1/(1 + dt rate_h)^n."""
+    (the grad div u part of div(2 nu S)); with the trace stress (tr = 1) at 4 nu k^2 (div(2 nu (S + div u I)) =
+    nu (lap u + 3 grad div u)); measured in the cup interior (r < 0.3; r < 0.2 with the trace stress, whose faster
+    compressive diffusion carries the wall's adjustment of these modes deeper in 20 steps) over 20 implicit steps
+    against exp(-rate t) and against the discrete backward-Euler factor 1/(1 + dt rate_h)^n."""
     nu, k, dt, n = 2e-3, 2 * math.pi * 3, 0.01, 20
-    sol = _solver(N, nu=nu)
+    sol = _solver(N, nu=nu, tr=tr)
+    fc = 4.0 if tr else 2.0
     g = sol.g
     l = np.ones((N, N))
-    inner = g.mask & (g.r < 0.3)
+    inner = g.mask & (g.r < (0.2 if tr else 0.3))
     s = np.sin(k * g.x)
     sel = inner & (np.abs(s) > 0.5)
     kh = 4.0 * math.sin(k * g.h / 2) ** 2 / g.h ** 2        # discrete k^2 of the face difference
     out = {}
-    for name, fac, (u, v) in (("shear", 1.0, (0 * s, s)), ("compression", 2.0, (s, 0 * s))):
+    for name, fac, (u, v) in (("shear", 1.0, (0 * s, s)), ("compression", fc, (s, 0 * s))):
         ux, uy = u.copy(), v.copy()
         for _ in range(n):
             ux, uy, _ = sol.sym_visc_step(ux, uy, l, dt)
@@ -171,10 +177,13 @@ def test_decay(N=128, verbose=True):
                   f"interior spread {spread:.1e}, cross component {out[name]['cross']:.1e}", flush=True)
         assert abs(amp - disc) < 1e-4 and abs(rate - exact) / exact < 0.02 and spread < 1e-4
     r = out["compression"]["rate"] / out["shear"]["rate"]
-    out["ratio"] = r
+    # the operator's own rates (backward Euler removed: amp = (1 + dt rate_h)^-n)
+    rh = {nm: (out[nm]["amp"] ** (-1.0 / n) - 1.0) / dt for nm in ("shear", "compression")}
+    out["ratio"], out["ratio_operator"] = r, rh["compression"] / rh["shear"]
     if verbose:
-        print(f"decay: compression / shear rate = {r:.4f} (2 with the grad div term, 1 without)", flush=True)
-    assert abs(r - 2.0) < 0.01
+        print(f"decay: compression / shear rate = {r:.4f}, of the operator {out['ratio_operator']:.5f} (2 with the "
+              f"grad div term, 1 without; 4 with the trace stress)", flush=True)
+    assert abs(out["ratio_operator"] - fc) < 1e-3 and (tr or abs(r - fc) < 0.01)
     return out
 
 
@@ -269,6 +278,8 @@ def test_cuda(N=20, T=0.06, verbose=True):
 def selftest(cuda=False):
     r = dict(rigid=test_rigid(), momentum=test_momentum(), spd=test_spd_nullspace(), energy=test_energy(),
              decay=test_decay(), branches=test_componentwise_unchanged(), offcup=test_offcup())
+    r["trace"] = dict(rigid=test_rigid(tr=1), momentum=test_momentum(tr=1), spd=test_spd_nullspace(tr=1),
+                      energy=test_energy(tr=1), decay=test_decay(tr=1))
     if cuda:
         r["cuda"] = test_cuda()
     return r
