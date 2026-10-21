@@ -67,7 +67,7 @@ def main():
     print(f"milk transport {a.milk}: numpy clip removed / added {ref.stats['clip_mass']:.3e} of the milk "
           f"({ref.stats['clip_mass'] / max(mtot, 1e-300):.1e} of the total {mtot:.6g}), largest excursion "
           f"{ref.stats.get('clip_max', 0.0):.1e}; final c in [{lo:.3g}, {hi:.17g}]")
-    ok &= lo >= 0.0 and hi <= 1.0
+    ok &= lo >= -1e-12 and hi <= 1.0 + 1e-12                     # (round-off)
     saved = dict(np_l=ref.l, np_qx=ref.qx, np_qy=ref.qy, np_m=ref.m, np_nsub=np.array(nref))
     for path in ("frame", "fast"):
         sol = W.WSolver(g, v05=S["return_law"] == "v05", check_every=a.check_every, up=a.upwell, milk=a.milk)
@@ -105,7 +105,7 @@ def main():
         lo, hi = rng(out)
         print(f"  final c in [{lo:.3g}, {hi:.17g}]; total milk warp {float(out['m'][msk].sum() * g.h * g.h):.15g} numpy "
               f"{mtot:.15g}")
-        ok &= nw == nref and lo >= 0.0 and hi <= 1.0
+        ok &= nw == nref and lo >= -1e-12 and hi <= 1.0 + 1e-12
     if a.save:
         np.savez(a.save, **saved)
     print("PASS" if ok else "FAIL")

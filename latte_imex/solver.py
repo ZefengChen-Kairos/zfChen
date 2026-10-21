@@ -77,7 +77,8 @@ class Params:
                             # db/dt = -lam_b (l - 1)(1 - c) [1/s] (the foam never goes down); 0 = closed (V0.5)
     milk: int = 0           # face value of c in the milk transport (step C), code of kernels.MILK_SCHEMES: 0 'vl' (van
                             # Leer, the calibrated scheme), 1 'mp5fct', 2 'thincfct', 3 'mp5fct_nb' (sharper, bounded,
-                            # conservative; wsolver's comment above k_face_hi); not with closure 'skin'
+                            # conservative; wsolver's comment above k_face_hi); not with closure 'skin' nor in
+                            # cuda_solver (both raise)
     tau_s: float = 0.0      # closure "chi": the deposited foam surfaces tau_s u_in ahead of the landing point (carried by the
                             # plunging stream's horizontal velocity for its rise time; the deposit kernel K_d), [s]
     mu_s: float = 0.0       # closure "chi": share of the jet momentum the surfacing foam has lost (it arrives with the film

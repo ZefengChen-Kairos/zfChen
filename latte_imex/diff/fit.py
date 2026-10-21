@@ -74,10 +74,13 @@ OPEN_START = {"xi_b": 0.65, "lam_b": 10.0}
 # milk transport schemes (wsolver.MILK_SCHEMES) the gradient fit takes.  With the FCT schemes the loss is continuous
 # but only piecewise smooth (the limiter's min / max switches): the adjoint is the exact local derivative (test_grad
 # --eps 1e-7: <= 1e-6) and scatters around the slope of a fit step (1e-3 relative: kappa_Q up to 5e-2, the rest
-# <= 1e-2; its mean over the step equals the secant, 1.5e-3).  THINC-BVD picks per cell the MUSCL or the tanh
-# reconstruction, whichever has the smaller boundary variation; that choice switches discontinuously, so the loss has
-# small jumps the adjoint cannot see: over a 1e-3 step the slope differs from the adjoint by 0.1-0.5 (cp, beta, kappa_Q,
-# xi_b, lam_b; tulip and heart, N 32; kappa_Q on tulip: secant half the mean adjoint).  It runs forward only (cmafit).
+# <= 1e-2; its mean over the step equals the secant, 1.5e-3).  mp5fct_nb has locally steeper pieces (tulip N 48,
+# kappa_Q 2.1, xi_b 0.9, lam_b 10: the adjoint at one of 11 points across +-1e-3 is 3x the others, and FD at 1e-7
+# agrees with it to 3e-7: the loss is steep there, not the adjoint wrong).  THINC-BVD picks per cell the MUSCL or the
+# tanh reconstruction, whichever has the smaller boundary variation; that choice switches discontinuously, so the loss
+# has small jumps the adjoint cannot see: over a 1e-3 step the slope differs from the adjoint by 0.1-0.5 (cp, beta,
+# kappa_Q, xi_b, lam_b; tulip and heart, N 32; kappa_Q on tulip: secant half the mean adjoint).  It runs forward only
+# (cmafit).
 MILK_GRAD = ("vl", "mp5fct", "mp5fct_nb")
 MILK_GRAD_WHY = {"thincfct": "its loss jumps where the THINC-BVD choice switches (the adjoint cannot see the jumps: over "
                              "a 1e-3 step the slope differs from it by 10-50 %)"}
@@ -364,8 +367,12 @@ def main(argv=None):
     base = dict(pours[cal[0]].s1, **({"foot_a": 0.0, "foot_b": 0.0} if a.foot else {}),
                 **(CIRC_START if a.circ else {}), **(DEP_START if a.dep else {}))
     if a.init:
-        base.update({k: float(v) for k, v in json.load(open(a.init)).items() if k in base})
+        J0 = json.load(open(a.init))
+        base.update({k: float(v) for k, v in J0.items() if k in base})
         log(f"start: {a.init}")
+        ran_milk = W.milk_code(J0.get("milk", 0))         # the milk scheme is a switch of this run (--milk)
+        if ran_milk != W.milk_code(a.milk):
+            log(f"note: --init {a.init} ran the milk transport {W.MILK_SCHEMES[ran_milk]}; this run uses {a.milk}")
     for k, v in (x.split("=") for x in a.set.split(",") if x):
         base[k] = float(v)
     # the closure is the single source of the model switches: the render (real_program) reads them back

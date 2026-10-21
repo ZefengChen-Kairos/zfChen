@@ -921,6 +921,8 @@ class BatchCudaSolver:
                 raise ValueError(f"Params.offcup must be 'account' or 'renormalise', got {P.offcup!r}")
             if P.closure != "chi":
                 raise ValueError("the CUDA back-end implements the 'chi' closure only")
+            if int(P.milk):
+                raise ValueError("the CUDA back-end implements the van Leer milk transport only (Params.milk 0)")
         keys = lambda P: (P.visc, P.offcup, P.nu > 0, P.D > 0)
         if len({keys(P) for P in self.Ps}) != 1:
             raise ValueError("batch members must share visc, offcup and the presence of nu > 0, D > 0")
@@ -987,6 +989,8 @@ class BatchCudaSolver:
             keys = lambda P: (P.visc, P.offcup, P.nu > 0, P.D > 0, P.closure)
             if any(keys(P) != keys(self.P) for P in params):
                 raise ValueError("reset: members must keep visc, offcup, closure and the presence of nu > 0, D > 0")
+            if any(int(P.milk) for P in params):
+                raise ValueError("the CUDA back-end implements the van Leer milk transport only (Params.milk 0)")
             self.Ps = params
             self.P = params[0]
             self.pm.copy_to_device(np.array([[P.cp ** 2, P.beta, P.nu, P.D] for P in self.Ps], np.float64))
