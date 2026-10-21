@@ -2,6 +2,8 @@
 
 All arrays are [iy, ix] cell-centred (N, N); x-faces (N, N-1); y-faces (N-1, N).
 """
+import math
+
 import numpy as np
 try:
     from numba import njit, prange
@@ -325,3 +327,250 @@ def sym_visc_apply(ux, uy, lsn, wx, wy, T, ww, nbx, nby, mask, dt, inv_h, outx, 
             l = lsn[j, i]
             outx[j, i] = l * u + dt * ku
             outy[j, i] = l * v + dt * kv
+
+
+# --------------------------------------------------------------------------- milk face value: sharper schemes
+# numpy/numba reference of wsolver.k_face_hi / k_fct_R / k_fct_face (same operations in the same order); x faces
+# (N, N-1), y faces through the transposed arrays (milk_faces).  solver.Params.milk: code of MILK_SCHEMES (wsolver's
+# module comment above k_face_hi): 0 'vl' (limited_face_x/y, the calibrated default), 1 'mp5fct' (MP5 + Zalesak FCT,
+# bounds [0, l]), 2 'thincfct' (THINC-BVD, beta THINC_BETA, + the same FCT), 3 'mp5fct_nb' (MP5 + FCT with neighbour
+# bounds).
+MILK_SCHEMES = ("vl", "mp5fct", "thincfct", "mp5fct_nb")
+THINC_BETA = 2.0
+
+
+@njit(cache=True)
+def _sgn(a):
+    if a > 0.0:
+        return 1.0
+    if a < 0.0:
+        return -1.0
+    return 0.0
+
+
+@njit(cache=True)
+def _mmod(a, b):
+    return 0.5 * (_sgn(a) + _sgn(b)) * min(abs(a), abs(b))
+
+
+@njit(cache=True)
+def _mmod4(a, b, c, d):
+    s = 0.125 * (_sgn(a) + _sgn(b)) * abs((_sgn(a) + _sgn(c)) * (_sgn(a) + _sgn(d)))
+    return s * min(min(abs(a), abs(b)), min(abs(c), abs(d)))
+
+
+@njit(cache=True)
+def _mp5(um2, um1, u0, up1, up2):
+    """wsolver.mp5 (bypass threshold 0: continuous switch)."""
+    uor = (2.0 * um2 - 13.0 * um1 + 47.0 * u0 + 27.0 * up1 - 3.0 * up2) / 60.0
+    ump = u0 + _mmod(up1 - u0, 4.0 * (u0 - um1))
+    v = uor
+    if (uor - u0) * (uor - ump) > 0.0:
+        djm1 = um2 - 2.0 * um1 + u0
+        dj = um1 - 2.0 * u0 + up1
+        djp1 = u0 - 2.0 * up1 + up2
+        dm4p = _mmod4(4.0 * dj - djp1, 4.0 * djp1 - dj, dj, djp1)
+        dm4m = _mmod4(4.0 * dj - djm1, 4.0 * djm1 - dj, dj, djm1)
+        uul = u0 + 4.0 * (u0 - um1)
+        uav = 0.5 * (u0 + up1)
+        umd = uav - 0.5 * dm4p
+        ulc = u0 + 0.5 * (u0 - um1) + 4.0 / 3.0 * dm4m
+        umin = max(min(min(u0, up1), umd), min(min(u0, uul), ulc))
+        umax = min(max(max(u0, up1), umd), max(max(u0, uul), ulc))
+        v = uor + _mmod(umin - uor, umax - uor)
+    return v
+
+
+@njit(cache=True)
+def _limited(cL, cR, dn, G):
+    """wsolver.limited (van Leer, clamped to [min, max] of the two cells)."""
+    d = cR - cL
+    if abs(d) <= 1e-14:
+        v = cL if G >= 0.0 else cR
+    elif G >= 0.0:
+        v = cL + 0.5 * _vl(dn / d) * d
+    else:
+        v = cR - 0.5 * _vl(dn / d) * d
+    return min(max(v, min(cL, cR)), max(cL, cR))
+
+
+@njit(cache=True)
+def _line_mp5(cm2, cm1, c0, cp1, cp2, cp3, fm2, fm1, fp1, fp2, G):
+    if G >= 0.0:
+        if fm2 and fm1 and fp1:
+            return _mp5(cm2, cm1, c0, cp1, cp2)
+        dn = (c0 - cm1) if fm1 else 0.0
+        return _limited(c0, cp1, dn, G)
+    if fp2 and fp1 and fm1:
+        return _mp5(cp3, cp2, cp1, c0, cm1)
+    dn = (cp2 - cp1) if fp1 else 0.0
+    return _limited(c0, cp1, dn, G)
+
+
+@njit(cache=True)
+def _rec4(cm, c0, cp, ok, beta):
+    a = c0 - cm
+    b = cp - c0
+    s = 0.0
+    if ok and a * b > 0.0:
+        s = a * b / (a + b)
+    tL = c0
+    tR = c0
+    if ok and (cp - c0) * (c0 - cm) > 1e-24:
+        cmin = min(cm, cp)
+        dc = abs(cp - cm)
+        g = _sgn(cp - cm)
+        C = (c0 - cmin + 1e-20) / (dc + 1e-20)
+        C = min(max(C, 1e-12), 1.0 - 1e-12)
+        tb = math.tanh(beta)
+        B = math.exp(beta * g * (2.0 * C - 1.0))
+        A = (B / math.cosh(beta) - 1.0) / tb
+        tR = cmin + 0.5 * dc * (1.0 + g * (tb + A) / (1.0 + A * tb))
+        tL = cmin + 0.5 * dc * (1.0 + g * A)
+    return c0 - s, c0 + s, tL, tR
+
+
+@njit(cache=True)
+def _bvd(rm, r0, rp):
+    tbm = abs(rm[1] - r0[0]) + abs(r0[1] - rp[0])
+    tbt = abs(rm[3] - r0[2]) + abs(r0[3] - rp[2])
+    if tbt < tbm:
+        return r0[2], r0[3]
+    return r0[0], r0[1]
+
+
+@njit(cache=True)
+def _line_thinc(cm2, cm1, c0, cp1, cp2, cp3, fm2, fm1, fp1, fp2, G, beta):
+    r0 = _rec4(cm1, c0, cp1, fm1, beta)
+    r1 = _rec4(c0, cp1, cp2, fp1, beta)
+    if G >= 0.0:
+        rm = _rec4(cm2, cm1, c0, fm2 and fm1, beta)
+        return _bvd(rm, r0, r1)[1]
+    r2 = _rec4(cp1, cp2, cp3, fp1 and fp2, beta)
+    return _bvd(r0, r1, r2)[0]
+
+
+@njit(parallel=True, cache=True)
+def hi_face_x(c, G, fx, hi, beta, out):
+    """wsolver.k_face_hi on x faces (N, N-1): hi = 1 MP5, 2 THINC-BVD."""
+    N = c.shape[1]
+    nf = fx.shape[1]
+    for j in prange(c.shape[0]):
+        for i in range(nf):
+            if not fx[j, i]:
+                out[j, i] = 0.0
+                continue
+            a0 = c[j, i - 2] if i - 2 >= 0 else 0.0
+            a1 = c[j, i - 1] if i - 1 >= 0 else 0.0
+            a2 = c[j, i]
+            a3 = c[j, i + 1]
+            a4 = c[j, i + 2] if i + 2 < N else 0.0
+            a5 = c[j, i + 3] if i + 3 < N else 0.0
+            f0 = bool(fx[j, i - 2]) if i - 2 >= 0 else False
+            f1 = bool(fx[j, i - 1]) if i - 1 >= 0 else False
+            f3 = bool(fx[j, i + 1]) if i + 1 < nf else False
+            f4 = bool(fx[j, i + 2]) if i + 2 < nf else False
+            if hi == 1:
+                out[j, i] = _line_mp5(a0, a1, a2, a3, a4, a5, f0, f1, f3, f4, G[j, i])
+            else:
+                out[j, i] = _line_thinc(a0, a1, a2, a3, a4, a5, f0, f1, f3, f4, G[j, i], beta)
+    return out
+
+
+@njit(cache=True)
+def _upw(cL, cR, G):
+    return cL if G >= 0.0 else cR
+
+
+@njit(parallel=True, cache=True)
+def fct_R(c, m, sm, Gx, Gy, cfx, cfy, l2, fx, fy, dt, inv_h, nb, Rp, Rm):
+    """wsolver.k_fct_R (same summation order as k_milk; nb: neighbour bounds; P+- guarded by 1e-30)."""
+    N = c.shape[0]
+    k = dt * inv_h
+    for j in prange(N):
+        for i in range(N):
+            vL = 0.0
+            Pp = 0.0
+            Pm = 0.0
+            lo = c[j, i]
+            hi = c[j, i]
+            if i < N - 1 and fx[j, i]:
+                G = Gx[j, i]
+                cu = _upw(c[j, i], c[j, i + 1], G)
+                vL += G * cu
+                a = -k * (G * (cfx[j, i] - cu))
+                Pp += max(a, 0.0)
+                Pm += max(-a, 0.0)
+                lo = min(lo, c[j, i + 1])
+                hi = max(hi, c[j, i + 1])
+            if i > 0 and fx[j, i - 1]:
+                G = Gx[j, i - 1]
+                cu = _upw(c[j, i - 1], c[j, i], G)
+                vL -= G * cu
+                a = k * (G * (cfx[j, i - 1] - cu))
+                Pp += max(a, 0.0)
+                Pm += max(-a, 0.0)
+                lo = min(lo, c[j, i - 1])
+                hi = max(hi, c[j, i - 1])
+            if j < N - 1 and fy[j, i]:
+                G = Gy[j, i]
+                cu = _upw(c[j, i], c[j + 1, i], G)
+                vL += G * cu
+                a = -k * (G * (cfy[j, i] - cu))
+                Pp += max(a, 0.0)
+                Pm += max(-a, 0.0)
+                lo = min(lo, c[j + 1, i])
+                hi = max(hi, c[j + 1, i])
+            if j > 0 and fy[j - 1, i]:
+                G = Gy[j - 1, i]
+                cu = _upw(c[j - 1, i], c[j, i], G)
+                vL -= G * cu
+                a = k * (G * (cfy[j - 1, i] - cu))
+                Pp += max(a, 0.0)
+                Pm += max(-a, 0.0)
+                lo = min(lo, c[j - 1, i])
+                hi = max(hi, c[j - 1, i])
+            mL = m[j, i] + dt * sm[j, i] - dt * vL * inv_h
+            L = l2[j, i]
+            up = L - mL
+            dn = mL
+            if nb:
+                up = min(L * hi, L) - mL
+                dn = mL - max(L * lo, 0.0)
+            Rp[j, i] = min(1.0, max(up, 0.0) / max(Pp, 1e-30)) if Pp > 0.0 else 1.0
+            Rm[j, i] = min(1.0, max(dn, 0.0) / max(Pm, 1e-30)) if Pm > 0.0 else 1.0
+    return Rp, Rm
+
+
+@njit(parallel=True, cache=True)
+def fct_face_x(c, G, ch, Rp, Rm, fx, out):
+    """wsolver.k_fct_face on x faces (N, N-1)."""
+    for j in prange(fx.shape[0]):
+        for i in range(fx.shape[1]):
+            if not fx[j, i]:
+                out[j, i] = 0.0
+                continue
+            g = G[j, i]
+            cu = _upw(c[j, i], c[j, i + 1], g)
+            hv = ch[j, i]
+            th = min(Rp[j, i], Rm[j, i + 1])
+            if g * (hv - cu) >= 0.0:
+                th = min(Rm[j, i], Rp[j, i + 1])
+            out[j, i] = cu + th * (hv - cu)
+    return out
+
+
+def milk_faces(code, c, m, sm, Gx, Gy, l2, fx, fy, dt, inv_h):
+    """Face values (cfx (N, N-1), cfy (N-1, N)) of c for the milk flux G c_f, scheme code >= 1 of MILK_SCHEMES."""
+    N = c.shape[0]
+    T = lambda a: np.ascontiguousarray(a.T)
+    name = MILK_SCHEMES[code]
+    hi = 1 if name.startswith("mp5") else 2
+    c, m, sm, Gx, Gy, l2 = (np.ascontiguousarray(a, dtype=np.float64) for a in (c, m, sm, Gx, Gy, l2))
+    cfx = hi_face_x(c, Gx, fx, hi, THINC_BETA, np.empty((N, N - 1)))
+    cfy = np.ascontiguousarray(hi_face_x(T(c), T(Gy), T(fy), hi, THINC_BETA, np.empty((N, N - 1))).T)
+    Rp, Rm = fct_R(c, m, sm, Gx, Gy, cfx, cfy, l2, fx, fy, dt, inv_h, name.endswith("_nb"), np.empty((N, N)),
+                   np.empty((N, N)))
+    cfx = fct_face_x(c, Gx, cfx, Rp, Rm, fx, np.empty((N, N - 1)))
+    cfy = fct_face_x(T(c), T(Gy), T(cfy), T(Rp), T(Rm), T(fy), np.empty((N, N - 1))).T
+    return np.ascontiguousarray(cfx), np.ascontiguousarray(cfy)

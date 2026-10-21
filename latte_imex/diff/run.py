@@ -290,7 +290,7 @@ def target_on_grid(p, geo):
 class DiffPour:
     def __init__(self, p, N=128, device=None, T_max=None, w_gap=2.0, tau=0.05, check_every=None, graphs=True,
                  loss="video", w_final=0.0, scales=(0.0,), e0=False, upwell=False, circ=False, w_flow=0.0,
-                 flow_scale=0.15, flow_u0=0.05, exit_cal=False, circ_shape=None, log=print):
+                 flow_scale=0.15, flow_u0=0.05, exit_cal=False, circ_shape=None, milk=0, log=print):
         self.p, self.N, self.log = p, N, log
         wp.init()
         script, pour = SC.pour_script(p, N, e0=e0, exit_cal=exit_cal)
@@ -300,7 +300,9 @@ class DiffPour:
         self.geo = W.Geo(N, device=device)
         if check_every is None:                     # PCG convergence read back every 4 iterations on the GPU
             check_every = 4 if self.geo.dev.is_cuda else 1
-        self.sol = W.WSolver(self.geo, v05=self.S["return_law"] == "v05", check_every=check_every, graphs=graphs, up=upwell)
+        # milk: face value of c in the milk transport (wsolver.MILK_SCHEMES, name or code; 0 'vl', the calibrated one)
+        self.sol = W.WSolver(self.geo, v05=self.S["return_law"] == "v05", check_every=check_every, graphs=graphs,
+                             up=upwell, milk=milk)
         dev = self.geo.dev
         self.Sw = {k: wp.array(self.S[k], dtype=F, device=dev, requires_grad=True) for k in W.SCHED}
         self.circ, self.circ_shape = circ, dict(circ_shape or {})
@@ -352,6 +354,7 @@ class DiffPour:
                 self.L_brown += ob["wt"] * t
         log(f"{p}: {self.S['n']} frames, T {self.S['T']:.2f} s, N {N}, device {dev}, loss {loss}"
             + (", landing point: E0 measured stream foot" if e0 else "")
+            + (f", milk transport {W.MILK_SCHEMES[self.sol.milk]}" if self.sol.milk else "")
             + (f" ({len(self.obs)} observed frames, scales {self.scales} R; no-white reference loss "
                f"{self.L_brown:.4f})" if self.obs else ""))
 
@@ -511,10 +514,10 @@ class DiffPour:
         self._seed and leave dL/d(state at the frame start) in self._seed; dL/dP and dL/d(schedule) accumulate in
         self._Pg.grad and self.Sw[...].grad.  All arrays come from the solver's pool and dt / frame index are read from
         device arrays, so on CUDA the whole replay (forward launches, PCG solves with their adjoint solves, backward
-        launches) is captured once per (sub-steps, active, viscosity, mixing, exchange) into one graph and replayed -- the
-        first frame of each kind runs eagerly (sizes the pool), the second captures.  (The exchange flag is part of the
-        key: kappa_e or lam_b switching between 0 and > 0 on the same DiffPour must not replay a graph without / with the
-        exchange step.)"""
+        launches) is captured once per (sub-steps, active, viscosity, mixing, exchange, milk scheme) into one graph
+        and replayed -- the first frame of each kind runs eagerly (sizes the pool), the second captures.  (The exchange
+        flag is part of the key: kappa_e or lam_b switching between 0 and > 0 on the same DiffPour must not replay a graph
+        without / with the exchange step; the same for WSolver.set_milk, whose FCT schemes also take more pool slots.)"""
         sol = self.sol
         cs = ("l", "qx", "qy", "m")
 
@@ -610,7 +613,8 @@ class DiffPour:
             fdt, q, act = float(S["fdt"][k]), int(S["q"][k]), bool(S["active"][k])
             sol.set_dt(fdt / ns[k])
             sol.set_kq(k, q)
-            self._replay(k, fdt, q, act, ns[k], Pnp, (ns[k], act, nu_on, sol.mix_on(Pnp, fdt / ns[k]), sol.ex_on))
+            key = (ns[k], act, nu_on, sol.mix_on(Pnp, fdt / ns[k]), sol.ex_on, sol.milk)
+            self._replay(k, fdt, q, act, ns[k], Pnp, key)
             if k + 1 < n:
                 ck[k + 1] = None                   # free the checkpoint (no longer needed as an observed state)
         sol.rec, sol.tape = False, None

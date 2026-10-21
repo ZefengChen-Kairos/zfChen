@@ -71,6 +71,16 @@ MECH_START = {"kappa_e": 0.5, "kappa_tc": 0.3, "tau_s": 0.08, "e_F": 0.3, "tau_b
 # 0.5-0.8 (surfactant elasticity of an open coffee surface against the foam raft's rho g' h_f^2), lam_b the pilot's 10.
 OPEN_SPACE = {"xi_b": (0.0, 0.98, "lin"), "lam_b": (0.3, 50.0, "log")}
 OPEN_START = {"xi_b": 0.65, "lam_b": 10.0}
+# milk transport schemes (wsolver.MILK_SCHEMES) the gradient fit takes.  With the FCT schemes the loss is continuous
+# but only piecewise smooth (the limiter's min / max switches): the adjoint is the exact local derivative (test_grad
+# --eps 1e-7: <= 1e-6) and scatters around the slope of a fit step (1e-3 relative: kappa_Q up to 5e-2, the rest
+# <= 1e-2; its mean over the step equals the secant, 1.5e-3).  THINC-BVD picks per cell the MUSCL or the tanh
+# reconstruction, whichever has the smaller boundary variation; that choice switches discontinuously, so the loss has
+# small jumps the adjoint cannot see: over a 1e-3 step the slope differs from the adjoint by 0.1-0.5 (cp, beta, kappa_Q,
+# xi_b, lam_b; tulip and heart, N 32; kappa_Q on tulip: secant half the mean adjoint).  It runs forward only (cmafit).
+MILK_GRAD = ("vl", "mp5fct", "mp5fct_nb")
+MILK_GRAD_WHY = {"thincfct": "its loss jumps where the THINC-BVD choice switches (the adjoint cannot see the jumps: over "
+                             "a 1e-3 step the slope differs from it by 10-50 %)"}
 
 
 def use_foot(on, circ=False, dep=False):
@@ -317,6 +327,9 @@ def main(argv=None):
     ap.add_argument("--upwell", action="store_true",
                     help="volume-conserving surface source: the whole received volume reaches the surface, chi decides "
                          "whether it is new milk or resurfacing base material (wsolver.k_fields)")
+    ap.add_argument("--milk", default="vl", choices=W.MILK_SCHEMES,
+                    help="face value of c in the milk transport (wsolver.MILK_SCHEMES; written into best_closure.json); "
+                         "only the schemes of MILK_GRAD (adjoint checked against finite differences)")
     ap.add_argument("--e0", default="jet", choices=("jet", "world", "none"),
                     help="landing point corrected by the measured stream foot (rig/stream_foot.py): 'jet' along / across "
                          "u_in (schedule.e0_offsets, the earlier fits), 'world' in the cup frame with the robust estimator "
@@ -335,13 +348,16 @@ def main(argv=None):
     ap.add_argument("--workers", type=int, default=-1, help="-1: one process per pour on CUDA, in-process on the CPU; "
                     "0: in-process; >0: worker processes")
     a = ap.parse_args(argv)
+    if a.milk not in MILK_GRAD:
+        ap.error(f"--milk {a.milk}: {MILK_GRAD_WHY.get(a.milk, 'no checked gradient')}; gradient fits take {MILK_GRAD} "
+                 f"(forward-only runs, e.g. cmafit --milk {a.milk}, are fine)")
     os.makedirs(os.path.join(a.out, "fields"), exist_ok=True)
     log = lambda *x: print(*x, flush=True)
     use_foot(a.foot, a.circ, a.dep)
     cal = a.cal.split(",")
     kw = dict(N=a.N, device=a.device, w_gap=a.w_gap, tau=a.tau0, T_max=a.T, loss=a.loss, w_final=a.w_final,
               scales=tuple(float(x) for x in a.scales.split(",")), e0=SC.e0_mode(0 if a.e0 == "none" else a.e0), upwell=a.upwell,
-              circ=a.circ, w_flow=a.w_flow)
+              circ=a.circ, w_flow=a.w_flow, milk=W.milk_code(a.milk))
     workers = a.workers if a.workers >= 0 else (len(cal) if (a.device or "cuda").startswith("cuda") else 0)
     pours = {p: Pour(p, kw, process=workers > 0) for p in cal}
     log(f"{len(cal)} calibration pours, {'one worker process each' if workers > 0 else 'in-process'}")
@@ -354,6 +370,7 @@ def main(argv=None):
         base[k] = float(v)
     # the closure is the single source of the model switches: the render (real_program) reads them back
     base["e0"], base["upwell"], base["circ"] = float(SC.e0_code(0 if a.e0 == "none" else a.e0)), float(a.upwell), float(a.circ)
+    base["milk"] = float(W.milk_code(a.milk))
     if not a.circ and any(base.get(k, 0.0) for k in ("kappa_M", "kappa_w")):
         log("no --circ: kappa_M, kappa_w of the start closure set to 0")
     if not a.circ:

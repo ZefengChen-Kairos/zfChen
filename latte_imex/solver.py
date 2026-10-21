@@ -75,6 +75,9 @@ class Params:
                             # g(c)], g(c) = 1 - xi_b (1 - c) (brown area modulus (1 - xi_b) cp^2); 0 = V0.5
     lam_b: float = 0.0      # ... open brown surface: brown compressed beyond l = 1 goes down, stretched brown is resupplied,
                             # db/dt = -lam_b (l - 1)(1 - c) [1/s] (the foam never goes down); 0 = closed (V0.5)
+    milk: int = 0           # face value of c in the milk transport (step C), code of kernels.MILK_SCHEMES: 0 'vl' (van
+                            # Leer, the calibrated scheme), 1 'mp5fct', 2 'thincfct', 3 'mp5fct_nb' (sharper, bounded,
+                            # conservative; wsolver's comment above k_face_hi); not with closure 'skin'
     tau_s: float = 0.0      # closure "chi": the deposited foam surfaces tau_s u_in ahead of the landing point (carried by the
                             # plunging stream's horizontal velocity for its rise time; the deposit kernel K_d), [s]
     mu_s: float = 0.0       # closure "chi": share of the jet momentum the surfacing foam has lost (it arrives with the film
@@ -659,6 +662,8 @@ class Solver:
         cfx = K.limited_face_x(c, Gx, g.fx, np.empty((N, N - 1)))
         cfy = K.limited_face_y(c, Gy, g.fy, np.empty((N - 1, N)))
         if P.closure == "skin":
+            if int(P.milk):
+                raise NotImplementedError("Params.milk > 0 (MP5 / THINC-BVD + FCT) with closure 'skin'")
             # submerged foam and its rise-time moment move with the same face flux as the bulk (van Leer limited)
             fl = np.where(mask, self.f / lsafe, 0.0); tl = np.where(mask, self.ft / lsafe, 0.0)
             ffx = K.limited_face_x(fl, Gx, g.fx, np.empty((N, N - 1))); ffy = K.limited_face_y(fl, Gy, g.fy, np.empty((N - 1, N)))
@@ -686,10 +691,14 @@ class Solver:
         else:
             s_m = s if getattr(self, "_s_milk", None) is None else self._s_milk
             Gx_m, Gy_m = Gx, Gy
+            if int(P.milk):                                  # sharper face value (MP5 / THINC-BVD + FCT)
+                cfx, cfy = K.milk_faces(int(P.milk), c, m, np.broadcast_to(s_m, (N, N)), Gx, Gy, l_new, g.fx, g.fy, dt,
+                                        1.0 / h)
         m_new = m + dt * s_m - dt * g.div(Gx_m * cfx, Gy_m * cfy)
         # boundedness guard (should be inactive under the material CFL)
         over = np.maximum(m_new - l_new, 0.0) + np.maximum(-m_new, 0.0)
         self.stats["clip_mass"] += float(over[mask].sum() * g.area)
+        self.stats["clip_max"] = max(self.stats.get("clip_max", 0.0), float(over[mask].max(initial=0.0)))
         m_new = np.clip(m_new, 0.0, l_new)
 
         # outside the cup keep the reference state

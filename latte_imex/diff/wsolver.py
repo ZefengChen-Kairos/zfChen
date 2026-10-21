@@ -492,6 +492,321 @@ def k_milk(m: A2, sm: A2, Gx: A2, Gy: A2, cfx: A2, cfy: A2, l2: A2, qxn: A2, qyn
         m3[j, i] = F(0.0)
 
 
+# ---------------------------------------------------------------------------- milk face value: sharper schemes
+# Closure switch 'milk' (MILK_SCHEMES; WSolver(milk=...), run.DiffPour(milk=...), solver.Params.milk, kernels.milk_faces):
+#   0 vl         k_limit above (van Leer, the calibrated default)
+#   1 mp5fct     MP5 (Suresh & Huynh 1997, alpha 4, 5-cell upwind stencil) + Zalesak FCT against first-order upwind with
+#                the bounds [0, l2] of k_milk's clip (conservative and bounded, so the clip stays inactive)
+#   2 thincfct   THINC-BVD (Sun, Inaba & Xiao 2016, beta THINC_BETA: per cell van Leer MUSCL or the tanh reconstruction,
+#                whichever gives the smaller total boundary variation) + the same FCT (plain THINC-BVD is bounded only up
+#                to Courant 0.2; the sub-step Courant number reaches ~0.36 near the jet)
+#   3 mp5fct_nb  MP5 + FCT with neighbour bounds: c after the step within [min, max] of c over the cell and its in-cup
+#                face neighbours (x l2, widened to the first-order value): no new local extrema (scheme 1 makes some
+#                along thin diagonal lines), sharpening about THINC-BVD's
+# Near the cup wall the 6-cell stencils fall back: MP5 -> van Leer where a face of its 5-cell upwind stencil is inactive
+# (van Leer itself -> first-order upwind as in k_limit); THINC-BVD -> first order in a cell without two in-cup neighbours
+# along the line.  Gradients: the FCT ratios divide by the summed antidiffusive increments P+-, guarded (they
+# underflow at milk fronts decaying into brown film, ~1e-300, where the adjoint of r / P would be 0 x inf):
+# r / max(P, 1e-30) (kernels.fct_R the same).
+MILK_SCHEMES = ("vl", "mp5fct", "thincfct", "mp5fct_nb")
+THINC_BETA = 2.0
+
+
+def milk_code(v):
+    """Code (index in MILK_SCHEMES) of a milk scheme given by name or by code (closure json: float)."""
+    if isinstance(v, str):
+        if v not in MILK_SCHEMES:
+            raise ValueError(f"milk scheme {v!r} not in {MILK_SCHEMES}")
+        return MILK_SCHEMES.index(v)
+    k = int(v or 0)
+    if k != v or not 0 <= k < len(MILK_SCHEMES):
+        raise ValueError(f"milk code {v!r} not in 0..{len(MILK_SCHEMES) - 1} {MILK_SCHEMES}")
+    return k
+
+
+@wp.func
+def sgn(a: F):
+    s = F(0.0)
+    if a > F(0.0):
+        s = F(1.0)
+    elif a < F(0.0):
+        s = F(-1.0)
+    return s
+
+
+@wp.func
+def mmod(a: F, b: F):
+    return F(0.5) * (sgn(a) + sgn(b)) * wp.min(wp.abs(a), wp.abs(b))
+
+
+@wp.func
+def mmod4(a: F, b: F, c: F, d: F):
+    s = F(0.125) * (sgn(a) + sgn(b)) * wp.abs((sgn(a) + sgn(c)) * (sgn(a) + sgn(d)))
+    return s * wp.min(wp.min(wp.abs(a), wp.abs(b)), wp.min(wp.abs(c), wp.abs(d)))
+
+
+@wp.func
+def mp5(um2: F, um1: F, u0: F, up1: F, up2: F):
+    """MP5 value of cell u0 at its face towards up1.  The accuracy bypass 'uor between u0 and u_MP' uses the threshold 0
+    instead of the paper's 1e-10: at 0 the switch is continuous (u0 and u_MP lie inside [u_min, u_max]), so a round-off
+    difference cannot flip the face value by a finite amount."""
+    uor = (F(2.0) * um2 - F(13.0) * um1 + F(47.0) * u0 + F(27.0) * up1 - F(3.0) * up2) / F(60.0)
+    ump = u0 + mmod(up1 - u0, F(4.0) * (u0 - um1))
+    v = uor
+    if (uor - u0) * (uor - ump) > F(0.0):
+        djm1 = um2 - F(2.0) * um1 + u0
+        dj = um1 - F(2.0) * u0 + up1
+        djp1 = u0 - F(2.0) * up1 + up2
+        dm4p = mmod4(F(4.0) * dj - djp1, F(4.0) * djp1 - dj, dj, djp1)
+        dm4m = mmod4(F(4.0) * dj - djm1, F(4.0) * djm1 - dj, dj, djm1)
+        uul = u0 + F(4.0) * (u0 - um1)
+        uav = F(0.5) * (u0 + up1)
+        umd = uav - F(0.5) * dm4p
+        ulc = u0 + F(0.5) * (u0 - um1) + F(4.0) / F(3.0) * dm4m      # (F(4.0 / 3.0) would be 4/3 rounded to float32)
+        umin = wp.max(wp.min(wp.min(u0, up1), umd), wp.min(wp.min(u0, uul), ulc))
+        umax = wp.min(wp.max(wp.max(u0, up1), umd), wp.max(wp.max(u0, uul), ulc))
+        v = uor + mmod(umin - uor, umax - uor)
+    return v
+
+
+@wp.func
+def line_mp5(cm2: F, cm1: F, c0: F, cp1: F, cp2: F, cp3: F, fm2: int, fm1: int, fp1: int, fp2: int, G: F):
+    """Face value between c0 and cp1 along one grid line (cells cm2 .. cp3; fK: the face right of cell K active)."""
+    v = F(0.0)
+    if G >= F(0.0):
+        if fm2 != 0 and fm1 != 0 and fp1 != 0:
+            v = mp5(cm2, cm1, c0, cp1, cp2)
+        else:
+            dn = F(0.0)
+            if fm1 != 0:
+                dn = c0 - cm1
+            v = limited(c0, cp1, dn, G, 0)
+    else:
+        if fp2 != 0 and fp1 != 0 and fm1 != 0:
+            v = mp5(cp3, cp2, cp1, c0, cm1)
+        else:
+            dn = F(0.0)
+            if fp1 != 0:
+                dn = cp2 - cp1
+            v = limited(c0, cp1, dn, G, 0)
+    return v
+
+
+@wp.func
+def rec4(cm: F, c0: F, cp: F, ok: int, beta: F):
+    """Cell reconstructions (left, right face values): van Leer MUSCL (mL, mR) and THINC (tL, tR); c0 where the cell
+    lacks a neighbour (ok = 0) or, for THINC, is not strictly monotone."""
+    a = c0 - cm
+    b = cp - c0
+    s = F(0.0)
+    if ok != 0:
+        if a * b > F(0.0):
+            s = a * b / (a + b)
+    tL = c0
+    tR = c0
+    if ok != 0:
+        if (cp - c0) * (c0 - cm) > F(1e-24):
+            cmin = wp.min(cm, cp)
+            dc = wp.abs(cp - cm)
+            g = sgn(cp - cm)
+            C = (c0 - cmin + F(1e-20)) / (dc + F(1e-20))
+            C = wp.min(wp.max(C, F(1e-12)), F(1.0) - F(1e-12))
+            tb = wp.tanh(beta)
+            B = wp.exp(beta * g * (F(2.0) * C - F(1.0)))
+            A = (B / wp.cosh(beta) - F(1.0)) / tb
+            tR = cmin + F(0.5) * dc * (F(1.0) + g * (tb + A) / (F(1.0) + A * tb))
+            tL = cmin + F(0.5) * dc * (F(1.0) + g * A)
+    return wp.vector(c0 - s, c0 + s, tL, tR)
+
+
+@wp.func
+def bvd(rm: wp.vec4d, r0: wp.vec4d, rp: wp.vec4d):
+    """BVD choice for the middle cell: (left, right) values of the reconstruction with the smaller boundary variation."""
+    tbm = wp.abs(rm[1] - r0[0]) + wp.abs(r0[1] - rp[0])
+    tbt = wp.abs(rm[3] - r0[2]) + wp.abs(r0[3] - rp[2])
+    qL = r0[0]
+    qR = r0[1]
+    if tbt < tbm:
+        qL = r0[2]
+        qR = r0[3]
+    return wp.vec2d(qL, qR)
+
+
+@wp.func
+def line_thinc(cm2: F, cm1: F, c0: F, cp1: F, cp2: F, cp3: F, fm2: int, fm1: int, fp1: int, fp2: int, G: F, beta: F):
+    """THINC-BVD face value between c0 and cp1 (the face itself active): right value of cell 0 (G >= 0) or left value
+    of cell 1."""
+    v = F(0.0)
+    r0 = rec4(cm1, c0, cp1, fm1, beta)
+    r1 = rec4(c0, cp1, cp2, fp1, beta)
+    if G >= F(0.0):
+        rm = rec4(cm2, cm1, c0, wp.min(fm2, fm1), beta)
+        q = bvd(rm, r0, r1)
+        v = q[1]
+    else:
+        r2 = rec4(cp1, cp2, cp3, wp.min(fp1, fp2), beta)
+        q = bvd(r0, r1, r2)
+        v = q[0]
+    return v
+
+
+@wp.func
+def gc(a: A2, j: int, i: int, N: int):
+    v = F(0.0)
+    if i >= 0 and i < N and j >= 0 and j < N:
+        v = a[j, i]
+    return v
+
+
+@wp.func
+def gf(a: I2, j: int, i: int, N: int):
+    v = int(0)
+    if i >= 0 and i < N and j >= 0 and j < N:
+        if a[j, i] != 0:
+            v = int(1)
+    return v
+
+
+@wp.kernel
+def k_face_hi(c: A2, Gx: A2, Gy: A2, fx: I2, fy: I2, N: int, hi: int, beta: F, cfx: A2, cfy: A2):
+    """High-order face values of c, hi = 1 MP5, 2 THINC-BVD (the wall fall-backs above); 0 on inactive faces."""
+    j, i = wp.tid()
+    cfx[j, i] = F(0.0)
+    cfy[j, i] = F(0.0)
+    if fx[j, i] != 0:
+        a0 = gc(c, j, i - 2, N)
+        a1 = gc(c, j, i - 1, N)
+        a2 = c[j, i]
+        a3 = c[j, i + 1]
+        a4 = gc(c, j, i + 2, N)
+        a5 = gc(c, j, i + 3, N)
+        f0 = gf(fx, j, i - 2, N)
+        f1 = gf(fx, j, i - 1, N)
+        f3 = gf(fx, j, i + 1, N)
+        f4 = gf(fx, j, i + 2, N)
+        if hi == 1:
+            cfx[j, i] = line_mp5(a0, a1, a2, a3, a4, a5, f0, f1, f3, f4, Gx[j, i])
+        else:
+            cfx[j, i] = line_thinc(a0, a1, a2, a3, a4, a5, f0, f1, f3, f4, Gx[j, i], beta)
+    if fy[j, i] != 0:
+        b0 = gc(c, j - 2, i, N)
+        b1 = gc(c, j - 1, i, N)
+        b2 = c[j, i]
+        b3 = c[j + 1, i]
+        b4 = gc(c, j + 2, i, N)
+        b5 = gc(c, j + 3, i, N)
+        g0 = gf(fy, j - 2, i, N)
+        g1 = gf(fy, j - 1, i, N)
+        g3 = gf(fy, j + 1, i, N)
+        g4 = gf(fy, j + 2, i, N)
+        if hi == 1:
+            cfy[j, i] = line_mp5(b0, b1, b2, b3, b4, b5, g0, g1, g3, g4, Gy[j, i])
+        else:
+            cfy[j, i] = line_thinc(b0, b1, b2, b3, b4, b5, g0, g1, g3, g4, Gy[j, i], beta)
+
+
+@wp.func
+def upw(cL: F, cR: F, G: F):
+    v = cR
+    if G >= F(0.0):
+        v = cL
+    return v
+
+
+@wp.kernel
+def k_fct_R(c: A2, m: A2, sm: A2, Gx: A2, Gy: A2, cfx: A2, cfy: A2, l2: A2, fx: I2, fy: I2, dta: A1, inv_h: F, N: int,
+            nb: int, Rp: A2, Rm: A2):
+    """Zalesak FCT, cell factors: first-order upwind update mL (k_milk's flux with the upwind c), the sums P+- of the
+    antidiffusive increments in / out, and R+ = min(1, room above / P+), R- = min(1, room below / P-); room: to the
+    bounds [0, l2] (nb = 0) or to l2 x [min, max] of c over the cell and its in-cup face neighbours (nb = 1), never
+    negative (a first-order value outside the bounds gets no antidiffusion towards them)."""
+    j, i = wp.tid()
+    dt = dta[0]
+    k = dt * inv_h
+    vL = F(0.0)
+    Pp = F(0.0)
+    Pm = F(0.0)
+    lo = c[j, i]
+    hi = c[j, i]
+    if i < N - 1:
+        if fx[j, i] != 0:
+            G = Gx[j, i]
+            cu = upw(c[j, i], c[j, i + 1], G)
+            vL += G * cu
+            a = -k * (G * (cfx[j, i] - cu))
+            Pp += wp.max(a, F(0.0))
+            Pm += wp.max(-a, F(0.0))
+            lo = wp.min(lo, c[j, i + 1])
+            hi = wp.max(hi, c[j, i + 1])
+    if i > 0:
+        if fx[j, i - 1] != 0:
+            G = Gx[j, i - 1]
+            cu = upw(c[j, i - 1], c[j, i], G)
+            vL -= G * cu
+            a = k * (G * (cfx[j, i - 1] - cu))
+            Pp += wp.max(a, F(0.0))
+            Pm += wp.max(-a, F(0.0))
+            lo = wp.min(lo, c[j, i - 1])
+            hi = wp.max(hi, c[j, i - 1])
+    if j < N - 1:
+        if fy[j, i] != 0:
+            G = Gy[j, i]
+            cu = upw(c[j, i], c[j + 1, i], G)
+            vL += G * cu
+            a = -k * (G * (cfy[j, i] - cu))
+            Pp += wp.max(a, F(0.0))
+            Pm += wp.max(-a, F(0.0))
+            lo = wp.min(lo, c[j + 1, i])
+            hi = wp.max(hi, c[j + 1, i])
+    if j > 0:
+        if fy[j - 1, i] != 0:
+            G = Gy[j - 1, i]
+            cu = upw(c[j - 1, i], c[j, i], G)
+            vL -= G * cu
+            a = k * (G * (cfy[j - 1, i] - cu))
+            Pp += wp.max(a, F(0.0))
+            Pm += wp.max(-a, F(0.0))
+            lo = wp.min(lo, c[j - 1, i])
+            hi = wp.max(hi, c[j - 1, i])
+    mL = m[j, i] + dt * sm[j, i] - dt * vL * inv_h
+    L = l2[j, i]
+    up = L - mL
+    dn = mL
+    if nb != 0:
+        up = wp.min(L * hi, L) - mL
+        dn = mL - wp.max(L * lo, F(0.0))
+    rp = F(1.0)
+    if Pp > F(0.0):
+        rp = wp.min(F(1.0), wp.max(up, F(0.0)) / wp.max(Pp, F(1e-30)))
+    rm = F(1.0)
+    if Pm > F(0.0):
+        rm = wp.min(F(1.0), wp.max(dn, F(0.0)) / wp.max(Pm, F(1e-30)))
+    Rp[j, i] = rp
+    Rm[j, i] = rm
+
+
+@wp.func
+def fct_face(cL: F, cR: F, ch: F, G: F, RpL: F, RmL: F, RpR: F, RmR: F):
+    cu = upw(cL, cR, G)
+    th = wp.min(RpL, RmR)
+    if G * (ch - cu) >= F(0.0):                 # antidiffusive flux from the left cell into the right one
+        th = wp.min(RmL, RpR)
+    return cu + th * (ch - cu)
+
+
+@wp.kernel
+def k_fct_face(c: A2, Gx: A2, Gy: A2, cfx: A2, cfy: A2, Rp: A2, Rm: A2, fx: I2, fy: I2, N: int, ofx: A2, ofy: A2):
+    """Zalesak FCT, face values: c_up + theta (c_high - c_up), theta from R+- of the cells the antidiffusive flux leaves
+    and enters (so k_milk's G c_face = low-order flux + theta x antidiffusive flux)."""
+    j, i = wp.tid()
+    ofx[j, i] = F(0.0)
+    ofy[j, i] = F(0.0)
+    if fx[j, i] != 0:
+        ofx[j, i] = fct_face(c[j, i], c[j, i + 1], cfx[j, i], Gx[j, i], Rp[j, i], Rm[j, i], Rp[j, i + 1], Rm[j, i + 1])
+    if fy[j, i] != 0:
+        ofy[j, i] = fct_face(c[j, i], c[j + 1, i], cfy[j, i], Gy[j, i], Rp[j, i], Rm[j, i], Rp[j + 1, i], Rm[j + 1, i])
+
+
 # ---------------------------------------------------------------------------- symmetric viscosity (kernels.sym_*)
 @wp.kernel
 def k_visc_nu(qx3: A2, qy3: A2, l3: A2, m3: A2, mask: I2, fx: I2, fy: I2, P: A1, inv_h: F, N: int, nuc: A2):
@@ -1305,7 +1620,7 @@ class WSolver:
 
     def __init__(self, geo, cfl=0.5, max_substeps=64, cg_tol=1e-10, visc_tol=1e-8, cg_maxiter=500,
                  kernel_quadrature=3, explicit_mixing_limit=0.05, l_floor=1e-3, v05=True, check_every=1, graphs=True,
-                 up=False):
+                 up=False, milk=0):
         self.g = geo
         self.cfl, self.max_substeps = cfl, max_substeps
         self.cg_tol, self.visc_tol, self.cg_maxiter = cg_tol, visc_tol, cg_maxiter
@@ -1334,6 +1649,31 @@ class WSolver:
         self.pool_on = False                 # recorded path: arrays from the persistent pool (pool_begin)
         self._blocks, self._views, self._blocks1, self._views1 = [], [], [], []
         self.pool_i = self.pool1_i = 0
+        self.milk = milk_code(milk)          # face value of c in step C (MILK_SCHEMES; set_milk)
+
+    def set_milk(self, milk):
+        """Face value of c in step C: a name or code of MILK_SCHEMES (module comment above k_face_hi)."""
+        k = milk_code(milk)
+        if k != self.milk:
+            self.milk = k
+            self.runner.graphs.clear()                       # captured sub-steps hold the old launches
+
+    def milk_faces(self, c, m, sm, Gx, Gy, l2, buf, launch):
+        """Face values of c for k_milk into buf['cfx'], buf['cfy'] (+ buf['cfxh'], 'cfyh', 'Rp', 'Rm' for the FCT
+        schemes); launch(kernel, inputs, outputs).  'vl': exactly the k_limit launch of the original step C.  One routine
+        for the recorded and the fast path."""
+        g = self.g
+        N = g.N
+        if self.milk == 0:
+            launch(k_limit, [c, Gx, Gy, g.fx, g.fy, N], [buf["cfx"], buf["cfy"]])
+            return
+        name = MILK_SCHEMES[self.milk]
+        launch(k_face_hi, [c, Gx, Gy, g.fx, g.fy, N, 1 if name.startswith("mp5") else 2, F(THINC_BETA)],
+               [buf["cfxh"], buf["cfyh"]])
+        launch(k_fct_R, [c, m, sm, Gx, Gy, buf["cfxh"], buf["cfyh"], l2, g.fx, g.fy, self.dta, F(1.0 / g.h), N,
+                         int(name.endswith("_nb"))], [buf["Rp"], buf["Rm"]])
+        launch(k_fct_face, [c, Gx, Gy, buf["cfxh"], buf["cfyh"], buf["Rp"], buf["Rm"], g.fx, g.fy, N],
+               [buf["cfx"], buf["cfy"]])
 
     # ------------------------------------------------------------------ small helpers
     def new(self):
@@ -1529,8 +1869,11 @@ class WSolver:
         self.L(k_lcons_q, [st["l"], s, Gx, Gy, ax, ay, coef, g.fx, g.fy, g.nfx, g.nfy, dt, ih, N], [l2])
         qxn, qyn = self.new(), self.new()
         self.L(k_qgrad, [ax, ay, coef, l2, g.fx, g.fy, g.nfx, g.nfy, dt, ih, N], [qxn, qyn])
-        cfx, cfy = self.new(), self.new()
-        self.L(k_limit, [c, Gx, Gy, g.fx, g.fy, N], [cfx, cfy])
+        mb = dict(cfx=self.new(), cfy=self.new())
+        if self.milk != 0:
+            mb.update({k: self.new() for k in ("cfxh", "cfyh", "Rp", "Rm")})
+        self.milk_faces(c, st["m"], sm, Gx, Gy, l2, mb, self.L)
+        cfx, cfy = mb["cfx"], mb["cfy"]
         l3, qx3, qy3, m3 = self.new(), self.new(), self.new(), self.new()
         self.L(k_milk, [st["m"], sm, Gx, Gy, cfx, cfy, l2, qxn, qyn, g.mask, dt, ih, N], [l3, qx3, qy3, m3])
         qx4, qy4 = qx3, qy3
@@ -1612,7 +1955,7 @@ class WSolver:
         if self.fb is None:
             z = lambda: wp.zeros((g.N, g.N), dtype=F, device=g.dev)
             names = ("l qx qy m l0 qx0 qy0 m0 Kraw Kd s Lam vsx vsy sm ej ls ux uy c Fxqx Fxqy Fyqx Fyqy ax ay coef Gex Gey "
-                     "Gx Gy l2 qxn qyn cfx cfy qx3 qy3 m3 qx4 qy4 m4 nuc").split()
+                     "Gx Gy l2 qxn qyn cfx cfy qx3 qy3 m3 qx4 qy4 m4 nuc cfxh cfyh Rp Rm").split()
             self.fb = {k: z() for k in names}
             self.fb["sums"] = wp.zeros(2, dtype=F, device=g.dev)
             self.fb["sumsd"] = wp.zeros(2, dtype=F, device=g.dev)
@@ -1694,7 +2037,7 @@ class WSolver:
         R(k_lcons_q, [fb["l"], fb["s"], fb["Gx"], fb["Gy"], fb["ax"], fb["ay"], fb["coef"], g.fx, g.fy, g.nfx, g.nfy, dt, ih,
                       N], [fb["l2"]])
         R(k_qgrad, [fb["ax"], fb["ay"], fb["coef"], fb["l2"], g.fx, g.fy, g.nfx, g.nfy, dt, ih, N], [fb["qxn"], fb["qyn"]])
-        R(k_limit, [fb["c"], fb["Gx"], fb["Gy"], g.fx, g.fy, N], [fb["cfx"], fb["cfy"]])
+        self.milk_faces(fb["c"], fb["m"], fb["sm"], fb["Gx"], fb["Gy"], fb["l2"], fb, R)
         R(k_milk, [fb["m"], fb["sm"], fb["Gx"], fb["Gy"], fb["cfx"], fb["cfy"], fb["l2"], fb["qxn"], fb["qyn"], g.mask, dt, ih, N],
           [V.c["l3"], fb["qx3"], fb["qy3"], fb["m3"]])
         if nu_on:
