@@ -166,7 +166,18 @@ def main(argv=None):
     base.update(circ_start if sw["circ"] else {"kappa_M": 0.0, "eps_f": 0.0, "kappa_w": 0.0})
     base.update({k: v for k, v in dict(DEP_START, **RAFT_START, **MECH_START, **OPEN_START).items() if k in SP})
     if a.init:
-        base.update({k: float(v) for k, v in json.load(open(a.init)).items() if isinstance(v, (int, float)) and not k.startswith("_")})
+        J0 = json.load(open(a.init))
+        base.update({k: float(v) for k, v in J0.items() if isinstance(v, (int, float)) and not k.startswith("_")})
+        # the shape of the current is a switch of this run (--circ-r/-L/-rf), not taken from the start closure: say so
+        # when the start closure ran the current with another shape (its kappa_M is used as it stands; U ~ kappa_M / r)
+        from ..circulation import L_C, R_C, R_F
+        ran = dict(circ_r=R_C, circ_L=L_C, circ_rf=R_F)          # closures written before a switch existed: default
+        ran.update({k: float(J0[k]) for k in ran if isinstance(J0.get(k), (int, float))})
+        dif = [f"{k} {ran[k]:g} -> {v:g}" for k, v in (("circ_r", a.circ_r), ("circ_L", a.circ_L), ("circ_rf", a.circ_rf))
+               if ran[k] != v]
+        if sw["circ"] and J0.get("circ") and dif:
+            log(f"note: --init {a.init} ran the surface current with another shape ({', '.join(dif)}); its kappa_M "
+                f"{float(J0.get('kappa_M', 0.0)):g} is kept as it stands (rescale with --set kappa_M=... when r changes)")
     base.update(sw.pop("fix"))                       # switches of the model letters (vj, mu_s = 1)
     for k, v in (x.split("=") for x in a.set.split(",") if x):
         base[k] = float(v)
