@@ -118,10 +118,28 @@ def pose_version():
     return v
 
 
+# measured stream feet read by the E0 replay: 'v1' (stream_foot.py, the tracker anchored at the v1 tip; every pour) or
+# 'col' (column_foot.py: the validated milk-column foot of the col25 campaign, tulip and leaf only): environment LATTE_FOOT
+FOOT_FILES = {"v1": "stream_foot.json", "col": "stream_foot_col.json"}
+FOOT_DEFAULT = "v1"
+
+
+def foot_version():
+    v = os.environ.get("LATTE_FOOT", FOOT_DEFAULT)
+    if v not in FOOT_FILES:
+        raise ValueError(f"LATTE_FOOT={v}: one of {tuple(FOOT_FILES)}")
+    return v
+
+
 def stream_foot_file(p):
-    """The measured stream feet (stream_foot.py).  The same measurement for both pose tracks: stream_foot.json, whose
-    search is anchored at the v1 tip (stream_foot.py explains why; stream_foot_v1.json is a byte copy)."""
-    return os.path.join(RES, p, "stream_foot.json")
+    """The measured stream feet.  LATTE_FOOT 'v1' (default): stream_foot.json (stream_foot.py), the same measurement for
+    both pose tracks, its search anchored at the v1 tip (stream_foot.py explains why; stream_foot_v1.json is a byte copy).
+    'col': stream_foot_col.json (column_foot.py), the validated column foot, which exists for tulip and leaf only."""
+    v = foot_version()
+    fn = os.path.join(RES, p, FOOT_FILES[v])
+    if v != FOOT_DEFAULT and not os.path.exists(fn):
+        raise FileNotFoundError(f"{p}: LATTE_FOOT={v} has no {FOOT_FILES[v]} (validated for tulip and leaf only)")
+    return fn
 
 
 def tip_board_at(p, t):
