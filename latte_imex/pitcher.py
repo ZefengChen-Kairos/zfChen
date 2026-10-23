@@ -909,6 +909,21 @@ def records_table(records):
 #           towards the spout heading (horizontal part of e_main) and the jet origin moved by anchor along it: the
 #           milk leaves the beak after running down the spout channel, flatter and further forward than the lip normal
 #   step 8  ballistic parcels (emission time, volume, origin, velocity) to z = 0; arrivals binned on the output grid
+# exit 'wall' (mi27, SPEC27 rev 2 section 3.1; port of mi27/M5 exitlaw.py, sha256 b7c3a8ba...) REPLACES steps 7 / 7b / 8
+# (it is not added on top: exit_lift and anchor must be 0):
+#   P1 direction  e_o = flux-weighted unit tangent of the INNER wall at the rim, perpendicular to the rim edge, out of the
+#                 opening (an ASSUMED rule, not derived from the momentum balance and not tested by the measurement);
+#                 rising exits clipped to horizontal when clip_rise (switch; True reproduces M5)
+#   P2 speed      U_o = C_visc k_M sqrt(2 g H): k_M from the momentum balance between a hydrostatic broad-crested critical
+#                 section (H = y_c + A / 2B, Q_c^2 = g A^3 / B) and the free jet (u_j = Q_c / A + g S1 / Q_c), with the
+#                 rim profile of the CAD; C_visc = 1 - theta_m P_b / A_b (laminar boundary layer, Thwaites, over c_L H).
+#                 Mass stays the sharp-crested weir's (C_d), the speed uses the broad-crested section: two declared crest
+#                 idealisations (Q_w / Q_c ~ 1.10 exported as E['Qc'])
+#   P3 origin     centroid of the brink section at depth kappa_b y_c; lip velocity v_tip + omega x (origin - tip)
+#   P4 flight     capillary jet (jet_flight): M = rho Q v_rel - T t_hat, dM/dt = -rho Q g e_z in the frame translating with
+#                 the lip velocity at emission; capillary 'round' (pi sigma a, the declared rule-2 choice), 'sheet'
+#                 (sigma (W_b + P_b) relaxing to the round value on the Taylor-Culick time) or 'none' (ballistic)
+# Parameters rho, sigma, nu, c_L, kappa_b: independent estimates (M5 report section C), none fitted.
 @dataclass
 class ForwardLaw:
     C_d: float = 0.60           # weir discharge coefficient
@@ -924,6 +939,95 @@ class ForwardLaw:
     exit_lift: float = 0.0      # [rad] step 7b: exit direction lifted towards the spout heading (0: lip normal, V1)
     anchor: float = 0.0         # [m] step 7b: jet origin moved along the spout heading (0: V1)
     g: float = G
+    # mi27 wall exit (see the comment above); 'lip' keeps steps 7 / 7b / 8 exactly as before
+    exit: str = "lip"           # 'lip' (steps 7, 7b, 8) | 'wall' (P1-P4; needs a GridPitcherGeometry)
+    capillary: str = "round"    # 'round' | 'sheet' | 'none' (exit 'wall' only)
+    rho: float = 800.0          # [kg/m^3] steamed microfoam milk (range 600-1030)
+    sigma: float = 0.045        # [N/m] milk surface tension at 50-65 C (0.040-0.052)
+    nu: float = 1.5e-6          # [m^2/s] bubbly milk (1e-6 - 5e-6)
+    c_L: float = 4.0            # wetted acceleration length L_w = c_L H (2-8)
+    kappa_b: float = 0.75       # brink depth / critical depth (0.70-0.80)
+    clip_rise: bool = True      # rising wall tangent at the edge -> horizontal exit
+
+
+CAPILLARY = ("round", "sheet", "none")
+
+
+def jet_flight(origin, v_lip, e, U0, Q, A_b, W_b, P_b, rho, sigma, capillary, g=G, dt=2.5e-4, t_max=0.6):
+    """P4 + step 8 of the wall exit (port of mi27/M5 exitlaw.flight, arithmetic unchanged): vectorised steady-jet flight
+    of n parcels to z = 0 with the capillary tension law, in the frame translating with the lip velocity at emission.
+    Arrays (n,3) / (n,).  M = rho Q v_rel - T t_hat with dM/dt = -rho Q g e_z, |v_rel| = (|M| + T) / (rho Q),
+    T = pi sigma a(|v|) (+ the sheet excess relaxing on the Taylor-Culick time); M_0 = max(rho Q U0 - T_0, 0) e (teapot
+    limit).  Midpoint steps of dt to z = 0 (linear interpolation of the crossing); with sigma = 0 it equals closed-form
+    ballistics to ~1e-7 s.  Returns t_f (n,), x_hit (n,2), v_hit (n,3), T0 (n,), |M0| (n,); parcels that do not reach
+    z = 0 within t_max keep t_f = nan."""
+    n = len(U0)
+    rho, sig = float(rho), float(sigma)
+    mode = capillary
+    if mode not in CAPILLARY:
+        raise ValueError(f"capillary must be one of {CAPILLARY}, got {mode!r}")
+    if mode == "none":
+        sig = 0.0
+    rQ = rho * Q
+    a0 = np.sqrt(Q / (math.pi * np.maximum(U0, 1e-6)))   # continuity with the emitted flow
+    if mode == "sheet":
+        T0 = sig * (W_b + P_b)
+    else:
+        T0 = math.pi * sig * a0
+    T0 = np.minimum(T0, rQ * U0)                       # teapot limit: the wall takes the excess tension
+    Mmag0 = rQ * U0 - T0
+    M0 = Mmag0[:, None] * e
+    hbar = Q / np.maximum(U0, 1e-6) / np.maximum(W_b, 1e-6)   # mean sheet thickness at detachment
+    uTC = np.sqrt(2 * sig / (rho * hbar)) if sig > 0 else np.full(n, np.inf)
+    tcap = np.where(np.isfinite(uTC), 0.5 * W_b / np.maximum(uTC, 1e-9), 0.0)
+    Tex0 = T0 - math.pi * sig * a0                    # excess over the round-jet tension (relaxes on t_cap)
+
+    p = origin.copy()
+    done = p[:, 2] <= 0
+    tf = np.where(done, 0.0, np.nan)
+    xh = np.where(done[:, None], p[:, :2], np.nan)
+    vh = np.full((n, 3), np.nan)
+
+    def vrel(t):
+        M = M0.copy(); M[:, 2] -= rQ * g * t
+        Mm = np.linalg.norm(M, axis=1)
+        Mh = np.where(Mm[:, None] > 1e-15, M / np.maximum(Mm, 1e-30)[:, None], np.array([0.0, 0.0, -1.0]))
+        Tex = Tex0 * (np.exp(-t / np.maximum(tcap, 1e-9)) if np.ndim(t) == 0 else 1.0)
+        sp = (Mm + T0) / rQ                           # first guess
+        for _ in range(4):                             # T = pi sigma a(|v|) + excess, a from continuity
+            T = math.pi * sig * np.sqrt(Q / (math.pi * np.maximum(sp, 1e-6))) + Tex
+            sp = (Mm + T) / rQ
+        return sp[:, None] * Mh
+
+    if done.all():
+        v0 = v_lip + vrel(0.0)
+        return tf, xh, v0, T0, Mmag0
+    t = 0.0
+    v_prev = v_lip + vrel(0.0)
+    while t < t_max and not done.all():
+        v_mid = v_lip + vrel(t + 0.5 * dt)
+        v_new = v_lip + vrel(t + dt)
+        p_new = p + v_mid * dt
+        cross = (~done) & (p_new[:, 2] <= 0)
+        if cross.any():
+            f = p[cross, 2] / np.maximum(p[cross, 2] - p_new[cross, 2], 1e-12)
+            tf[cross] = t + f * dt
+            xh[cross] = p[cross, :2] + f[:, None] * (p_new[cross, :2] - p[cross, :2])
+            vh[cross] = v_prev[cross] + f[:, None] * (v_new[cross] - v_prev[cross])
+            done |= cross
+        p, v_prev, t = p_new, v_new, t + dt
+    v0 = v_lip + vrel(0.0)
+    vh[np.isnan(vh[:, 0])] = v0[np.isnan(vh[:, 0])]
+    return tf, xh, vh, T0, Mmag0
+
+
+def ballistic_flight(origin, v0, g=G):
+    """Closed-form ballistics to z = 0 (step 8 / the reference of jet_flight): t_f, x_hit (n,2), v_hit (n,3)."""
+    vz, z0 = v0[:, 2], origin[:, 2]
+    tf = np.where(z0 > 0, (vz + np.sqrt(vz ** 2 + 2 * g * np.maximum(z0, 0.0))) / g, 0.0)
+    xh = origin[:, :2] + v0[:, :2] * tf[:, None]
+    vh = np.c_[v0[:, :2], -np.sqrt(vz ** 2 + 2 * g * np.maximum(z0, 0.0))]
+    return tf, xh, vh
 
 
 class ForwardPitcher:
@@ -972,6 +1076,122 @@ class ForwardPitcher:
                                          (w * np.cos(np.arctan2(rim[:, 1], rim[:, 0]))).sum()))
         self.side_mid_P = 0.5 * (rim[self.side_a] + rim[self.side_b])
         self.side_seg_P = rim[self.side_b] - rim[self.side_a]
+        exit_ = getattr(self.law, "exit", "lip")
+        if exit_ not in ("lip", "wall"):
+            raise ValueError(f"ForwardLaw.exit must be 'lip' or 'wall', got {exit_!r}")
+        if exit_ == "wall":
+            if self.law.exit_lift or self.law.anchor:
+                raise ValueError("ForwardLaw(exit='wall') replaces steps 7 / 7b: exit_lift and anchor must be 0 "
+                                 "(EXIT_CAL is refused under the wall exit)")
+            if self.law.capillary not in CAPILLARY:
+                raise ValueError(f"ForwardLaw.capillary must be one of {CAPILLARY}, got {self.law.capillary!r}")
+            self._wall_dirs()
+
+    # ---- wall exit (mi27; port of M5 exitlaw.ExitPitcher)
+    def _wall_dirs(self):
+        """P1 geometry: body-frame exit tangent of every front segment from the CAD inner wall r_in(z, phi) (central
+        differences, dz 0.5 mm, dphi 1 deg), the outward wall normal, dr/dz at the rim point, the 3-D rim length per
+        segment.  Requires a GridPitcherGeometry (zs, phis, r_in)."""
+        g = self.geom
+        if not all(hasattr(g, k) for k in ("zs", "phis", "r_in")):
+            raise TypeError("ForwardLaw(exit='wall') needs a GridPitcherGeometry (CAD r_in(z, phi)), got "
+                            f"{type(g).__name__}")
+        from scipy.interpolate import RegularGridInterpolator
+        ph = np.concatenate([g.phis - 2 * math.pi, g.phis, g.phis + 2 * math.pi])
+        rr = np.concatenate([g.r_in, g.r_in, g.r_in], axis=1)
+        f = RegularGridInterpolator((g.zs, ph), rr, bounds_error=False, fill_value=None)
+        P = self.mid_P
+        phi = np.arctan2(P[:, 1], P[:, 0])
+        z = P[:, 2]
+        dz, dp = 0.5e-3, math.radians(1.0)
+        r = f(np.c_[z, phi])
+        r_z = (f(np.c_[z + dz, phi]) - f(np.c_[z - dz, phi])) / (2 * dz)
+        r_p = (f(np.c_[z, phi + dp]) - f(np.c_[z, phi - dp])) / (2 * dp)
+        c, s = np.cos(phi), np.sin(phi)
+        Pz = np.stack([r_z * c, r_z * s, np.ones_like(z)], 1)                 # dP/dz (up the wall)
+        Pp = np.stack([r_p * c - r * s, r_p * s + r * c, np.zeros_like(z)], 1)  # dP/dphi
+        nw = np.cross(Pp, Pz)
+        nw /= np.linalg.norm(nw, axis=1)[:, None]                             # outward wall normal
+        d = np.cross(nw, self.seg_P)
+        d /= np.linalg.norm(d, axis=1)[:, None]
+        d *= np.sign(np.sum(d * Pz, 1))[:, None]                               # out of the opening
+        self.dirW_P = d                                                        # exit tangent (body)
+        self.wall_n_P = nw
+        self.wall_slope = r_z                                                  # dr/dz at the rim point
+        self.seglen = np.linalg.norm(self.seg_P, axis=1)                       # 3-D rim length per segment
+        i0 = int(np.argmin(np.abs(phi)))
+        self.beta_tip_deg = float(np.degrees(np.arctan(r_z[i0])))
+
+    @staticmethod
+    def _section(y, b, dw, seglen):
+        """Strip discretisation of the rim profile across the main direction at water depth y above the lowest rim
+        point: area A, top width B, first moment S1 = int (y - b)^2 / 2, wetted rim length P."""
+        e = np.maximum(y - b, 0.0)
+        wet = b < y
+        return dict(A=float((dw * e).sum()), B=float(dw[wet].sum()), S1=float((dw * e * e).sum() / 2), P=float(seglen[wet].sum()))
+
+    def _wall_exit(self, pose, z_f, v_tip, omega, out):
+        """P1-P3 at one step (port of M5 ExitPitcher.weir): None when the lip is dry, else dict(e, U0, kM, Cvis, yc, yb,
+        A_b, W_b, P_b, Qc, origin, v_lip, rising, elev_raw, H, n_wet)."""
+        law = self.law
+        G_ = law.g
+        if not (out["Q"] > 0 and out["H"] > 0):
+            return None
+        R = rotation(pose.yaw, pose.tilt, pose.roll)
+        tip = np.asarray(pose.tip, float)
+        mid = (self.mid_P - self.geom.tip) @ R.T + tip
+        seg = self.seg_P @ R.T
+        dW = self.dirW_P @ R.T
+        Qi = out["Qi"]
+        w = Qi / out["Q"]
+        e = (w[:, None] * dW).sum(0)
+        e /= np.linalg.norm(e)
+        elev_raw = math.degrees(math.asin(max(-1.0, min(1.0, e[2]))))
+        rising = e[2] > 0
+        if rising and law.clip_rise:
+            e = np.array([e[0], e[1], 0.0]); e /= np.linalg.norm(e)
+        # section across the horizontal main direction
+        eh = np.array([e[0], e[1], 0.0]); nh = np.linalg.norm(eh)
+        eh = eh / nh if nh > 1e-9 else out["e_main"]
+        sh = seg.copy(); sh[:, 2] = 0.0
+        dw = np.linalg.norm(sh - (sh @ eh)[:, None] * eh[None, :], axis=1)
+        zlow = float(mid[:, 2].min())
+        b = mid[:, 2] - zlow
+        H = float(z_f - zlow)
+        # critical depth: H = y + A/(2B)
+        lo, hi = 0.0, H
+        for _ in range(40):
+            m = 0.5 * (lo + hi)
+            s = self._section(m, b, dw, self.seglen)
+            if s["B"] <= 0 or m + s["A"] / (2 * s["B"]) < H:
+                lo = m
+            else:
+                hi = m
+        yc = 0.5 * (lo + hi)
+        sc = self._section(yc, b, dw, self.seglen)
+        if not (sc["A"] > 0 and sc["B"] > 0):
+            return None
+        Qc = math.sqrt(G_ * sc["A"] ** 3 / sc["B"])
+        uj = Qc / sc["A"] + G_ * sc["S1"] / Qc
+        kM = uj / math.sqrt(2 * G_ * H)
+        yb = law.kappa_b * yc
+        sb = self._section(yb, b, dw, self.seglen)
+        if sb["A"] <= 0:
+            sb = sc; yb = yc
+        Ui = kM * math.sqrt(2 * G_ * H)
+        # Thwaites, theta^2 = 0.45 nu / U^6 int U^5 dx, U rising linearly from 0 to Ui over L_w = c_L H
+        th_m = math.sqrt(0.45 / 6.0) * math.sqrt(law.nu * law.c_L * H / Ui)
+        # numerical guard: inactive on every flowing step (Q > 1 mL/s, T4); it is hit on some trickle steps below 1 mL/s
+        # at stroke ends (counted in real_program info['inlet'] Cvis_guard_hits; build/DEVIATIONS.md item 3)
+        Cvis = max(0.5, 1.0 - th_m * sb["P"] / sb["A"])
+        U0 = Cvis * Ui
+        wet = (yb - b) > 0
+        wa = dw * np.maximum(yb - b, 0.0)
+        cen = (wa[:, None] * mid).sum(0) / wa.sum()
+        cen[2] = zlow + (yb - sb["S1"] / sb["A"])
+        v_lip = np.asarray(v_tip, float) + np.cross(np.asarray(omega, float), cen - tip)
+        return dict(e=e, U0=U0, kM=kM, Cvis=Cvis, yc=yc, yb=yb, A_b=sb["A"], W_b=sb["B"], P_b=sb["P"],
+                    origin=cen, v_lip=v_lip, elev_raw=elev_raw, rising=bool(rising), H=H, Qc=Qc, n_wet=int(wet.sum()))
 
     # ---- geometry at a pose
     def world(self, pose, P):
@@ -1056,6 +1276,8 @@ class ForwardPitcher:
         out.update(U=float((w * Ui).sum()), origin=(w[:, None] * mid).sum(0), v_o=(w[:, None] * v_oi).sum(0),
                    d_o=dsum / max(np.linalg.norm(dsum), 1e-12), A_o=float((Qi[on] / Ui[on]).sum()),
                    h_bar=float((Qi * h).sum() / Q), Qi=Qi, U_i=Ui)
+        if getattr(law, "exit", "lip") == "wall":      # P1-P3 (Q, H, Qi above unchanged)
+            out["wall"] = self._wall_exit(pose, z_f, v_tip, omega, out)
         return out
 
     # ---- pose series
@@ -1098,10 +1320,14 @@ class ForwardPitcher:
         V = float(V0)
         Ust = 0.0
         g = law.g
+        wall = getattr(law, "exit", "lip") == "wall"
+        X = [None] * n if wall else None               # per-step wall-exit dicts (P1-P3)
         for i in range(n):
             pose = Pose(tuple(tip[i]), float(yaw[i]), float(tilt[i]), float(roll[i]))
             z_f, over = self.free_surface(pose, V)
             Wr = self.weir(pose, z_f, v_tip[i], om[i])
+            if wall:
+                X[i] = Wr.get("wall")
             Qeq = Wr["Q"]
             Qo = Qeq
             if law.inertia:
@@ -1147,7 +1373,55 @@ class ForwardPitcher:
         E["U_perp"] = np.sqrt(vz ** 2 + 2 * g * np.maximum(z0, 0.0))
         E["u_h"] = E["v_o"][:, :2].copy()
         E["t_arr"] = t + tf
+        if wall:
+            self._wall_run(E, X)
         return E
+
+    def _wall_run(self, E, X):
+        """Exit 'wall': steps 7 / 7b / 8 of the flowing steps replaced by P1-P4 (port of M5 exitlaw.run_pour, law
+        phys_<capillary>).  Steps with Q_o > 0 but no brink section (never seen; M5 n_miss 0) keep the lip-normal exit
+        and its ballistics and are flagged in E['wall_miss'].  Adds the per-step exit quantities (nan where dry)."""
+        law = self.law
+        n = len(E["t"])
+        Q = E["Q_o"]
+        on = np.array([x is not None for x in X])
+        onq = on & (Q > 0)
+        keys3 = ("e", "origin", "v_lip")
+        keys1 = ("U0", "kM", "Cvis", "yc", "yb", "A_b", "W_b", "P_b", "elev_raw", "H", "Qc", "n_wet")
+        P = {k: np.full((n, 3), np.nan) for k in keys3}
+        P.update({k: np.full(n, np.nan) for k in keys1})
+        P["rising"] = np.zeros(n, bool)
+        for i in np.nonzero(onq)[0]:
+            x = X[i]
+            for k in keys3 + keys1:
+                P[k][i] = x[k]
+            P["rising"][i] = x["rising"]
+        idx = np.nonzero(onq)[0]
+        if len(idx):
+            tf_, xh_, vh_, T0_, M0_ = jet_flight(P["origin"][idx], P["v_lip"][idx], P["e"][idx], P["U0"][idx], Q[idx],
+                                                 P["A_b"][idx], P["W_b"][idx], P["P_b"][idx], law.rho, law.sigma,
+                                                 law.capillary, g=law.g)
+            if not np.all(np.isfinite(tf_)):
+                raise RuntimeError(f"wall exit: {int((~np.isfinite(tf_)).sum())} parcels did not reach the surface")
+            E["origin"][idx] = P["origin"][idx]
+            E["v_o"][idx] = P["v_lip"][idx] + P["U0"][idx, None] * P["e"][idx]
+            E["d_o"][idx] = P["e"][idx]
+            E["U"][idx] = P["U0"][idx]
+            E["t_f"][idx] = tf_
+            E["x_hit"][idx] = xh_
+            E["U_perp"][idx] = -vh_[:, 2]
+            E["u_h"][idx] = vh_[:, :2]
+            E["t_arr"][idx] = E["t"][idx] + tf_
+            T0 = np.full(n, np.nan); M0 = np.full(n, np.nan)
+            T0[idx], M0[idx] = T0_, M0_
+        else:
+            T0 = np.full(n, np.nan); M0 = np.full(n, np.nan)
+        E["wall_miss"] = (Q > 0) & ~onq
+        E.update({k: P[k] for k in ("kM", "Cvis", "W_b", "P_b", "A_b", "Qc", "yc", "yb", "elev_raw", "rising", "n_wet")})
+        E["v_lip"] = P["v_lip"]
+        E["H_wall"] = P["H"]
+        E["T0"], E["M0"] = T0, M0
+        E["beta_tip_deg"] = float(self.beta_tip_deg)
 
     @staticmethod
     def arrivals(E, t0, n_out, dt_out=None):

@@ -16,6 +16,7 @@ numbers)."""
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import time
@@ -46,15 +47,36 @@ def load_closure(fn):
               circ=bool(num.get("circ", 0.0)), circ_shape=dict(L=num.get("circ_L", 0.4), r_f=num.get("circ_rf", 0.06),
                                                                r=num.get("circ_r", 1.0)),
               milk=milk_code(num.get("milk", 0.0)), sink=sink_code(num.get("sink", 0.0)),
-              visc_tr=switch01(num.get("visc_tr", 0.0), "visc_tr"))
+              visc_tr=switch01(num.get("visc_tr", 0.0), "visc_tr"),
+              inlet=SC.inlet_switch(num))
     return num, sw
+
+
+@contextlib.contextmanager
+def heldout_inlet(p, num, sw):
+    """Switches of pour p for a closure (num, sw) run outside diag (render512 / validate CLIs): when the closure's
+    calibration pours resolve to a measured inlet (law / replay; real_program.resolve_inlet) and p is not one of them
+    (heart, push_heart, swan: no measured inlet), p runs diag.HELDOUT_INLET ('law', MI-L) with e0 off through the
+    per-pour override, as diag's held-out test does (SPEC27 6.1, PREREG27_2 D2).  Every other case (calibration pours,
+    record closures, an override already set) yields sw unchanged.  The override is removed on exit."""
+    from ..rig import real_program as RP
+    mi = any(RP.resolve_inlet(q, num)[0] != "record" for q in RP.MI_POURS)
+    if p in RP.MI_POURS or not mi or p in RP.INLET_OVERRIDE:
+        yield sw
+        return
+    from .diag import HELDOUT_INLET
+    RP.INLET_OVERRIDE[p] = RP.inlet_mode(HELDOUT_INLET)
+    try:
+        yield dict(sw, e0=False)
+    finally:
+        RP.INLET_OVERRIDE.pop(p, None)
 
 
 def make_pour(p, sw, N, device, T=None):
     from .run import DiffPour
     return DiffPour(p, N=N, device=device, T_max=T, tau=0.05, scales=(0.3, 0.15, 0.0), e0=sw["e0"], exit_cal=sw["exit_cal"],
                     upwell=sw["upwell"], circ=sw["circ"], circ_shape=sw["circ_shape"], milk=sw.get("milk", 0),
-                    sink=sw.get("sink", 0), visc_tr=sw.get("visc_tr", 0), log=lambda *a: None)
+                    sink=sw.get("sink", 0), visc_tr=sw.get("visc_tr", 0), inlet=sw.get("inlet"), log=lambda *a: None)
 
 
 def run_pour(D, num, sw, every):
@@ -246,11 +268,14 @@ def main(argv=None):
                         note="J = 0.25 viou_n + 0.75 struct_n at the N = 48 equivalent (render512 docstring)")
     for p in a.pours.split(","):
         t0 = time.time()
-        D = make_pour(p, sw, a.N, a.device, a.T)
-        t_end, C, ML = run_pour(D, num, sw, a.every)
-        t1 = time.time()
-        r = score48(p, sw, D, ML, a.T)
+        with heldout_inlet(p, num, sw) as swp:          # held-out pours of an MI closure: MI-L, e0 off (PREREG27_2 D2)
+            D = make_pour(p, swp, a.N, a.device, a.T)
+            t_end, C, ML = run_pour(D, num, swp, a.every)
+            t1 = time.time()
+            r = score48(p, swp, D, ML, a.T)
         res[p] = dict(r, forward_s=t1 - t0)
+        if swp is not sw:
+            res[p]["inlet"] = dict(mode=D.inlet, note="held-out pour of a measured-inlet closure: MI-L, e0 off")
         print(f"{p}: N {a.N}  J {r['J']:.3f}  IoU {r['viou']:.3f} ({r['viou_n']:.2f})  structure {r['struct']:.3f} "
               f"({r['struct_n']:.2f})  forward {t1 - t0:.0f} s", flush=True)
         json.dump(res, open(fn, "w"), indent=1, default=float)

@@ -104,7 +104,7 @@ def _init(cfg):
         D = DiffPour(p, N=cfg["N"], device=cfg["device"], tau=0.05, scales=(0.3, 0.15, 0.0), e0=cfg["e0"],
                      exit_cal=cfg["exit_cal"], upwell=cfg["upwell"], circ=cfg["circ"], circ_shape=cfg["circ_shape"],
                      milk=cfg.get("milk", 0), sink=cfg.get("sink", 0), visc_tr=cfg.get("visc_tr", 0),
-                     log=lambda *a: None)
+                     inlet=cfg.get("inlet"), log=lambda *a: None)
         D.score_ref = SS.lag_reference([o["t"] for o in D.obs], [o["wo_np"] for o in D.obs], [o["vo_np"] for o in D.obs],
                                        D.geo.mask_np)
         _D[p] = D

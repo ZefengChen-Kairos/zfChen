@@ -119,9 +119,87 @@ def pose_version():
 
 
 # measured stream feet read by the E0 replay: 'v1' (stream_foot.py, the tracker anchored at the v1 tip; every pour) or
-# 'col' (column_foot.py: the validated milk-column foot of the col25 campaign, tulip and leaf only): environment LATTE_FOOT
-FOOT_FILES = {"v1": "stream_foot.json", "col": "stream_foot_col.json"}
+# 'col' (column_foot.py: the validated milk-column foot of the col25 campaign, tulip and leaf only) or 'mi' (mi27:
+# the col rows of grade A / B inside the measured-inlet windows, every other row tier none; measured_inlet.foot_file;
+# tulip and leaf only): environment LATTE_FOOT
+FOOT_FILES = {"v1": "stream_foot.json", "col": "stream_foot_col.json", "mi": "stream_foot_mi.json"}
 FOOT_DEFAULT = "v1"
+
+# ----------------------------------------------------------------------------- inlet mode (mi27, SPEC27 rev 2 section 3)
+# 'record': the production chain (steps 1-8, lip-normal exit; default, bit-identical to fc9f270).
+# 'law'   : MI-law, steps 1-6 as production, steps 7 / 7b / 8 replaced by the wall exit EXIT_LAW (all five pours); E0 off.
+# 'replay': MI-replay, MI-law corrected to the measured stream kinematics inside the measured windows
+#           (measured_inlet.replay; tulip and leaf only); the landing moved onto the validated feet by E0 'world' with
+#           LATTE_FOOT=mi.
+# Precedence (resolve_inlet): explicit per-pour override INLET_OVERRIDE[p] (diag held-out pours) > closure key 'inlet'
+# (0 record, 1 law, 2 replay; any explicit per-call value counts as this level) > environment LATTE_INLET > INLET_DEFAULT.
+INLET_MODES = ("record", "law", "replay")
+INLET_DEFAULT = "record"
+INLET_CODES = {0: "record", 1: "law", 2: "replay"}
+INLET_OVERRIDE = {}                                        # pattern -> mode (explicit per-pour override)
+INLET_MODE = None                                          # mode of the build in progress (set by Pour / real_program)
+INLET_SOURCE = None                                        # ... and the level it was resolved from
+MI_POURS = ("tulip", "leaf")                               # pours with a measured inlet (replay)
+# The exit law of the measured inlet: SPEC27 rev 2 section 2 (mi27/spec/SPEC27.md sha256 50d3ac6d...): phys_round of
+# mi27/M5 exitlaw.py (sha256 b7c3a8ba...), selected by rule 2 (spec/work/rule2.txt sha256 6655a4c0..., result
+# spec/work/rule2_result.json) on tulip + leaf.  PROVISIONAL (marginal pass): the tulip (a) margin 0.017 m/s is below the
+# measurement's common-mode sigma_sys 0.020; the exit direction is an assumed rule, not tested by the measurement.
+EXIT_LAW = dict(exit="wall", capillary="round")
+
+
+def inlet_mode(v):
+    """Normalise an inlet mode: None (unset) or a name of INLET_MODES or a code 0 / 1 / 2 (closure json numbers)."""
+    if v is None:
+        return None
+    if isinstance(v, str):
+        s = v.strip()
+        if s in INLET_MODES:
+            return s
+        try:
+            v = float(s)
+        except ValueError:
+            raise ValueError(f"inlet mode must be one of {INLET_MODES} or 0 / 1 / 2, got {v!r}") from None
+    c = int(round(float(v)))
+    if c not in INLET_CODES or abs(float(v) - c) > 1e-9:
+        raise ValueError(f"inlet code must be 0 (record), 1 (law) or 2 (replay), got {v!r}")
+    return INLET_CODES[c]
+
+
+def inlet_code(v):
+    return {m: c for c, m in INLET_CODES.items()}[inlet_mode(v)]
+
+
+def resolve_inlet(p, closure=None):
+    """(mode, source) of pour p: INLET_OVERRIDE[p] ('override') > closure key 'inlet' ('closure'; closure is a dict or
+    None) > environment LATTE_INLET ('env') > INLET_DEFAULT ('default')."""
+    ov = INLET_OVERRIDE.get(p)
+    if ov is not None:
+        return inlet_mode(ov), "override"
+    if closure is not None and closure.get("inlet") is not None:
+        return inlet_mode(closure["inlet"]), "closure"
+    env = os.environ.get("LATTE_INLET")
+    if env is not None and env.strip() != "":
+        return inlet_mode(env), "env"
+    return INLET_DEFAULT, "default"
+
+
+class foot_for_replay:
+    """Context: LATTE_FOOT=mi for an MI-replay E0 build (set locally when unset, restored on exit); another explicit
+    LATTE_FOOT is refused (the replay's landing is defined on the validated feet in the measured windows)."""
+
+    def __enter__(self):
+        self.prev = os.environ.get("LATTE_FOOT")
+        if self.prev not in (None, "mi"):
+            raise ValueError(f"inlet 'replay' needs LATTE_FOOT=mi (or unset), got LATTE_FOOT={self.prev}")
+        os.environ["LATTE_FOOT"] = "mi"
+        return self
+
+    def __exit__(self, *a):
+        if self.prev is None:
+            os.environ.pop("LATTE_FOOT", None)
+        else:
+            os.environ["LATTE_FOOT"] = self.prev
+        return False
 
 
 def foot_version():
@@ -244,22 +322,32 @@ def observed_on(axis_tilt_deg, dt=DT):
 _FP = {}
 
 
-def forward_pitcher():
-    if "fp" not in _FP:
-        gp = os.environ.get("PITCHER_GEOM")             # e.g. latte_imex/pitcher_geom/pitcher_real.json (real pitcher)
+def forward_pitcher(mode=None):
+    """The ForwardPitcher of the current geometry (PITCHER_GEOM, else the NX stand-in) and law (PITCHER_LAW +
+    LAW_OVERRIDE), cached on (geometry, law dict, inlet mode).  mode 'law' / 'replay' applies EXIT_LAW and refuses
+    LAW_OVERRIDE (EXIT_CAL: the wall exit replaces steps 7 / 7b, it is not added on top)."""
+    mode = "record" if mode is None else inlet_mode(mode)
+    gp = os.environ.get("PITCHER_GEOM")                 # e.g. latte_imex/pitcher_geom/pitcher_real.json (real pitcher)
+    law = json.loads(os.environ.get("PITCHER_LAW", "{}"))  # e.g. {"C_d": 1.2} (flow-law sensitivity runs)
+    if mode == "record":
+        law.update(LAW_OVERRIDE or {})
+    else:
+        if LAW_OVERRIDE:
+            raise ValueError(f"inlet mode {mode!r}: LAW_OVERRIDE {LAW_OVERRIDE} (EXIT_CAL) is refused under the wall exit")
+        law.update(EXIT_LAW)
+    key = (gp or "", json.dumps(law, sort_keys=True, default=float), mode)
+    if key not in _FP:
         if gp:
             from latte_imex.pitcher import GridPitcherGeometry
             geom = GridPitcherGeometry.load(gp, lip_slope=math.radians(ALPHA_DEG))
         else:
             geom = SF.geometry(ALPHA_DEG)
-        law = json.loads(os.environ.get("PITCHER_LAW", "{}"))  # e.g. {"C_d": 1.2} (flow-law sensitivity runs)
-        law.update(LAW_OVERRIDE or {})
-        _FP["fp"] = ForwardPitcher(geom, ForwardLaw(**law))
-    return _FP["fp"]
+        _FP[key] = ForwardPitcher(geom, ForwardLaw(**law))
+    return _FP[key]
 
 
-def run_pitcher(C, V0, sub=1):
-    fp = forward_pitcher()
+def run_pitcher(C, V0, sub=1, mode=None):
+    fp = forward_pitcher(mode)
     s = slice(None, None, sub)
     return fp.run(C["t"][s], C["tip"][s], C["yaw"][s], C["tilt"][s], C["roll"][s], V0, C["dt"] * sub)
 
@@ -314,14 +402,32 @@ def weir_emission(C, E_ref, on_obs, env, V_target, law=None):
 
 
 def build_inlet(p, flow="pitcher", V0=None, log=print):
-    """Poses -> fill -> emission -> arrivals (SI) for pattern p.  Returns (C, E, R, info)."""
+    """Poses -> fill -> emission -> arrivals (SI) for pattern p.  Returns (C, E, R, info).  The inlet mode is INLET_MODE
+    when a caller set it (tulip_feas.Pour, real_program), else resolve_inlet(p) (override > env LATTE_INLET > default
+    'record'); 'record' is the production chain unchanged."""
     t0w = time.time()
+    if INLET_MODE is not None:
+        mode, msrc = inlet_mode(INLET_MODE), INLET_SOURCE or "caller"
+    else:
+        mode, msrc = resolve_inlet(p)
+    if mode != "record" and flow != "pitcher":
+        raise ValueError(f"inlet mode {mode!r} needs flow 'pitcher' (got {flow!r})")
+    if mode == "replay" and p not in MI_POURS:
+        raise ValueError(f"{p}: inlet 'replay' exists for {MI_POURS} only (the measured stream kinematics); "
+                         "held-out pours use 'law'")
     C = cup_poses(p)
     on_obs, env = observed_on(C["axis_tilt_deg"], C["dt"])
     target = None
     if V0 is None:
         V0, target = calibrate_fill(C, on_obs, log=log)
-    E = run_pitcher(C, V0)
+    if mode == "record":
+        E = run_pitcher(C, V0)
+    else:
+        E = run_pitcher(C, V0, mode=mode)
+    rep = None
+    if mode == "replay":
+        from . import measured_inlet as MI
+        E, rep = MI.replay(E, p, C)
     info = dict(pattern=p, flow=flow, V0_mL=V0 * 1e6, on_target=target, T_pour=float(C["t"][-1] + 0.5 * C["dt"]), L_m=C["L"],
                 R_disc_mm=C["R_disc"] * 1e3, observed_on_frac=float(on_obs.mean()),
                 stream_on_frac_when_obs_on=on_fraction(E, on_obs),
@@ -346,6 +452,20 @@ def build_inlet(p, flow="pitcher", V0=None, log=print):
                 tilt_cad_deg=[float(np.degrees(C["tilt"].min())), float(np.degrees(C["tilt"].max()))],
                 roll_cad_deg=[float(np.degrees(C["roll"].min())), float(np.degrees(C["roll"].max()))],
                 wall_s=time.time() - t0w)
+    info["inlet"] = dict(mode=mode, source=msrc)
+    if mode != "record":
+        # k_M / C_visc over the flowing steps (Q_o > Q_ON, the T4 domain); the C_visc floor max(0.5, .) of the wall exit
+        # is a numerical guard, inactive there, and hit only on trickle steps 0 < Q_o <= Q_ON (counted, not hidden)
+        q2 = E["Q_o"] > Q_ON
+        tr = (E["Q_o"] > 0) & ~q2
+        info["inlet"].update(exit_law=dict(EXIT_LAW), status="provisional (marginal pass), SPEC27 rev 2 section 2.4",
+                             wall_miss=int(E["wall_miss"].sum()),
+                             kM_range=[float(np.nanmin(E["kM"][q2])), float(np.nanmax(E["kM"][q2]))] if q2.any() else None,
+                             Cvis_min=float(np.nanmin(E["Cvis"][q2])) if q2.any() else None,
+                             trickle_steps=int(tr.sum()), Cvis_guard_hits=int(np.sum(E["Cvis"][tr] <= 0.5)),
+                             trickle_volume_uL=float(np.sum(E["Q_o"][tr]) * E["dt"] * 1e9))
+    if rep is not None:
+        info["inlet"]["replay"] = rep
     C["on_obs"], C["env"] = on_obs, env
     return C, E, R, info
 
@@ -388,17 +508,26 @@ def scaled_record(R, L):
 def real_program(p, N=256, flow="pitcher", V0=None, log=print, closure=None):
     """A latte_imex.run.run program (control 'v05') for the measured pour of pattern p.  Returns (prog, C, E, R, info).
     closure: V0.5 parameters (v05_adapter.SPACE keys, nu, D) replacing the S1 values; its switches e0 (0 / 1 jet /
-    2 world), exit_cal (the calibrated stream exit, EXIT_CAL), circ, upwell are applied as in the fit."""
-    global LAW_OVERRIDE
+    2 world), exit_cal (the calibrated stream exit, EXIT_CAL), circ, upwell are applied as in the fit; inlet (0 record,
+    1 law, 2 replay; resolve_inlet precedence) selects the inlet mode ('law' forces e0 off, 'replay' reads the feet of
+    LATTE_FOOT=mi)."""
+    global LAW_OVERRIDE, INLET_MODE, INLET_SOURCE
     closure = {k: v for k, v in (closure or {}).items() if not k.startswith("_")}     # "_note" etc.: comments
     exit_cal = bool(closure.pop("exit_cal", 0))
+    inlet = closure.pop("inlet", None)
+    mode, msrc = resolve_inlet(p, None if inlet is None else {"inlet": inlet})
+    if mode != "record" and exit_cal:
+        raise ValueError(f"{p}: closure exit_cal with inlet {mode!r}: EXIT_CAL is refused (the wall exit replaces it)")
     prev = LAW_OVERRIDE
+    prev_m = (INLET_MODE, INLET_SOURCE)
     if exit_cal:
         LAW_OVERRIDE = EXIT_CAL
         _FP.clear()
+    INLET_MODE, INLET_SOURCE = mode, msrc
     try:
         C, E, R, info = build_inlet(p, flow, V0, log)
     finally:
+        INLET_MODE, INLET_SOURCE = prev_m
         if exit_cal:
             LAW_OVERRIDE = prev
             _FP.clear()
@@ -416,7 +545,12 @@ def real_program(p, N=256, flow="pitcher", V0=None, log=print, closure=None):
     prog = SF.FwdProgram(p, scaled_record(R, C["L"]), N, meta=meta)
     from ..diff import schedule as SCH
     e0 = SCH.e0_mode(e0)
-    if e0 == "jet":                                    # E0: measured stream foot (rig/stream_foot.py), closure "e0" 1
+    if mode == "law":                                  # MI-law: the landing is the law's (E0 off)
+        e0 = False
+    if e0 and mode == "replay":                        # MI-replay: the validated feet in the measured windows
+        with foot_for_replay():
+            SCH.apply_e0(prog, p, e0)
+    elif e0 == "jet":                                  # E0: measured stream foot (rig/stream_foot.py), closure "e0" 1
         SCH.shift_program(prog, *SCH.e0_offsets(p))
     elif e0 == "world":                                # ... in the cup frame (closure "e0" 2)
         SCH.shift_program_world(prog, *SCH.e0_world_offsets(p, prog))

@@ -253,20 +253,45 @@ def e0_offsets(p):
             lambda tt: float(np.interp(tt, tg, G[:, 1], left=med[1], right=med[1])))
 
 
-def pour_script(p, N, e0=False, exit_cal=False):
+def inlet_switch(num):
+    """The closure's inlet mode (mi27; 'record' / 'law' / 'replay' from its key 'inlet' 0 / 1 / 2), None when the closure
+    has no inlet key (the run then follows real_program.resolve_inlet: per-pour override > env LATTE_INLET > 'record')."""
+    from ..rig.real_program import inlet_mode
+    return inlet_mode(num["inlet"]) if num.get("inlet") is not None else None
+
+
+def apply_e0(prog, p, e0):
+    """Landing point of prog corrected by the measured stream foot of the active LATTE_FOOT (e0 'jet' / 'world');
+    FileNotFoundError when the pour has no usable measurement."""
+    e0 = e0_mode(e0)
+    if not e0:
+        return prog
+    off = e0_world_offsets(p, prog) if e0 == "world" else e0_offsets(p)
+    if off is None:
+        raise FileNotFoundError(f"{p}: no E0 stream-foot measurement (python3 -m latte_imex.rig.stream_foot {p})")
+    (shift_program_world if e0 == "world" else shift_program)(prog, *off)
+    return prog
+
+
+def pour_script(p, N, e0=False, exit_cal=False, inlet=None):
     """ProgScript of pattern p's measured pour through the Kona 700 mL pitcher (tulip_feas.Pour inlet) and the S1
     closure as starting parameters.  exit_cal: the stream exit calibrated to the measured stream (real_program.EXIT_CAL);
     e0: landing point corrected by the measured stream foot -- True / 'jet': e0_offsets (along / across u_in, relative to
-    the default exit), 'world': e0_world_offsets (cup frame, relative to the program as built)."""
+    the default exit), 'world': e0_world_offsets (cup frame, relative to the program as built).
+    inlet (mi27): inlet mode at the closure level of real_program.resolve_inlet (None: override > env > 'record');
+    'law' forces e0 off (the landing is the law's), 'replay' reads the feet with LATTE_FOOT=mi (set locally when unset;
+    another explicit LATTE_FOOT is refused); EXIT_CAL is refused under 'law' / 'replay'."""
     from ..rig.tulip_feas import Pour
     from ..rig import real_program as RP
     from .. import s1_forward as SF
-    pour = Pour(p, law=RP.EXIT_CAL if exit_cal else None)
+    pour = Pour(p, law=RP.EXIT_CAL if exit_cal else None, inlet=inlet)
     prog = SF.FwdProgram(p, pour.R, N, meta=pour.meta)
     e0 = e0_mode(e0)
-    if e0:
-        off = e0_world_offsets(p, prog) if e0 == "world" else e0_offsets(p)
-        if off is None:
-            raise FileNotFoundError(f"{p}: no E0 stream-foot measurement (python3 -m latte_imex.rig.stream_foot {p})")
-        (shift_program_world if e0 == "world" else shift_program)(prog, *off)
+    if pour.inlet == "law":
+        e0 = False
+    if e0 and pour.inlet == "replay":
+        with RP.foot_for_replay():
+            apply_e0(prog, p, e0)
+    elif e0:
+        apply_e0(prog, p, e0)
     return SF.ProgScript(prog, p), pour

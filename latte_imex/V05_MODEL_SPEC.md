@@ -715,6 +715,146 @@ S1 各图案起始装奶 100 或 125 mL，倒出 57–85 mL，壶中最少 22 mL
 
 视频量不到：壶高与容量、侧面壶嘴轮廓、唇沿上翘、α_lip。
 
+## 3.11 实测入口与壁面出口（mi27，SPEC27 rev 2）
+
+> 本节写的是壶模型第 7、7b、8 步（§3.5 的生产链 `ForwardPitcher`：沿唇沿法向出流 + 弹道）的替换。开关全部默认关闭，默认输出与 fc9f270 逐位相同（测试 T1）。规格：`mi27/spec/SPEC27.md`（rev 2，sha256 50d3ac6d…）、预注册 `PREREG27.md` + `PREREG27_2.md`。**状态：暂定（规则 2 勉强通过，§3.11.4）。**
+
+### 3.11.1 为什么换
+
+在已验证的奶柱（col25 rev 2，Method-A 柱脚 + 柱线斜率）上反演到达运动学（M1，出流点为声明的先验 d_a ∈ [−5, 0] mm、d_z ∈ [0, 3] mm，中心 −2.5 / +1.5 mm），经能量门（中心出流速度 ≤ √(2g(H_head+3 mm))）和窗口（tulip 0–1.70 s 与 3.38–4.14 s，leaf 0–4.12 s）后：
+
+| 量 | tulip | leaf | 生产入口（pose v2） |
+|---|---|---|---|
+| \|u_h\| 到达（杯坐标） | 0.255 [0.21, 0.31] ± 0.042 ± 0.020 ± 0.04 | 0.240 [0.19, 0.29] ± 0.040 ± 0.016 ± 0.04 | 0.116 / 0.100 |
+| U⊥ = w_f | 0.52 [0.50, 0.56] ± 0.027 ± 0.020 ± 0.04 | 0.50 [0.46, 0.55] ± 0.025 ± 0.020 ± 0.04 | 0.62 / 0.59 |
+| 飞行时间 a_f（先验主导） | 64 ms | 60 ms | |
+| 出流方向 | **未测到**（先验主导，水平在 2σ 内） | 同左 | |
+| 落点 | 已验证柱脚 `stream_foot_col.json`（A/B 级） | 同左 | 短 11.3 / 10.8 mm |
+
+（中位数 [16–84 %]；± 逐帧统计 ± 系统 ± **结构**，结构项为可接受出流位置与斜率算子之间的半幅 /√3。）生产入口的错是**方向**：第 7 步沿唇沿法向出流，在 68–80° 的轴倾下比水平低 70–80°，而液体沿壁切向离开。EXIT_CAL（C_v 1.5、抬 9.5°、前移 3 mm）水平速度对，U⊥ 错（0.73 / 0.68），落点短 5–6 mm，被拒用。未测到、因而不据此建任何东西的：流量水平（Q 仍是堰流的）、高位倒奶（壶嘴高 ≥ 15 mm）、出流点与方向、留出图案、起流。未解决残差 R1：自由落体柱模型与实测柱形状不符（合并约 10σ，两台仪器同号），它只在结构项内移动 u_h。
+
+### 3.11.2 壁面出口（`ForwardLaw(exit='wall')`）
+
+[`pitcher.py:ForwardPitcher._wall_dirs`、`_wall_exit`、`_wall_run`、`jet_flight`；M5 `exitlaw.py`（sha256 b7c3a8ba…）的逐行移植，T2 与 M5 的哈希预测逐位相同]
+
+第 1–6 步（位姿、CAD 几何 `pitcher_kona700.json`、准静态液面、逐段堰流 $Q_i=\tfrac23C_d\sqrt{2g}\,\Delta w_i h_i^{3/2}$、账本）不变。
+
+**P1 方向（假设的规则，未从动量平衡推出，测量也检验不到）。** 每个湿润前沿段在 CAD 内壁 $r_{\rm in}(z,\varphi)$ 的切平面内、垂直于沿口、指向开口外的单位向量 $\mathbf d_i=(\mathbf n_w\times\mathbf s_i)/|\cdot|$，$\mathbf n_w=\mathbf P_\varphi\times\mathbf P_z/|\cdot|$；流量加权
+
+$$\mathbf e_o=R\sum_iQ_i\mathbf d_i\big/\Big|\sum_iQ_i\mathbf d_i\Big| \tag{P11.1}$$
+
+`clip_rise`（默认开，M5 的取法）：若 $e_{o,z}>0$（沿口处壁还在上升，沿口本身就是锐缘堰顶），仰角置 0。tulip / leaf 有 58 % / 99 % 的出流步被截（原始仰角中位 +0.8° / +4.3°）。
+
+**P2 速度。** $U_o=C_{\rm visc}\,k_M\sqrt{2gH}$，H 为最低前沿点上的水头。
+- $k_M$：静水压**宽顶**临界断面（$H=y_c+A/2B$，$Q_c^2=gA^3/B$）与自由射流之间的动量平衡，$u_j=Q_c/A+gS_1/Q_c$，$k_M=u_j/\sqrt{2gH}$；断面用 CAD 沿口廓线的条带离散。界：$0<k_M\le\sqrt3/2=0.866$（矩形）；CAD 鸟嘴 0.766–0.777。
+- $C_{\rm visc}=1-\theta_mP_b/A_b$，Thwaites $\theta_m=\sqrt{0.45/6}\sqrt{\nu c_LH/U_i}$（速度在 $c_LH$ 上从 0 线性升到 $U_i$）。代码中 max(0.5, ·) 只是数值保护，在出流步（Q > 1 mL/s）从不触发（$C_{\rm visc}\ge0.876/0.881$，T4）；在 Q < 1 mL/s 的收尾细流步上会触发（tulip 299 步中 35 步、leaf 35 步中 4 步，这些步 k_M 在上界 0.866；体积每步不到约 1 µL），次数记在 `info['inlet']` 的 `Cvis_guard_hits`。
+- **两种堰顶理想化（声明）。** 质量用锐缘堰（$C_d$ 0.60），速度用宽顶临界断面；二者流量比 $Q_w/Q_c$ 中位 1.097 / 1.095。若改用 $Q_w$ 定 $y_c$，$U_o$ 变 +1…+2.3 %（≤ 0.007 m/s）。`E['Qc']` 逐步输出。
+- 同帧能量比独立支持速度律：实测出流速度为 0.68 / 0.72 $\sqrt{2gH_{\rm head}}$，律的 $k_MC_{\rm visc}$ 为 0.743 / 0.737。
+
+**P3 出流点。** 深度 $\kappa_by_c$ 处 brink 断面的形心（门控帧上沿航向 −0.0 / −0.1 mm、高于壶嘴尖 +3.2 / +2.6 mm）；唇速度 $\mathbf v_{\rm lip}=\mathbf v_{\rm tip}+\boldsymbol\omega\times(\mathbf x_o-\mathbf x_{\rm tip})$。
+
+**P4 毛细射流飞行（`capillary='round'`，规则 2 声明的离散选择）。** 在出流时刻以 $\mathbf v_{\rm lip}$ 平移的参考系中
+
+$$\mathbf M=\rho Q\mathbf v_{\rm rel}-T\hat{\mathbf t},\qquad \frac{d\mathbf M}{dt}=-\rho Qg\,\mathbf e_z,\qquad \mathbf M_0=\max(\rho QU_o-T_0,0)\,\mathbf e_o \tag{P11.2}$$
+
+$|\mathbf v_{\rm rel}|=(|\mathbf M|+T)/(\rho Q)$，$T=\pi\sigma a(|\mathbf v|)$，$a=\sqrt{Q/(\pi|\mathbf v|)}$，$T_0=\pi\sigma a_0$；0.25 ms 中点步积分到 z = 0。σ = 0 时与闭式弹道的差：在 M5 的检查域 B6（每杯前 500 个 Q ≥ 1 mL/s 的步）上 ≤ 2e-7 s / 5e-8 m；每个粒子都 ≤ 末步穿越插值误差 $g\,\Delta t^2/(8|v_z|)$（时间）及其乘 $|v_h|$（位置）；整杯最大 2.04e-7 s / 6.1e-8 m（少数 $|v_z|$ 小的粒子，T3）。'sheet'（$T_0=\sigma(W_b+P_b)$，在 Taylor–Culick 时间上松弛到圆射流值）与 'none'（σ = 0）保留作对照。到达记录仍由 `ForwardPitcher.arrivals` 分箱（未改）。
+
+| 参数 | 值 | 来源 / 范围 | 状态 |
+|---|---|---|---|
+| ρ | 800 kg/m³ | 蒸汽微泡奶（仓库 0.8 g/mL），600–1030 | 独立估计 |
+| σ | 0.045 N/m | 50–65 °C 奶 / 奶泡液，0.040–0.052 | 独立估计 |
+| ν | 1.5e-6 m²/s | 全脂奶 60 °C 约 1.0e-6，含气 ×1.2–1.5；1e-6–5e-6 | 独立估计 |
+| $c_L$ | 4 | 堰前加速段 3–5 个水头；2–8 | 独立估计 |
+| $\kappa_b$ | 0.75 | brink / 临界水深（矩形 0.715 Rouse 1936，三角约 0.795）；0.70–0.80 | 独立估计 |
+
+全部未拟合（M5 报告 §C）。单参数范围内 tulip 的 Δu 变化 [−0.012, +0.006] m/s，全不利组合 +0.050；没有单个声明值能翻转规则 2 的 (a)。
+
+### 3.11.3 规则 2（`mi27/spec/work/rule2.txt`，sha256 6655a4c0…）与结果
+
+帧：M1 use_kin 且壶嘴高 < 15 mm。预测：M5 到达记录在 |t_arr − t| ≤ 20 ms、Q > 1 mL/s 上 Q 加权。每个图案：(a) |中位 Δu| ≤ 0.05 m/s；(b) ≥ 70 % 帧在 2σ_u 内；(c) |中位 ΔU| ≤ 0.05；(d) 对已验证柱脚的落点，沿 / 横中位 ≤ 3 mm；(e) M5 的证伪条件。两图案 (a)–(d) 都过且 (e) 不否决者通过；偏好 phys > phys_round > phys_nocap。规则在逐帧配对之前写定，但在看过 M1 中位数与 M5 窗口表之后：(a)、(c) 的结果当时可预见，(b)、(d) 不可。选择是标定数据上的选择，不是盲检。
+
+| 律 | 图案 | u 预测 / 实测 | Δu | (b) | U 预测 / 实测 | ΔU | 落点 沿 / 横 [mm] | 结论 |
+|---|---|---|---|---|---|---|---|---|
+| phys（sheet） | tulip | 0.215 / 0.255 | −0.033 | 0.92 | 0.535 / 0.520 | +0.023 | −2.7 / −1.5 | (e) 否决 |
+| | leaf | 0.119 / 0.241 | **−0.098** | **0.51** | 0.512 / 0.502 | +0.010 | **−4.3** / +0.9 | **不过** |
+| **phys_round** | tulip | 0.285 / 0.255 | +0.033 | 0.89 | 0.536 / 0.520 | +0.021 | +0.3 / −1.8 | 过 |
+| | leaf | 0.230 / 0.241 | −0.003 | 0.84 | 0.519 / 0.502 | +0.017 | +0.1 / +1.1 | **过** |
+| phys_nocap | tulip | 0.312 / 0.255 | **+0.057** | 0.76 | 0.531 / 0.520 | +0.016 | +1.7 / −1.9 | **不过** (a) |
+| | leaf | 0.265 / 0.242 | +0.033 | 0.80 | 0.513 / 0.502 | +0.011 | +1.5 / +1.1 | |
+| 默认（第 7 步） | 两者 | 0.116 / 0.100 对 0.255 / 0.241 | −0.14 | 0.27–0.29 | 0.62 / 0.59 | +0.09–0.11 | −11.4 / −10.3 沿 | 不过 |
+| EXIT_CAL（参考） | 两者 | 0.267 / 0.237 | +0.02 | 0.82–0.89 | 0.73 / 0.68 | +0.18–0.21 | −6.0 / −5.0 | 不过 (c, d) |
+
+**稳健性（事后报告；哈希的规则与选择不变）：**
+
+| 测量变体 | tulip Δu、(b)、ΔU | leaf Δu、(b)、ΔU | 两图案 (a)–(d) |
+|---|---|---|---|
+| 中心先验，规则 2 帧（哈希的） | +0.033、0.89、+0.021 | −0.003、0.84、+0.017 | 过 |
+| 中心先验，门控帧 | +0.033、0.91、+0.022 | −0.003、0.84、+0.017 | 过 |
+| u_meas − 0.020（低 1σ_sys） | **+0.053** ✗a | +0.017 | 不过 |
+| u_meas + 0.020 | +0.013 | −0.023 | 过 |
+| 出流点在 CAD 壶嘴尖（M1 先验边缘） | **+0.060** ✗a、ΔU **+0.052** ✗c | +0.020、+0.048 | 不过 |
+| 出流点在律自己的出流点（同类比较），规则 2 帧 | +0.008、**0.68** ✗b、−0.011 | −0.026、0.78、+0.001 | 不过（(b) 差 0.02） |
+| 出流点在律自己的出流点，门控帧 | +0.006、0.71、−0.008 | −0.026、0.78、+0.001 | 过 |
+
+落点 (d) 与测量的出流点无关。飞行时间与出流方向：在 M1 中心先验下律的飞行短 18–20 %、出流平 24°；在律自己的出流点上，飞行时间相差 ≤ 3 ms，实测出流在水平下 3–11°。二者都由先验主导，不裁决律的方向（R7）。
+
+### 3.11.4 结论与状态
+
+`phys_round` 通过规则 2，是 MI 律，**暂定（勉强通过）**：tulip 的 (a) 余量 0.017 m/s 小于测量的共模 σ_sys 0.020；u_meas − 1σ_sys 或出流点在壶嘴尖时不过，门控帧上的同类比较通过。速度是独立来源参数的动量平衡；方向是假设的规则；圆射流 / 液片张力是声明的离散拟合选择，并可能与方向混淆（水平出流 + 圆射流减速与 24° 上仰的弹道给出同样的到达 u_h）。落点不是飞行物理的独立检验（u_meas = 弦 / a_f 用的是同一出流几何）。留出（只报告）：heart 上 phys_round 的 U⊥ 与落点对，u_h 比测量高 0.1 m/s（R2，律或测量的问题）。
+
+### 3.11.5 实测回放（入口模式 `replay`，tulip、leaf）
+
+[`rig/measured_inlet.py:replay`、`ResidualGP`、`taper`、`export_m1`、`foot_file`]
+
+出流、Q、出流点、飞行都是 MI 律的。每个奶包只在测量窗口内（经锥形权 w(t)：窗口内 1，窗口外 0.25 s 内 cos² 降到 0）被修正到测量：
+1. 门控帧上的残差 $r_q=q_{\rm meas}-q_{\rm law}(t_{\rm frame})$，$q\in\{u_{F,x},u_{F,y},w_f,a_f\}$，$q_{\rm law}$ 为 MI 律到达记录在 ±20 ms 内 Q 加权（规则 2 的配对）。
+2. 零均值 GP：Matérn-3/2 $(s_f,l)$ + 白噪声 $s_n$ + 逐点噪声 $\eta\cdot$ 统计 sd68；超参数用最大边际似然在 `spec/code2/resgp.py` 中定出后**冻结**在 `stream_kin.json`（运行时不优化）。η 自由时每个 q 的 LOO z-sd 为 0.98–1.02（T6(d)）。
+3. $q_{\rm MR}(t)=q_{\rm law}(t)+w(t)\hat r_q(t)$：到达速度、U⊥ 在奶包到达时刻取值，到达时刻 $t_{{\rm arr},i}=t_{{\rm em},i}+a_{f,{\rm MR}}(t_{{\rm arr},i})$ 从律的 $t_f$ 出发不动点迭代 2 次。支撑外回放**就是**律（逐位，T6(a)）。a_f 回放由先验主导（结构 ±12 ms）。
+4. 落点：x_hit 用律的，再由现有 E0 'world' 估计器（`schedule.e0_world_offsets`，未改）移到已验证柱脚上，柱脚文件为 `stream_foot_mi.json`（`stream_foot_col.json` 中 A/B 级、w > 0、且该帧通过 §1.1 帧门（F0、E1、窗口；`stream_kin.json` 的 `gated`）的行：tulip 35 行、leaf 52 行；其余行 tier none）。窗口外估计器回落到保留偏移的中位数：这是从窗口内柱脚取来的常数平移，N 96 实测 MI-R − MI-L 落点差 1.9 mm（tulip）/ 1.1 mm（leaf），不是 SPEC27 §3.3 写的 ≤ 0.5 mm。
+5. Q 仍是堰流的，不加起流律。
+6. 运行时自检：与 MI 律到达记录配对上的帧必须正好是 `stream_kin.json` 冻结的 GP 帧（`gp` 为真），且 GP 均值在这些帧时刻与冻结的 $\hat r$ 相差 ≤ 1e-9；否则 `replay` 和 `band` 报错（`checked_gps`），不会悄悄退回成律（T6 (g)）。
+
+原型的窗口内调度中位数（tulip / leaf）：|u_in| 0.117 → 0.256 / 0.106 → 0.238 m/s（record → replay），U 0.620 → 0.517 / 0.603 → 0.510 m/s。
+
+### 3.11.6 开关、优先级与文件
+
+| 入口模式 | 含义 | E0 |
+|---|---|---|
+| `record`（默认，代码 0） | 生产链（第 1–8 步） | 按闭包 |
+| `law`（1） | 第 1–6 步 + 壁面出口 `EXIT_LAW = dict(exit='wall', capillary='round')`；五个图案 | 强制关 |
+| `replay`（2） | law + 窗口内实测回放；只有 tulip、leaf（其他图案报错） | 'world' 时用 `LATTE_FOOT=mi`（未设时就地设定，设成别的则报错） |
+
+优先级（`real_program.resolve_inlet`，T1f）：逐图案显式覆盖 `INLET_OVERRIDE[p]`（diag 的留出图案；`render512` / `validate` 命令行对 MI 闭包的留出图案同样设成 `law`、e0 关）> 闭包键 `inlet` > 环境变量 `LATTE_INLET` > 默认 `record`。`law` / `replay` 下 `LAW_OVERRIDE`（EXIT_CAL）被拒绝；`_FP` 缓存按（几何、律字典、模式）分键（T1d）。闭包：`data/closures/bp256_mi.json`（bp256_trained + `"inlet": 2`），`mcd_S1kq_mi_N96.json`（mcd_S1kq_N96 + `"inlet": 2`，τ_s 0.0347774 s = f_u × 0.075，F(t)，D3a 分支 B；κ_Q 2.06，F(t)，D3c；B_dep 1267.43，C，D3b）。数据：`raw_data/rig/results/{tulip,leaf}/stream_kin.json`（白名单字段，不含任何 oracle 值，T9）、`stream_foot_mi.json`。测试：`rig/test_measured_inlet.py`（T1–T9；T1、T2 只在本地跑）。
+
+| 被替换的特设项 | MI-law | MI-replay |
+|---|---|---|
+| 第 7 步唇法向出流、`lip_slope` | 壁面出口 | 壁面出口，窗口内再换成测量 |
+| 第 7b 步 / EXIT_CAL | 拒用 | 拒用 |
+| v1 柱脚上的 E0（`stream_foot.json`） | 关 | 窗口内的已验证柱脚（`stream_foot_mi.json`） |
+| 弹道第 8 步 | 毛细飞行 | 窗口内用实测 u_h、U⊥、a_f，其余毛细飞行 |
+
+风险：R1（柱形状残差）、R2（heart u_h）、R3（起流：前 0.45 s 只有堰流的 0.4–0.74，无物理起流模型）、R4（回放只覆盖低位窗口，高位用律且未检验）、R7（出流方向假设，飞行时间未检验）、R8（勉强通过）。
+
+### 3.11.7 可微诊断（`diff/diag.py`，SPEC27 §3.5 第 7 项、§6）
+
+所有开关默认关闭：默认参数集、`err` 盒与 record 入口下 `diag` 的单步损失与梯度与 fc9f270 逐位相同（测试 T1b）。
+
+- **入口与盒。** 起点闭包的 `inlet` 键（或 `LATTE_INLET`）决定标定图案的入口。MI 入口（law / replay）下，inlet / both / both_wide 三种模式自动改用 `meas` / `meas_wide` 盒（`--box-family auto`）。盒是逐节点（0.2 s）的 2σ 界，`InletCorr.lim` 的形状为 (6, K)：
+  - **落点与流量：** 落点 ±4 mm，Q ×2，两个区域相同。
+  - **测量窗口内：** U⊥ 与 u_h 取回放带 `measured_inlet.band` 的 2 倍。带由 GP sd、滑动系统 sd 和结构项合成；U⊥ 取 ln(1 + 2σ_w/U)，U 为节点附近 schedule 的 U⊥。
+  - **只有律的帧（高位、空隙）：** 取律的标定散布，即 U⊥ ×1.19、u_h ±0.10 m/s。
+  - **锥形过渡区：** 按节点的 w 线性混合两组值。
+  - **`meas_wide`：** 半宽 ×2.5，Q 例外，按 SPEC 取 ×5；VOL_TOL 2.0。
+  - **记录与报告：** 每个图案的盒写入 `box_<p>.json`。修正量在窗口内（w = 1）与只有律的帧（w = 0）分别统计，并给出落在测量 2σ（`meas` 盒）内的比例；该比例只在窗口内解读（PREREG27_2 D11）。
+- **参数集 `--pset`。** `v05n`（默认）即 `PARAM_WIDE`，PKEYS 与 done.json 不变。`S1` 放开 S1kq 在 MI 下标为 F 的五个数：κ_c (0–3)、p_dep (0.5–12)、τ_s (0–0.12)、κ_Q (0.5–6, log)、B_dep (30–3·10⁴, log)；κ_t、κ_r 与奶沫数（cp、β、ν、ξ_b、λ_b）固定。
+- **留出图案。** 只要标定图案的入口不是 record，留出图案（heart、push_heart、swan）就经逐图案覆盖跑 `HELDOUT_INLET = 'law'`，e0 为 0；失败即中止（不写 done.json）。
+- **oracle 守卫。** inlet / both 模式的 `best_closure.json` 不带 `inlet` 键（D11：oracle 修正只作诊断，留在 best.json）。
+- **V_j 伴随。** 闭包开关 vj（或 κ_tc）读取落点速度 V_j。V_j 是落点的线性 EMA（`schedule.foot_velocity`），其转置 `InletCorr.vj_T` 把 ∂L/∂V_j 加到 ∂L/∂(dx, dy) 上。vj = κ_tc = 0 时该项恒为 0，直接跳过。表面流（circ）配入口修正仍被拒绝。
+- **测试（T7）：**
+  - `diag gradcheck --box --keys --inlet --vj-knots`：N 32、T 1、eps 1e-7，相对误差 ≤ 2e-3。
+  - V_j 伴随单独做点积测试；另在 T 6 s 的 V_j 占比最大节点上检验（占比可达约 10 %，不加该项时误差 3–10 %）。
+  - 只接受梯度经过检验的奶输运格式（`fit.MILK_GRAD`）。
+
 ---
 
 ## 已知限制
@@ -725,7 +865,7 @@ S1 各图案起始装奶 100 或 125 mL，倒出 57–85 mL，壶中最少 22 mL
 4. 设计入口的水平速度未计入约 45 ms 飞行时间（§2.6）；$U_\perp$ 不含手的竖直速度；落点直接取 V0.5 原版路径。
 5. 1 mL/s 流量下限与桥中断流不是守恒规则（S1 闭环送入量为设计的 0.99–1.01 倍）。
 6. 求解器的足迹是连续性椭圆，不是壶模型的液片足迹；4–8 % 已断成滴的到达样本照样喂入。
-7. 壶模型：湿宽 $\Delta w_i$ 为液面内弧长；出口方向固定沿壶体 φ = 0，而鸟嘴关于 φ ≈ +2.5° 对称，出流点相对壶嘴尖侧偏约 1.7 mm；带出速度无 $\boldsymbol\omega\times\mathbf r$ 项；壶嘴缓冲为一阶；晃荡单模态，代理模型中关闭；咖啡面固定在 z = 0，不随倒入量上升；杯倾方向随壶偏航转。
+7. （第 7–8 步的出口方向与弹道已由 §3.11 的壁面出口作为可选入口模式替换；下列限制针对默认 `record` 链。）壶模型：湿宽 $\Delta w_i$ 为液面内弧长；出口方向固定沿壶体 φ = 0，而鸟嘴关于 φ ≈ +2.5° 对称，出流点相对壶嘴尖侧偏约 1.7 mm；带出速度无 $\boldsymbol\omega\times\mathbf r$ 项；壶嘴缓冲为一阶；晃荡单模态，代理模型中关闭；咖啡面固定在 z = 0，不随倒入量上升；杯倾方向随壶偏航转。
 8. 壶的出流常数与 α_lip 未标定；代理模型只在 250/350 mL 起始装奶下核对过，S1 在 22–125 mL 下倒。
 9. $\kappa_t$、$\kappa_r$、$p_{\rm dep}$ 是设计时确定的拟合量，不是测得值。
 
@@ -787,6 +927,8 @@ S1 各图案起始装奶 100 或 125 mL，倒出 57–85 mL，壶中最少 22 mL
 | 壶送到的入口 | `v05_pourable.py:design_wanted`、`pl_simulate`、`pl_table`、`pl_program`、`pl_solve`；`v05_pitcher_check.py:drvf_record`、`_foot_speed` |
 | 稳健性扰动 | `v05_pourable.py:rb_pert`、`rb_profile`、`rb_program`、`rb_solve` |
 | 壶几何 | `pitcher_cad.py:extract`；`pitcher.py:GridPitcherGeometry`；`v05_pourable.py:loop_geometry`、`_nx_b` |
+| 壁面出口与毛细飞行（mi27） | `pitcher.py:ForwardLaw`（`exit`、`capillary`、`rho`、`sigma`、`nu`、`c_L`、`kappa_b`、`clip_rise`）、`ForwardPitcher._wall_dirs`、`_wall_exit`、`_wall_run`、`jet_flight`、`ballistic_flight` |
+| 入口模式与实测回放（mi27） | `rig/real_program.py:INLET_MODES`、`resolve_inlet`、`EXIT_LAW`、`forward_pitcher`、`build_inlet`；`rig/measured_inlet.py:replay`、`ResidualGP`、`export_m1`、`foot_file`；`rig/tulip_feas.py:Pour(inlet=)`；`diff/schedule.py:pour_script(inlet=)`、`apply_e0`、`inlet_switch`；`rig/test_measured_inlet.py` |
 | 液面、堰流、缓冲、运动学、射流 | `pitcher.py:Pitcher.free_surface`、`weir`、`step`、`kinematics`、`jet`、`exit_direction`、`tilt_for_flow`、`OutflowLaw`、`Milk`、`PitcherState` |
 | 快速版液面、起流倾角 | `v05_pitcher_check.py:FastPitcher`、`onset_tilt` |
 | 避让 | `pitcher.py:Pitcher.required_lift`；`v05_pourable.py:SpoutPitcher.wall_samples`、`make_cup`、`closed_form` |

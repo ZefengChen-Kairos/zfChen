@@ -471,6 +471,8 @@ class GPUForwardPitcher:
         g, law = fp.geom, fp.law
         if law.U_head not in U_HEAD or law.width not in WIDTH:
             raise ValueError("unknown ForwardLaw option")
+        if getattr(law, "exit", "lip") != "lip":
+            raise ValueError("GPUForwardPitcher: ForwardLaw(exit='wall') (mi27 wall exit) runs on the CPU only")
         self.d = dict(
             pts=cuda.to_device(np.ascontiguousarray(g.points, np.float64)),
             dv=cuda.to_device(np.ascontiguousarray(g.dv, np.float64)),

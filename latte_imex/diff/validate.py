@@ -290,7 +290,7 @@ def load_closure(fn, e0=None):
               upwell=bool(num.get("upwell", 0.0)), circ=bool(num.get("circ", 0.0)),
               circ_shape=dict(L=num.get("circ_L", 0.4), r_f=num.get("circ_rf", 0.06), r=num.get("circ_r", 1.0)),
               milk=milk_code(num.get("milk", 0.0)), sink=sink_code(num.get("sink", 0.0)),
-              visc_tr=switch01(num.get("visc_tr", 0.0), "visc_tr"))
+              visc_tr=switch01(num.get("visc_tr", 0.0), "visc_tr"), inlet=SC.inlet_switch(num))
     return num, sw
 
 
@@ -310,7 +310,7 @@ def validate_pour(p, num, sw, N=48, device="cpu", log=print):
     t0 = time.time()
     cfg = dict(pours=[p], N=N, device=device, e0=sw["e0"], exit_cal=sw["exit_cal"], upwell=sw["upwell"], circ=sw["circ"],
                circ_shape=sw["circ_shape"], milk=sw.get("milk", 0), sink=sw.get("sink", 0),
-               visc_tr=sw.get("visc_tr", 0))
+               visc_tr=sw.get("visc_tr", 0), inlet=sw.get("inlet"))
     CF._init(cfg)
     D = CF._D[p]
     P = closure_params(D, num, sw["circ"])
@@ -673,8 +673,10 @@ def main(argv=None):
         S = {}
     S["_meta"] = M
     tag = os.path.join(os.path.basename(os.path.dirname(M["closure"])), os.path.basename(a.closure))
+    from .render512 import heldout_inlet
     for p in a.pours.split(","):
-        frames, meta, images = validate_pour(p, num, sw, N=a.N, device=a.device, log=log)
+        with heldout_inlet(p, num, sw) as swp:          # held-out pours of an MI closure: MI-L, e0 off (PREREG27_2 D2)
+            frames, meta, images = validate_pour(p, num, swp, N=a.N, device=a.device, log=log)
         meta["closure"] = tag
         json.dump(_clean(dict(meta=meta, frames=frames)), open(os.path.join(a.out, f"{p}_frames.json"), "w"), indent=1)
         S[p] = _clean(dict(summarise(frames, meta), timing_s=meta["timing_s"], twin_check=meta["twin_check"],

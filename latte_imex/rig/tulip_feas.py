@@ -60,10 +60,14 @@ def to_unit(par):
 
 # ----------------------------------------------------------------------------- inlet (built once)
 class Pour:
-    def __init__(self, p, flow=os.environ.get("FEAS_FLOW", "kona"), law=None):
+    def __init__(self, p, flow=os.environ.get("FEAS_FLOW", "kona"), law=None, inlet=None):
         """flow 'kona': catalogue pitcher, no axis correction, fill solved for 165 g poured (full_pour_kona_poured165.json);
         'dtilt': the earlier calibration (real-pitcher parametric geometry + per-pour axis correction, sim_flow165).
-        law: ForwardLaw fields for this build (e.g. real_program.EXIT_CAL), else the defaults."""
+        law: ForwardLaw fields for this build (e.g. real_program.EXIT_CAL), else the defaults.
+        inlet: inlet mode of this build at the closure level of real_program.resolve_inlet ('record' | 'law' | 'replay'
+        or 0 / 1 / 2; None: per-pour override > env LATTE_INLET > 'record'); the resolved mode is set as
+        real_program.INLET_MODE for the build and restored afterwards (self.inlet, info['inlet'])."""
+        self.inlet, self.inlet_source = RP.resolve_inlet(p, None if inlet is None else {"inlet": inlet})
         if flow == "kona":
             os.environ["PITCHER_GEOM"] = os.path.join(RP.REPO, "latte_imex", "pitcher_geom", "pitcher_kona700.json")
             J = json.load(open(os.path.join(RP.RES, "full_pour_kona_poured165.json")))[p]
@@ -76,12 +80,18 @@ class Pour:
             fill = json.load(open(os.path.join(RP.RES, "full_pour_rho0.8.json")))[p]["fill_at_cut_mL"]
         RP._FP.clear()
         prev, RP.LAW_OVERRIDE = RP.LAW_OVERRIDE, law
+        prev_m = (RP.INLET_MODE, RP.INLET_SOURCE)
+        RP.INLET_MODE, RP.INLET_SOURCE = self.inlet, self.inlet_source
         try:
             C, E, R, info = RP.build_inlet(p, "pitcher", fill * 1e-6, log=lambda *a: None)
         finally:
             RP.LAW_OVERRIDE = prev
+            RP.INLET_MODE, RP.INLET_SOURCE = prev_m
             RP._FP.clear()
         self.p, self.info = p, info
+        # the emission history of an MI build ('law' / 'replay'; diag's 'meas' oracle box evaluates the replay band on
+        # it, measured_inlet.band); not kept for 'record'
+        self.E = E if self.inlet != "record" else None
         self.T = info["T_pour"] + RP.TAIL
         self.meta = RP.phases_meta(p, C, R, self.T)
         self.R = RP.scaled_record(R, C["L"])

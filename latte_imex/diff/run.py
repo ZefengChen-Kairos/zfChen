@@ -291,11 +291,14 @@ class DiffPour:
     def __init__(self, p, N=128, device=None, T_max=None, w_gap=2.0, tau=0.05, check_every=None, graphs=True,
                  loss="video", w_final=0.0, scales=(0.0,), e0=False, upwell=False, circ=False, w_flow=0.0,
                  flow_scale=0.15, flow_u0=0.05, exit_cal=False, circ_shape=None, milk=0, sink=0, visc_tr=0,
-                 age=False, log=print):
+                 age=False, inlet=None, log=print):
         self.p, self.N, self.log = p, N, log
         wp.init()
-        script, pour = SC.pour_script(p, N, e0=e0, exit_cal=exit_cal)
+        # inlet (mi27): the closure's inlet key (0 record, 1 law, 2 replay; None = per-pour override > env LATTE_INLET >
+        # 'record'), resolved by real_program.resolve_inlet inside schedule.pour_script
+        script, pour = SC.pour_script(p, N, e0=e0, exit_cal=exit_cal, inlet=inlet)
         self.exit_cal = exit_cal
+        self.inlet = pour.inlet
         self.script, self.pour, self.e0 = script, pour, e0
         self.S = SC.build(script, N, T_max=T_max)
         self.geo = W.Geo(N, device=device)
