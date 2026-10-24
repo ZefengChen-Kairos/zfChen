@@ -17,7 +17,11 @@
    with --held-record, VIZ_CLOSURES); .done markers per (model, which, pour) bound to the closure sha256 and the
    render settings (N, fps, T, size, ss, cup; --keep-render, --force); cached fields bound to closure, inlet, N, fps,
    T; the first layout moved to viz/best/; summary
-   (captions: a held-out pour says 'e0 关' only when e0 was off)
+   (captions: a held-out pour says 'e0 关' only when e0 was off); the cup model is in the markers (a marker without
+   it = the old level cup: re-rendered, the cached fields reused)
+7. cup (test_cup): the stand-in mug on the measured rim (viz/cup_rim.json) never intersects the posed CAD pitcher at
+   any 30 fps frame and the liquid never spills; the old level cup did intersect (tulip fixture, heart fixture, and
+   the files in VIZ_REAL_FIELDS=a.npz:b.npz, e.g. the real N 256 tulip / leaf fields).  VIZ_TESTDATA = fixture dir.
 """
 import json
 import math
@@ -37,7 +41,7 @@ import raytrace as RT  # noqa: E402
 import render3 as R3  # noqa: E402
 import scene as S  # noqa: E402
 
-TD = os.path.join(HERE, "testdata")
+TD = os.environ.get("VIZ_TESTDATA") or os.path.join(HERE, "testdata")
 
 
 def _heart():
@@ -330,6 +334,7 @@ def test_jobs():
                 "inlet=auto", "N=256", f"t1={time.time() - 5}"])
         mk = J.load_json(os.path.join(j[5], "tulip.done"))
         assert mk["N"] == 256 and mk["wall_s"] > 4 and mk["which"] == "start", mk
+        assert mk["cup_model"] == S.CUP_MODEL_VERSION, mk                  # the add-on's cup model is recorded
         jobs2, info2 = _plan(out=out, root=root, fields=fields, pours="tulip heart")
         assert ("v05n", "start", "tulip") not in [(x[0], x[1], x[2]) for x in jobs2] and len(jobs2) == len(jobs) - 3  # (- e1 x 2)
         assert any("v05n start tulip: done before" in s for s in info2), info2
@@ -357,6 +362,11 @@ def test_jobs():
         assert vst not in keys(js)
         js, _ = _plan(out=out, root=root, fields=fields, pours="tulip")
         assert vst in keys(js)
+        # a marker from before the cup model was recorded (level cup) is re-rendered by a plain rerun; the cached
+        # fields are not part of it
+        _wj(os.path.join(j[5], "tulip.done"), {k: v for k, v in mk.items() if k != "cup_model"})
+        js, inf = _plan(out=out, root=root, fields=fields, pours="tulip")
+        assert vst in keys(js) and any(f"(cup_model level-v0 -> {S.CUP_MODEL_VERSION})" in s for s in inf), inf
         _wj(os.path.join(j[5], "tulip.done"), mk)                       # back to the default marker
         # held-out pours of record closures only with --held-record (VIZ_HELD_RECORD=1)
         js, _ = _plan(out=out, root=root, fields=fields, pours="heart", models="v05n_ctrl")
@@ -397,6 +407,12 @@ def test_jobs():
             J.main(["migrate", "--out", out, "--root", root, "--fields", fields, "--models", "v05n"])
         assert os.path.exists(os.path.join(vd, "best", "leaf_combo.mp4")) and not os.path.exists(os.path.join(vd, "leaf.done"))
         assert os.path.exists(os.path.join(vd, "heart.done"))           # another closure's videos stay where they are
+        jobs4, inf4 = _plan(out=out, root=root, fields=fields, pours="leaf", models="v05n", which="best")
+        # (migrated videos count as done for the closure, but they were rendered with the level cup: redone)
+        assert [(x[0], x[1], x[2]) for x in jobs4] == [("v05n", "best", "leaf")], jobs4
+        assert any("cup_model level-v0 ->" in s for s in inf4), inf4
+        mj = J.load_json(os.path.join(vd, "best", "leaf.done"))
+        _wj(os.path.join(vd, "best", "leaf.done"), dict(mj, cup_model=S.CUP_MODEL_VERSION))
         jobs4, _ = _plan(out=out, root=root, fields=fields, pours="leaf", models="v05n", which="best")
         assert jobs4 == [], jobs4
         with contextlib.redirect_stdout(io.StringIO()):
@@ -424,6 +440,40 @@ def test_framing():
             assert np.all(z > 0) and np.all((uv > 0.02) & (uv < 0.98)), (k, t, uv)
             worst = max(worst, float(np.abs(uv - 0.5).max()))
     print(f"ok framing: tip and landing inside both views at every 0.5 s (max |uv - 0.5| {worst:.2f})")
+
+
+def test_cup(fields, name, level_intersects=None, min_clear_mm=0.0):
+    """The stand-in cup on the measured rim (viz/cup_rim.json): at every rendered frame (30 fps over the whole pour)
+    the posed CAD pitcher stays outside the cup's wall and handle (min signed distance > min_clear_mm, the pitcher's
+    surface sampled ~1 mm apart), the liquid stays inside (the lowest rim-top point >= 1 mm above the surface) and
+    the straight inner wall reaches below the tilted liquid section.  level_intersects: the old level cup (rim 3 mm
+    above the liquid at the end, rising with the poured volume) must intersect in that many frames or more (the bug)."""
+    sc = S.Scene(fields)
+    tr = sc.cup_track()
+    assert tr["source"] == "measured", (name, tr["source"])
+    ts = sc.clock()
+    r = S.cup_clearance(sc, ts)
+    d = r["d_min"] * 1e3
+    assert np.all(d > min_clear_mm) and np.all(r["overlap"] == 0), \
+        (name, int(np.sum(d <= min_clear_mm)), float(d.min()), float(ts[int(np.argmin(d))]))
+    assert np.all(r["rim_low"] >= S.SPILL_MARGIN - 1e-9), (name, float(r["rim_low"].min()))
+    prof, hP, hr, zf, r0 = sc.cup_geometry()
+    z_low = -r0 - 4e-3                                                   # bottom of the straight inner wall (B)
+    for t in ts[::15]:
+        c = sc.cup(t)
+        tan_t = math.tan(math.radians(c["tilt_deg"]))
+        assert S.CUP_RIM0 - c["s"] - sc.R_disc * tan_t >= z_low - 1e-9, (name, t)   # liquid meets the straight wall
+        assert abs(np.linalg.det(c["R"]) - 1) < 1e-9 and np.allclose(c["R"][:, 2], c["n"], atol=1e-9)
+    msg = ""
+    if level_intersects is not None:
+        sl = S.Scene(fields, cup_model="level")
+        rl = S.cup_clearance(sl, ts)
+        nl = int(np.sum(rl["d_min"] < 0))
+        assert nl >= level_intersects, (name, nl)
+        msg = f"; the old level cup: {nl}/{len(ts)} frames intersect, up to {rl['overlap'].max() * 1e3:.1f} mm below its rim"
+    print(f"ok cup ({name}): {len(ts)} frames, no pitcher-cup intersection (min clearance {d.min():.1f} mm), no spill "
+          f"(lowest rim point >= {r['rim_low'].min() * 1e3:.1f} mm above the liquid), tilt {r['tilt_deg'].max():.1f} -> "
+          f"{r['tilt_deg'][-1]:.1f} deg, spill guard <= {tr['s_guard'].max() * 1e3:.1f} mm" + msg)
 
 
 def device_check(dev):
@@ -457,6 +507,10 @@ if __name__ == "__main__":
     test_stream_foot(_heart(), "heart MI-L held out")
     test_volumes(os.path.join(TD, "ff_s1kq_tulip_N48.npz"), "tulip MI-R")
     test_volumes(_heart(), "heart MI-L")
+    test_cup(os.path.join(TD, "ff_s1kq_tulip_N48.npz"), "tulip", level_intersects=100)
+    test_cup(_heart(), "heart")
+    for fn in [x for x in os.environ.get("VIZ_REAL_FIELDS", "").split(os.pathsep) if x]:   # e.g. the N 256 fields
+        test_cup(fn, os.path.basename(fn), level_intersects=1)
     test_raytracer()
     test_framing()
     test_smoke()

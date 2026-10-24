@@ -9,7 +9,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import scene as S  # noqa: E402
 
-TD = os.path.join(HERE, "testdata")
+TD = os.environ.get("VIZ_TESTDATA") or os.path.join(HERE, "testdata")
 
 
 def run(fn, snap_p90_max, times=(1.0, 2.5, 3.9)):

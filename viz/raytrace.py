@@ -4,10 +4,12 @@ Scene, all in the cup frame F of viz/scene.py (metres, z up, the liquid surface 
   pitcher  static wp.Mesh of the CAD STL in its own frame (metres).  Per frame only (R, t) change and the RAYS are moved
            into the STL frame (x_stl = R^T (x_F - t)) instead of rebuilding the BVH.  Optional translucency: a per-surface
            opacity a0 that rises to 1 at grazing incidence, so the milk inside shows and the silhouette stays readable.
-  cup      static wp.Mesh (lathe + handle), built at the end-of-pour level and shifted per frame in z by the rise still
-           to come (scene.cup(t)['rise_left']).  A STAND-IN: the cup beyond the liquid disc is not measured.
+  cup      static wp.Mesh (lathe + handle) of the stand-in mug in its own frame B (scene.cup_profile); per frame the
+           rigid pose (R, t) of scene.cup(t) -- the measured cup axis and rim height -- moves the RAYS into B, as for the
+           pitcher.  A STAND-IN mug placed on the measured rim (only its shape is not measured).
   dyn      per-frame wp.Mesh: the milk body in the pitcher (scene.milk_mesh, inset) + the stream tube; material per face.
-  latte    analytic disc z = 0, r <= R_disc: the white fraction C (filled, bilinear) through crema -> foam (render512
+  latte    analytic plane z = 0 inside the cup's inner wall (r_B <= R_disc; a tilted cup's section is an ellipse just
+           wider than the disc: the field is clamped radially to the disc there): the white fraction C (filled, bilinear) through crema -> foam (render512
            palette, mixed in sRGB as render512 does), with a gentle bump normal from grad C.
   table    analytic plane under the cup foot (moves with the cup), fading into the background.
 Light: one directional key light with shadow rays (any-hit against pitcher / cup / dyn), a hemisphere fill, Blinn-Phong
@@ -15,9 +17,13 @@ specular; ss x ss supersampling per pixel; shading in linear light, gamma 2.2 at
 from __future__ import annotations
 
 import math
+import os
+import sys
 
 import numpy as np
 import warp as wp
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 MAT_PITCHER, MAT_CUP, MAT_MILK, MAT_STREAM, MAT_LATTE, MAT_TABLE = 0, 1, 2, 3, 4, 5
 CREMA = (150, 96, 62)            # render512 latte palette (sRGB)
@@ -63,7 +69,8 @@ class Sc:
     p_col: wp.vec3
     cm: wp.uint64
     cn: wp.array(dtype=wp.vec3)
-    c_dz: float
+    cR: wp.mat33
+    ct: wp.vec3
     c_on: int
     c_col: wp.vec3
     c_ks: float
@@ -132,13 +139,14 @@ def trace(sc: Sc, o: wp.vec3, d: wp.vec3, tmax: float):
             h.ng = sc.pR @ ng
             h.n = sc.pR @ smooth_n(sc.pm, sc.pn, q.face, q.u, q.v, ng)
     if sc.c_on == 1:
-        q = wp.mesh_query_ray(sc.cm, o - wp.vec3(0.0, 0.0, sc.c_dz), d, h.t)
+        CT = wp.transpose(sc.cR)
+        q = wp.mesh_query_ray(sc.cm, CT @ (o - sc.ct), CT @ d, h.t)
         if q.result:
             ng = wp.normalize(q.normal)
             h.t = q.t
             h.mat = 1
-            h.ng = ng
-            h.n = smooth_n(sc.cm, sc.cn, q.face, q.u, q.v, ng)
+            h.ng = sc.cR @ ng
+            h.n = sc.cR @ smooth_n(sc.cm, sc.cn, q.face, q.u, q.v, ng)
     if sc.d_on == 1:
         q = wp.mesh_query_ray(sc.dm, o, d, h.t)
         if q.result:
@@ -152,7 +160,10 @@ def trace(sc: Sc, o: wp.vec3, d: wp.vec3, tmax: float):
         if t < h.t:
             p = o + d * t
             rr = sc.R_disc * 1.003
-            if p[0] * p[0] + p[1] * p[1] <= rr * rr:
+            pc = p
+            if sc.c_on == 1:                # inside the (tilted) cup's inner wall
+                pc = wp.transpose(sc.cR) @ (p - sc.ct)
+            if pc[0] * pc[0] + pc[1] * pc[1] <= rr * rr:
                 h.t = t
                 h.mat = 4
                 h.n = wp.vec3(0.0, 0.0, 1.0)
@@ -200,7 +211,8 @@ def shadow(sc: Sc, p: wp.vec3, L: wp.vec3):
         if wp.mesh_query_ray_anyhit(sc.dm, p, L, 10.0):
             vis = 0.0
     if vis > 0.0 and sc.c_on == 1:
-        if wp.mesh_query_ray_anyhit(sc.cm, p - wp.vec3(0.0, 0.0, sc.c_dz), L, 10.0):
+        CT = wp.transpose(sc.cR)
+        if wp.mesh_query_ray_anyhit(sc.cm, CT @ (p - sc.ct), CT @ L, 10.0):
             vis = 0.0
     if vis > 0.0 and sc.p_on == 1:
         RT = wp.transpose(sc.pR)
@@ -234,11 +246,18 @@ def shade(sc: Sc, p: wp.vec3, d: wp.vec3, h: Hit):
         ks = 0.35
         shin = 70.0
     elif h.mat == 4:
-        c = wp.clamp(field_at(sc, p[0], p[1]), 0.0, 1.0)
+        px = p[0]
+        py = p[1]
+        rp = wp.sqrt(px * px + py * py)
+        rl = sc.R_disc * 0.995
+        if rp > rl:                         # the tilted cup's elliptic section beyond the disc: the disc's edge value
+            px = px * rl / rp
+            py = py * rl / rp
+        c = wp.clamp(field_at(sc, px, py), 0.0, 1.0)
         alb = lin3(sc.crema * (1.0 - c) + sc.foam * c)
         e = 0.5 * sc.L / float(sc.N)
-        gx = (field_at(sc, p[0] + e, p[1]) - field_at(sc, p[0] - e, p[1])) / (2.0 * e)
-        gy = (field_at(sc, p[0], p[1] + e) - field_at(sc, p[0], p[1] - e)) / (2.0 * e)
+        gx = (field_at(sc, px + e, py) - field_at(sc, px - e, py)) / (2.0 * e)
+        gy = (field_at(sc, px, py + e) - field_at(sc, px, py - e)) / (2.0 * e)
         n = wp.normalize(wp.vec3(-sc.bump * gx, -sc.bump * gy, 1.0))
         ks = 0.10
         shin = 60.0
@@ -438,30 +457,14 @@ def stream_mesh(segments, n_side=12, ds=6e-4, r_min=1.5e-4, sink=1.5e-3):
 
 
 def cup_mesh(R_disc, rise0, wall=4e-3, rim_above=3e-3, n_phi=128, handle=True, handle_phi=0.0):
-    """The cup STAND-IN at the end-of-pour level (F at the end: liquid at z = 0, rim `rim_above` above it): inner wall
-    a cylinder of radius R_disc down to below the lowest liquid level of the pour (rise0 + 4 mm below), a rounded taper
-    to a 26 mm bottom; outer wall `wall` thicker with a foot; rounded rim; a loop handle at azimuth handle_phi.  About
-    the size of the registered black mug (cup.json: rim outer radius 45.8 mm, height 60.5 mm), but NOT measured.
+    """The cup STAND-IN in its own frame B (scene.cup_profile: liquid of the old end level at z_B = 0, rim top
+    `rim_above` above it; the straight inner wall reaches rise0 + 4 mm below z_B = 0): lathed wall + a loop handle at
+    azimuth handle_phi (scene.cup_handle).  About the size of the registered black mug, but NOT its measured shape.
     Returns (V, F, Nv, z_foot)."""
-    R = float(R_disc)
-    zr = float(rim_above)
-    z_low = -float(rise0) - 4e-3
-    z_ib = z_low - 0.024
-    Ro = R + wall
-    prof = [(0.0, z_ib - 6e-3), (0.028, z_ib - 6e-3), (0.031, z_ib - 5e-3), (0.033, z_ib - 2e-3)]
-    # outer wall: from the foot up to the rim (rounded corner into the straight wall)
-    for f in np.linspace(0, 1, 7)[1:]:
-        prof.append((0.033 + (Ro - 0.033) * math.sin(0.5 * math.pi * f), z_ib - 2e-3 + (z_low - 4e-3 - z_ib + 2e-3) * f))
-    prof.append((Ro, zr - wall / 2))
-    for a in np.linspace(0, math.pi, 9)[1:-1]:                       # rounded rim (half circle)
-        prof.append((R + wall / 2 + wall / 2 * math.cos(a), zr - wall / 2 + wall / 2 * math.sin(a)))
-    prof.append((R, zr - wall / 2))
-    prof.append((R, z_low))
-    for f in np.linspace(0, 1, 7)[1:]:                               # inner taper to the bottom
-        prof.append((R - (R - 0.026) * (1 - math.cos(0.5 * math.pi * f)), z_low + (z_ib - z_low) * math.sin(0.5 * math.pi * f)))
-    prof.append((0.0, z_ib))
-    V, F = lathe(prof, n_phi)
-    # winding: the outer wall (first band, walked downwards->outwards...) must face away from the axis
+    import scene as S  # noqa: E402
+    prof, z_foot = S.cup_profile(R_disc, rise0, wall, rim_above)
+    V, F = lathe(prof[:-1] if np.allclose(prof[-1], prof[0]) else prof, n_phi)
+    # winding: the outer wall must face away from the axis
     c = V[F].mean(1)
     n = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
     i = int(np.argmax(np.hypot(c[:, 0], c[:, 1])))               # a face on the outermost wall
@@ -469,15 +472,10 @@ def cup_mesh(R_disc, rise0, wall=4e-3, rim_above=3e-3, n_phi=128, handle=True, h
         F = F[:, ::-1]
     Nv = vertex_normals(V, F)
     if handle:
-        zt, zb = z_low + 0.004 - 0.002, z_low - 0.028
-        zt = min(zt, zr - 0.010)
-        b = np.array([[Ro - 3e-3, zt], [Ro + 0.024, zt + 0.002], [Ro + 0.030, zb - 0.002], [Ro - 3e-3, zb]])
-        s = np.linspace(0, 1, 28)[:, None]
-        Q = ((1 - s) ** 3) * b[0] + 3 * ((1 - s) ** 2) * s * b[1] + 3 * (1 - s) * s ** 2 * b[2] + s ** 3 * b[3]
-        P = np.c_[Q[:, 0] * math.cos(handle_phi), Q[:, 0] * math.sin(handle_phi), Q[:, 1]]
-        hv, hf, hn = tube(P, np.full(len(P), 4.5e-3), 14)
+        P, hr = S.cup_handle(R_disc, rise0, wall, rim_above, handle_phi)
+        hv, hf, hn = tube(P, np.full(len(P), hr), 14)
         F = np.concatenate([F, hf + len(V)]); V = np.concatenate([V, hv]); Nv = np.concatenate([Nv, hn])
-    return V, F, Nv, z_ib - 6e-3
+    return V, F, Nv, z_foot
 
 
 def icosphere(radius=1.0, centre=(0, 0, 0), sub=3):
@@ -613,7 +611,8 @@ class Renderer:
         self.N, self.L, self.R_disc = int(A.shape[0]), float(L), float(R_disc)
 
     def render(self, cam, W, H, pitcher_pose=None, pitcher_alpha=1.0, pitcher_shadow=0.0, cup_dz=0.0, table_z=None,
-               disc=True, dyn=True, light=(-0.45, -0.55, 1.0), key=0.78, amb=0.30, bump=2.5e-4, ss=None):
+               disc=True, dyn=True, light=(-0.45, -0.55, 1.0), key=0.78, amb=0.30, bump=2.5e-4, ss=None, cup_pose=None):
+        """cup_pose (R, t): X_F = R @ X_B + t for the cup mesh (scene.cup(t)['R'], ['t']); default (I, (0, 0, cup_dz))."""
         c = Cam()
         c.pos, c.fwd, c.right, c.up = (wp.vec3(*map(float, cam[k])) for k in ("pos", "fwd", "right", "up"))
         c.tan_y, c.half_h, c.aspect, c.ortho = float(cam["tan_y"]), float(cam["half_h"]), float(W) / float(H), int(cam["ortho"])
@@ -627,7 +626,11 @@ class Renderer:
         s.pt = wp.vec3(*map(float, t))
         s.p_a0, s.p_sh, s.p_col = float(pitcher_alpha), float(pitcher_shadow), _lin(PITCHER_COL)
         cm = self.cm or self._dummy
-        s.cm, s.cn, s.c_dz, s.c_on = cm["mesh"].id, cm["nrm"], float(cup_dz), int(self.cm is not None)
+        s.cm, s.cn, s.c_on = cm["mesh"].id, cm["nrm"], int(self.cm is not None)
+        cR, ct = (np.eye(3), np.array([0.0, 0.0, float(cup_dz)])) if cup_pose is None else (
+            np.asarray(cup_pose[0], float), np.asarray(cup_pose[1], float))
+        s.cR = wp.mat33(*cR.astype(np.float32).reshape(-1).tolist())
+        s.ct = wp.vec3(*map(float, ct))
         s.c_col = _lin(CUP_WHITE if self.cup_white else CUP_DARK)
         s.c_ks = 0.25 if self.cup_white else 0.45
         dm = self.dm if (dyn and self.dm is not None) else None

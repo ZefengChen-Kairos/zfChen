@@ -18,7 +18,8 @@ N (of the fields, once) · second line: 杯子为示意 and where everything com
    DIR/<p>_viz.json    what was drawn (cameras, frames, snap statistics, timings)
 Everything that moves comes from the simulation chain (viz/scene.py): measured pitcher pose v2 + the CAD pitcher, the
 pour model's ledger (milk left, free surface), its emitted parcels (the stream; foot snapped to the solver landing),
-the solver's white fraction C.  The cup beyond the liquid disc is NOT measured: a stand-in mug (caption says so).
+the solver's white fraction C.  The cup's shape beyond the liquid disc is NOT measured: a stand-in mug, placed on
+the measured cup axis and rim height (viz/cup_rim.json; caption says so).
 Videos: imageio-ffmpeg, libx264, yuv420p, frames piped (no PNG sequences)."""
 from __future__ import annotations
 
@@ -114,9 +115,9 @@ class Viz:
         self.W, self.H = W, H
         V, F = sc.stl()
         self.V_stl = V
-        c0 = sc.cup(0.0)
-        self.rise0 = c0["rise_left"]
+        self.rise0 = sc.cup_rise0()
         cv, cf, cn, self.z_foot = RT.cup_mesh(sc.R_disc, self.rise0)
+        self.cup_info = self._cup_stats()
         self.R = RT.Renderer(device, pitcher=(V, F), cup=(cv, cf, cn), cup_white=(cup == "white"), ss=ss)
         self.cams = self._cameras()
         self.snap = self._snap_stats()
@@ -137,9 +138,10 @@ class Viz:
         ang = np.linspace(0, 2 * math.pi, 48, endpoint=False)
         Ro = sc.R_disc + 0.004
         ring = np.c_[np.cos(ang) * Ro, np.sin(ang) * Ro]
-        cup_top = np.c_[ring, np.full(len(ring), 0.003 + self.rise0)]
-        cup_bot = np.c_[ring * 0.8, np.full(len(ring), self.z_foot + self.rise0)]
-        cup_pts = np.concatenate([cup_top, cup_bot])
+        cup_top = np.c_[ring, np.full(len(ring), S.CUP_RIM0)]
+        cup_bot = np.c_[ring * 0.8, np.full(len(ring), self.z_foot)]
+        cup_b = np.concatenate([cup_top, cup_bot])                       # cup frame B
+        cup_pts = np.concatenate([cup_b @ c["R"].T + c["t"] for c in (sc.cup(t) for t in ts)])
         asp = self.W / self.H
         # pour view: the whole pitcher over the pour + the cup, above the caption band (HUD panels are translucent)
         pour = RT.fit_camera(np.concatenate([P, cup_pts]), 180.0, 14.0, fov_y_deg=30.0, aspect=asp, margin=0.04,
@@ -150,6 +152,20 @@ class Viz:
         guest = RT.fit_camera(np.concatenate([Pg, cup_pts, tips]), -90.0, 40.0, fov_y_deg=30.0, aspect=asp, margin=0.04,
                               box=(-0.97, 0.97, -0.85, 0.99))
         return dict(pour=pour, guest=guest)
+
+    def _cup_stats(self):
+        """The cup placement over the pour (for the caption and <p>_viz.json)."""
+        sc = self.sc
+        tr = sc.cup_track()
+        th = np.degrees(np.arcsin(np.clip(np.hypot(tr["n"][:, 0], tr["n"][:, 1]), 0, 1)))
+        return dict(source=tr["source"], model=S.CUP_MODEL_VERSION, tilt_deg_start=float(th[0]),
+                    tilt_deg_max=float(th.max()), tilt_deg_end=float(th[-1]), rim_mm_start=float(tr["s"][0] * 1e3),
+                    rim_mm_end=float(tr["s"][-1] * 1e3), spill_guard_mm_max=float(tr["s_guard"].max() * 1e3))
+
+    def table_z(self, cu):
+        """The table plane under the lowest point of the (tilted) cup's foot ring."""
+        R, t = cu["R"], cu["t"]
+        return float(R[2, 2] * self.z_foot + t[2] - 0.031 * math.hypot(R[2, 0], R[2, 1]))
 
     def _snap_stats(self):
         sc = self.sc
@@ -190,13 +206,14 @@ class Viz:
 
     def render(self, fr, view, W=None, H=None, ss=None):
         W, H = W or self.W, H or self.H
-        dz = fr["cup"]["rise_left"]
+        cu = fr["cup"]
+        cp, tz = (cu["R"], cu["t"]), self.table_z(cu)
         p = fr["pose"]
         if view == "pour":
             return self.R.render(self.cams["pour"], W, H, pitcher_pose=(p["R"], p["t"]), pitcher_alpha=0.22,
-                                 pitcher_shadow=0.55, cup_dz=dz, table_z=self.z_foot + dz, ss=ss)
+                                 pitcher_shadow=0.55, cup_pose=cp, table_z=tz, ss=ss)
         return self.R.render(self.cams["guest"], W, H, pitcher_pose=(p["R"], p["t"]), pitcher_alpha=1.0,
-                             pitcher_shadow=0.0, cup_dz=dz, table_z=self.z_foot + dz, ss=ss)
+                             pitcher_shadow=0.0, cup_pose=cp, table_z=tz, ss=ss)
 
     # -------------------------------------------------------------- top views
     def top_sim(self, fr, Hs, marks=True):
@@ -322,8 +339,12 @@ class Hud:
         if m.get("oracle"):
             orc = "含诊断用入口修正（oracle，仅诊断）" if cjk else "with diagnostic oracle inlet corrections"
         self.line1 = " · ".join(x for x in (mod, wz, il, f"N={N}", orc) if x)
-        self.line2 = ("杯子为示意（只测了液面圆盘）· 壶 = CAD + 实测位姿 · 奶量/奶柱 = 倒奶模型 · 拉花 = 求解器白度场 · "
-                      + sn) if cjk else ("cup is a stand-in (only the liquid disc is measured) · pitcher = CAD + measured "
+        meas = (getattr(viz, "cup_info", None) or {}).get("source") == "measured"
+        cup_zh = "杯子为示意（倾角、杯沿高度实测）" if meas else "杯子为示意（只测了液面圆盘）"
+        cup_en = ("cup is a stand-in (tilt + rim height measured)" if meas else
+                  "cup is a stand-in (only the liquid disc is measured)")
+        self.line2 = (cup_zh + " · 壶 = CAD + 实测位姿 · 奶量/奶柱 = 倒奶模型 · 拉花 = 求解器白度场 · "
+                      + sn) if cjk else (cup_en + " · pitcher = CAD + measured "
                                          "pose · milk / stream = pour model · pattern = solver white fraction · " + sn)
         self.chart = None
         self._cache = {}
@@ -650,7 +671,8 @@ def run(a):
     if a.sheet and cells:
         sheet(cells, cell_t, os.path.join(a.out, f"{p}_sheet.jpg"), fonts, f"{hud.pattern} · {hud.line1}")
     info = dict(pour=p, fields=os.path.abspath(a.fields), views=views, size=[W, H], fps=a.fps, frames=int(len(ts)),
-                t0=float(ts[0]), t1=float(ts[-1]), device=a.device, ss=a.ss, cup=a.cup + " (stand-in, not measured)",
+                t0=float(ts[0]), t1=float(ts[-1]), device=a.device, ss=a.ss, cup=a.cup + " (stand-in mug; placement: " + viz.cup_info["source"] + ")",
+                cup_model=viz.cup_info,
                 caption=[hud.line1, hud.line2], title=hud.title, model=hud.model, which=hud.which,
                 snap_mm=viz.snap, font=fonts.path, video_obs=real.fn,
                 cams={k: {kk: (np.asarray(vv).tolist() if isinstance(vv, np.ndarray) else vv) for kk, vv in c.items()}

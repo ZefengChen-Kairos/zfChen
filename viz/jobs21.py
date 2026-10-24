@@ -10,8 +10,9 @@ Which closures are rendered, where the videos go, which jobs are done:
     calibration inlet is measured (law / replay: MI-L, e0 off, as diag's held-out test), and with --held-record also
     for a record closure (record inlet + the closure's own e0, as the control fit / the R1 bridges evaluated them)
   - a job is done when <viz dir>/<pour>.done names the same closure (sha256) and inlet argument AND the same render
-    settings (N, fps, simulated length T, size, supersampling, cup; a key the marker lacks counts as the launcher
-    default); --keep-render: size / ss / cup are not compared (the launcher's CPU fallback must not overwrite GPU
+    settings (N, fps, simulated length T, size, supersampling, cup colour, cup model = scene.CUP_MODEL_VERSION; a key
+    the marker lacks counts as the launcher default, cup model 'level-v0'); --keep-render: size / ss / cup / cup model
+    are not compared (the launcher's CPU fallback must not overwrite GPU
     renders with smaller ones); --force: every job is planned (markers ignored)
 
 The start closure of a params run, first match of:
@@ -267,8 +268,17 @@ def parse_extras(spec, root):
 
 # render settings bound into a .done marker.  A key the marker lacks was written with the launcher's default (the first
 # viz21 layout recorded N, size and fps only; T = the simulated length, None = the whole pour)
-RENDER_DEFAULTS = dict(N=256, fps=30.0, T=None, size="1280x720", ss=2, cup="dark")
-PICTURE_KEYS = ("size", "ss", "cup")          # not compared with --keep-render
+# cup_model: the stand-in cup's placement (scene.CUP_MODEL_VERSION); markers written before it was recorded rendered the
+# level cup ('level-v0'), so a plain rerun re-renders them (the cached fields are reused: fields-ok does not look at it)
+RENDER_DEFAULTS = dict(N=256, fps=30.0, T=None, size="1280x720", ss=2, cup="dark", cup_model="level-v0")
+PICTURE_KEYS = ("size", "ss", "cup", "cup_model")          # not compared with --keep-render
+
+
+def cup_model_version():
+    """The cup model of this add-on (scene.CUP_MODEL_VERSION; scene.py is numpy only)."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import scene
+    return scene.CUP_MODEL_VERSION
 
 
 def norm_setting(k, v):
@@ -359,7 +369,7 @@ def plan(a):
                        MODEL_DESC.get(m) or "-"))
     shas = {c[3]: sha256(c[3]) for c in cl}
     want = dict(N=a.N, fps=getattr(a, "fps", 30.0), T=getattr(a, "T", None), size=getattr(a, "size", "1280x720"),
-                ss=getattr(a, "ss", 2), cup=getattr(a, "cup", "dark"))
+                ss=getattr(a, "ss", 2), cup=getattr(a, "cup", "dark"), cup_model=cup_model_version())
     force, keep, held_rec = getattr(a, "force", False), getattr(a, "keep_render", False), getattr(a, "held_record", False)
     for p in pours:
         for kind, m, w, path, inl, vd, fd, desc in cl:
@@ -475,6 +485,7 @@ def mark(a):
                 pass
     if "t1" in kv:
         kv["wall_s"] = time.time() - float(kv.pop("t1"))
+    kv.setdefault("cup_model", cup_model_version())      # the add-on that rendered (mark runs right after render3)
     kv["pour"] = a.pour
     kv["done"] = time.strftime("%F %T")
     fn = os.path.join(a.vd, f"{a.pour}.done")

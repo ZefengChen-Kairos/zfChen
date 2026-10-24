@@ -24,8 +24,9 @@
 # The fits must not be running (they use up to ~19 GB of the 24 GB card): while results_diag21/.diag21.lock is held,
 # this waits (VIZ_WAIT_H, default 36 h); with the fits finished run it with NOWAIT=1.  Re-running resumes: a
 # (model, start|best, pour) whose .done names the same closure (sha256), inlet and settings (N, VIZ_FPS, VIZ_T,
-# VIZ_SIZE, VIZ_SS, VIZ_CUP) is skipped; a changed setting re-renders (VIZ_FORCE=1: everything).  Cached fields are
-# reused only for the same closure, inlet, N, fps and VIZ_T.  Videos of the first viz21 layout
+# VIZ_SIZE, VIZ_SS, VIZ_CUP and the add-on's cup model, viz/scene.py CUP_MODEL_VERSION) is skipped; a changed setting
+# re-renders (VIZ_FORCE=1: everything).  Cached fields are reused only for the same closure, inlet, N, fps and VIZ_T
+# (the cup model is not part of them: a new cup model re-renders from the cached fields, no forward run).  Videos of the first viz21 layout
 # (viz/<pour>_*, best closure) are moved to viz/best/.  It never fails its caller: every problem is a log line in
 # results_diag21/viz.log and the exit status is 0.
 #

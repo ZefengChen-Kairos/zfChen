@@ -25,7 +25,8 @@ Scene(fields, inlet=None, stl=None).frame(t) -> dict (all in F, metres, SI):
             U_perp, u_h (arrival speeds), on (stream emitting)
   stream    list of segments, each dict(P (k, 3) centre line from the lip down to the surface, r (k,) radius,
             speed (k,), Q (k,)); foot (3,) where the solver lands the stream (snapped), foot_model, snap (2,)
-  cup       R_disc, L, rim / profile of the white latte-cup STAND-IN (not measured beyond the liquid disc), rise
+  cup       the stand-in mug's pose R, t (X_F = R @ X_B + t; cup_profile / cup_handle give its shape in B) on the
+            MEASURED cup axis n and rim height s (viz/cup_rim.json), tilt, rim_low (spill check), R_disc, L
   field     C (N, N) float32 in [0, 1] (linear blend of the two saved frames around t), w, k0, k1
 Field array layout (wsolver.Geo): C[i, j] at solver x_j = (j + 0.5) / N - 0.5, y_i = (i + 0.5) / N - 0.5, i.e.
 X_F = x L, Y_F = y L; rows = +y_F.  A top-down image (x right, y_F up, = the rectified real top view, row = +board y)
@@ -48,6 +49,114 @@ S_FLIP = np.diag([1.0, -1.0, -1.0])                  # board -> F (about the dis
 CREMA = np.array([150, 96, 62], float)               # render512 latte palette
 FOAM = np.array([246, 243, 236], float)
 HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+CUP_RIM0 = 3e-3                 # stand-in frame B: rim top at z_B = 3 mm (the old end-of-pour level, liquid at z_B = 0)
+CUP_WALL = 4e-3                 # stand-in wall thickness (rounded rim of diameter CUP_WALL)
+SPILL_MARGIN = 1e-3             # the lowest rim-top point stays >= 1 mm above the liquid (else the fill is taken lower)
+CUP_MODEL_VERSION = "rim-measured-v1"   # recorded in the .done markers: a change re-renders (fields are reused)
+CUP_RIM_JSON = os.path.join(HERE, "cup_rim.json")
+
+
+def load_cup_rim(pour, fn=None):
+    """The measured cup track of one pour (viz/cup_rim.json written by viz/cup_rim.py; VIZ_CUP_RIM overrides), or None."""
+    fn = fn or os.environ.get("VIZ_CUP_RIM") or CUP_RIM_JSON
+    if not pour or not os.path.exists(fn):
+        return None
+    with open(fn) as f:
+        return json.load(f).get("pours", {}).get(pour)
+
+
+def rot_to(n):
+    """Rotation matrix taking e_z to the unit vector n by the smallest angle (about the horizontal axis e_z x n)."""
+    n = np.asarray(n, float) / np.linalg.norm(n)
+    a = np.array([-n[1], n[0], 0.0])
+    s = float(np.linalg.norm(a))
+    if s < 1e-12:
+        return np.eye(3)
+    a /= s
+    K = np.array([[0, -a[2], a[1]], [a[2], 0, -a[0]], [-a[1], a[0], 0]])
+    return np.eye(3) + s * K + (1 - float(n[2])) * (K @ K)
+
+
+def _envelope(x, w):
+    """A smooth upper envelope of x >= x: running max over 2w + 1 samples, then a (2w + 1)-sample box mean of that
+    (each box mean covers the sample's own max window, so it never drops below x)."""
+    x = np.asarray(x, float)
+    if not np.any(x > 0):
+        return np.zeros_like(x)
+    p = np.pad(x, w, mode="edge")
+    m = np.max(np.lib.stride_tricks.sliding_window_view(p, 2 * w + 1), 1)
+    p = np.pad(m, w, mode="edge")
+    return np.maximum(np.convolve(p, np.ones(2 * w + 1) / (2 * w + 1), mode="valid"), x)
+
+
+def cup_profile(R_disc, rise0, wall=CUP_WALL, rim_above=CUP_RIM0):
+    """The stand-in mug's wall in the (r, z_B) half-plane, as a CLOSED polygon (k, 2) walked from the foot centre out
+    along the foot, up the outer wall, over the rounded rim (top at z_B = rim_above, r = R + wall / 2), down the
+    straight inner wall (radius R_disc) to rise0 + 4 mm below z_B = 0, a rounded taper to a 26 mm bottom, and back to
+    the axis.  About the size of the registered black mug (cup.json: rim outer radius 45.8 mm, height 60.5 mm), NOT
+    its measured shape.  Returns (profile, z_foot)."""
+    R = float(R_disc)
+    zr = float(rim_above)
+    z_low = -float(rise0) - 4e-3
+    z_ib = z_low - 0.024
+    Ro = R + wall
+    prof = [(0.0, z_ib - 6e-3), (0.028, z_ib - 6e-3), (0.031, z_ib - 5e-3), (0.033, z_ib - 2e-3)]
+    for f in np.linspace(0, 1, 7)[1:]:
+        prof.append((0.033 + (Ro - 0.033) * math.sin(0.5 * math.pi * f), z_ib - 2e-3 + (z_low - 4e-3 - z_ib + 2e-3) * f))
+    prof.append((Ro, zr - wall / 2))
+    for a in np.linspace(0, math.pi, 9)[1:-1]:
+        prof.append((R + wall / 2 + wall / 2 * math.cos(a), zr - wall / 2 + wall / 2 * math.sin(a)))
+    prof.append((R, zr - wall / 2))
+    prof.append((R, z_low))
+    for f in np.linspace(0, 1, 7)[1:]:
+        prof.append((R - (R - 0.026) * (1 - math.cos(0.5 * math.pi * f)), z_low + (z_ib - z_low) * math.sin(0.5 * math.pi * f)))
+    prof.append((0.0, z_ib))
+    return np.array(prof, float), z_ib - 6e-3
+
+
+def cup_handle(R_disc, rise0, wall=CUP_WALL, rim_above=CUP_RIM0, handle_phi=0.0, n=28):
+    """Centre line (n, 3) in B and radius of the stand-in's loop handle at azimuth handle_phi."""
+    Ro = float(R_disc) + wall
+    z_low = -float(rise0) - 4e-3
+    zt, zb = min(z_low + 0.002, float(rim_above) - 0.010), z_low - 0.028
+    b = np.array([[Ro - 3e-3, zt], [Ro + 0.024, zt + 0.002], [Ro + 0.030, zb - 0.002], [Ro - 3e-3, zb]])
+    s = np.linspace(0, 1, n)[:, None]
+    Q = ((1 - s) ** 3) * b[0] + 3 * ((1 - s) ** 2) * s * b[1] + 3 * (1 - s) * s ** 2 * b[2] + s ** 3 * b[3]
+    return np.c_[Q[:, 0] * math.cos(handle_phi), Q[:, 0] * math.sin(handle_phi), Q[:, 1]], 4.5e-3
+
+
+def _seg_dist(P, A, B):
+    """Distances (n, m) from points P (n, d) to the segments A[j] -> B[j] (m, d)."""
+    AB = B - A
+    L2 = np.maximum(np.einsum("ij,ij->i", AB, AB), 1e-30)
+    AP = P[:, None, :] - A[None]
+    u = np.clip(np.einsum("nmd,md->nm", AP, AB) / L2[None], 0.0, 1.0)
+    D = AP - u[..., None] * AB[None]
+    return np.sqrt(np.einsum("nmd,nmd->nm", D, D))
+
+
+def poly_sdf(Q, poly):
+    """Signed distance of 2-D points Q (n, 2) to a closed polygon (k, 2): negative inside."""
+    A = poly
+    B = np.roll(poly, -1, axis=0)
+    d = _seg_dist(Q, A, B).min(1)
+    x, y = Q[:, 0][:, None], Q[:, 1][:, None]
+    cond = (A[None, :, 1] > y) != (B[None, :, 1] > y)
+    xi = A[None, :, 0] + (y - A[None, :, 1]) * (B[None, :, 0] - A[None, :, 0]) / np.where(
+        B[None, :, 1] - A[None, :, 1] == 0, 1e-30, B[None, :, 1] - A[None, :, 1])
+    inside = (np.sum(cond & (x < xi), 1) % 2) == 1
+    return np.where(inside, -d, d)
+
+
+def cup_sdf(Pb, prof, handle=None, handle_r=0.0):
+    """Signed distance [m] of points Pb (n, 3) in the stand-in's frame B to its solid (wall of revolution + handle)."""
+    Pb = np.asarray(Pb, float)
+    d = poly_sdf(np.c_[np.hypot(Pb[:, 0], Pb[:, 1]), Pb[:, 2]], prof)
+    if handle is not None and len(Pb):
+        d = np.minimum(d, _seg_dist(Pb, handle[:-1], handle[1:]).min(1) - handle_r)
+    return d
 
 
 # ----------------------------------------------------------------------------------------------------------- basics
@@ -397,7 +506,8 @@ def latte_rgb(c):
 class Scene:
     """Per-frame geometry of one pour (module docstring)."""
 
-    def __init__(self, fields, inlet=None, stl=None, geom=None, fps=30.0, q_min=1e-7):
+    def __init__(self, fields, inlet=None, stl=None, geom=None, fps=30.0, q_min=1e-7, cup_model=None,
+                 cup_rim=None):
         Z = _load(fields)
         Zi = _load(inlet)
         for k, v in Zi.items():                            # the inlet capture may come separately (dev fields)
@@ -443,6 +553,8 @@ class Scene:
         self.stl_path = stl or self._find("pitcher_kona700.stl", required=False)
         self.q_min = float(q_min)
         self._paths = None
+        self.cup_model = cup_model or os.environ.get("VIZ_CUP_MODEL", "measured")
+        self.cup_rim_file = cup_rim
 
     def use_schedule(self, src):
         """Take the solver schedule (S_*) from another npz / dict (e.g. a fresh inlet capture instead of the old
@@ -673,22 +785,88 @@ class Scene:
             out["u_h"] = float(np.hypot(*R["u_h"][j])) if R["Q"][j] > 0 else 0.0
         return out
 
-    # ------------------------------------------------------------------ cup (stand-in)
-    def cup(self, t):
-        """The cup beyond the liquid disc is NOT measured (disc.json: centre, surface plane, radius only).  A plain
-        white latte-cup STAND-IN: inner radius R_disc at the liquid surface, cup_register's flare dR/dz 0.0146 near the
-        top, rim ASSUMED 3 mm above the surface at the end of the pattern phase; the surface rises in the rigid cup by
-        V_cup / (pi R_disc^2) (pour model arrivals), so the cup sits lower in F by rise(t_end) - rise(t) ... expressed
-        as rim_z(t) = rim height above the surface at t."""
+    # ------------------------------------------------------------------ cup (stand-in, placed on the measured rim)
+    def _cup_level(self, t):
+        """Old level model: rim-top 3 mm above the surface at the end of the pattern phase, the surface rising in the
+        rigid cup by V_cup / (pi R_disc^2) (pour model arrivals) -> rim-top height above the surface at t."""
         R = self.R
         Vc = float(np.interp(t, R["t"], R["V_cup"], left=0.0)) if R else 0.0
         Ve = float(R["V_cup"][-1]) if R else 0.0
-        area = math.pi * self.R_disc ** 2
-        rise_left = (Ve - Vc) / area
-        rim_above = 0.003 + rise_left
+        return CUP_RIM0 + (Ve - Vc) / (math.pi * self.R_disc ** 2)
+
+    def cup_track(self):
+        """The cup pose track on a 20 Hz grid: dict(t, n (k, 3) axis in F, s (k,) axial height of the rim-top centre
+        above the disc centre, source, s_guard (k,) the spill guard already added to s).  CUP_MODEL 'measured'
+        (default; viz/cup_rim.json, viz/cup_rim.py) falls back to 'level' when the pour has no measured track."""
+        if getattr(self, "_ctrack", None) is not None:
+            return self._ctrack
+        T = self.t_end() if len(self.tC) else 0.0
+        if self.P:
+            T = max(T, float(self.P["t"][-1]))
+        tg = np.arange(0.0, T + 0.05 + 1e-9, 0.05)
+        tr, src = None, "level"
+        if self.cup_model == "measured":
+            tr = load_cup_rim(str(self.meta.get("pour", "")), self.cup_rim_file)
+            t0 = self.meta.get("t0_abs")
+            if tr is not None and t0 is not None and abs(float(tr["t0_abs"]) - float(t0)) > 1e-3:
+                tr = None                                   # another clock: do not use
+        if tr is not None:
+            tt = np.asarray(tr["t"], float)
+            nx = np.interp(tg, tt, np.asarray(tr["n_x"], float))
+            ny = np.interp(tg, tt, np.asarray(tr["n_y"], float))
+            s = np.interp(tg, tt, np.asarray(tr["s_m"], float))
+            n = np.stack([nx, ny, np.sqrt(np.clip(1 - nx ** 2 - ny ** 2, 0.0, 1.0))], 1)
+            src = "measured"
+        else:
+            n = np.tile([0.0, 0.0, 1.0], (len(tg), 1))
+            s = np.array([self._cup_level(t) for t in tg])
+        # spill guard: the lowest rim-top point must stay >= SPILL_MARGIN above the liquid; where it would not, the fill
+        # is taken lower (s raised), smoothly (max filter 1 s then a 1 s box: never below the requirement)
+        rho = self.R_disc + 0.5 * CUP_WALL
+        sin_t = np.hypot(n[:, 0], n[:, 1])
+        need = np.maximum(0.0, SPILL_MARGIN - (s * n[:, 2] - rho * sin_t)) / n[:, 2]
+        g = _envelope(need, 20)
+        self._ctrack = dict(t=tg, n=n, s=s + g, source=src, s_guard=g)
+        return self._ctrack
+
+    def cup(self, t):
+        """The cup beyond the liquid disc is a STAND-IN mug (inner radius R_disc, wall CUP_WALL, rounded rim; built by
+        cup_profile in its own frame B with the rim top at z_B = CUP_RIM0).  Placed per frame on the MEASURED cup axis n
+        and rim height s (viz/cup_rim.json: the black mug's rim in the depth cameras; the axis through the disc
+        centre): X_F = R @ X_B + t with R = the smallest rotation e_z -> n, t = (s - CUP_RIM0) n.  The liquid surface
+        stays the measured horizontal plane z = 0 and the disc."""
+        tr = self.cup_track()
+        k = np.interp(t, tr["t"], np.arange(len(tr["t"])))
+        i0 = int(np.clip(np.floor(k), 0, len(tr["t"]) - 1)); i1 = min(i0 + 1, len(tr["t"]) - 1); w = k - i0
+        n = (1 - w) * tr["n"][i0] + w * tr["n"][i1]
+        n = n / np.linalg.norm(n)
+        s = float((1 - w) * tr["s"][i0] + w * tr["s"][i1])
+        Rc = rot_to(n)
+        dz = s - CUP_RIM0
+        sin_t = float(np.hypot(n[0], n[1]))
+        rho = self.R_disc + 0.5 * CUP_WALL
         return dict(R_disc=self.R_disc, L=self.L, centre=np.zeros(3), surface_z=0.0, standin=True, flare=0.0146,
-                    rim_z=rim_above, rim_r_in=self.R_disc + 0.0146 * rim_above, wall=0.004, depth=0.075,
-                    bottom_r_in=0.026, rise_left=rise_left)
+                    R=Rc, t=dz * n, n=n, s=s, tilt_deg=math.degrees(math.asin(min(sin_t, 1.0))),
+                    low_az_deg=math.degrees(math.atan2(n[1], n[0])), rim_low=s * float(n[2]) - rho * sin_t,
+                    rim_z=s, rim_r_in=self.R_disc + 0.0146 * s, wall=CUP_WALL, depth=0.075, bottom_r_in=0.026,
+                    rise_left=dz, source=tr["source"], model=CUP_MODEL_VERSION)
+
+    def cup_rise0(self):
+        """How far below the end level (z_B = 0) the stand-in's straight inner wall must reach so that the liquid
+        meets the wall at every frame, tilted section included."""
+        tr = self.cup_track()
+        tan_t = np.hypot(tr["n"][:, 0], tr["n"][:, 1]) / tr["n"][:, 2]
+        return float(max(0.0, np.max(tr["s"] - CUP_RIM0 + self.R_disc * tan_t)))
+
+    def cup_geometry(self):
+        """(profile (k, 2) closed (r, z_B) polygon of the wall solid, handle centre line (m, 3) in B, handle radius,
+        z_foot_B, rise0) of the stand-in cup -- the same numbers raytrace.cup_mesh lathes."""
+        if getattr(self, "_cgeo", None) is None:
+            r0 = self.cup_rise0()
+            prof, zf = cup_profile(self.R_disc, r0)
+            hP, hr = cup_handle(self.R_disc, r0)
+            self._cgeo = (prof, hP, hr, zf, r0)
+        return self._cgeo
 
     # ------------------------------------------------------------------ field
     def field(self, t):
@@ -750,6 +928,51 @@ class Scene:
         if field:
             out["field"] = self.field(t)
         return out
+
+
+# ----------------------------------------------------------------------------------------------------------- cup checks
+def surface_samples(V, F, n, seed=0):
+    """Area-uniform points on a triangle mesh (plus its vertices)."""
+    a, b, c = V[F[:, 0]], V[F[:, 1]], V[F[:, 2]]
+    area = 0.5 * np.linalg.norm(np.cross(b - a, c - a), axis=1)
+    rng = np.random.default_rng(seed)
+    fi = rng.choice(len(F), n, p=area / area.sum())
+    u = rng.random((n, 2))
+    m = u.sum(1) > 1
+    u[m] = 1 - u[m]
+    return np.vstack([a[fi] + u[:, :1] * (b[fi] - a[fi]) + u[:, 1:] * (c[fi] - a[fi]), V])
+
+
+def cup_clearance(sc, times, n_samples=80000):
+    """Per frame t: the minimum signed distance [m] between the posed CAD pitcher's surface (n_samples area-uniform
+    points + the vertices, ~1 mm apart) and the stand-in cup solid (wall of revolution + handle; negative = the pitcher
+    is inside the cup's wall, i.e. they interpenetrate), the lowest rim-top point above the liquid [m] (< 0 = the
+    liquid would spill), the tilt [deg], the rim-top centre height s [m] and the overlap [m]: how far below the rim top
+    the pitcher reaches inside the wall's radial band (R_disc .. R_disc + wall; 0 = clear; the signed distance alone
+    saturates at -wall / 2 inside the thin wall).  Returns dict of arrays."""
+    V, F = sc.stl()
+    Ps = surface_samples(V, F, n_samples)
+    prof, hP, hr, zf, r0 = sc.cup_geometry()
+    rmax = float(prof[:, 0].max()) + 0.045
+    out = dict(t=[], d_min=[], rim_low=[], tilt_deg=[], s=[], overlap=[], where=[])
+    for t in times:
+        p = sc.pose(t)
+        c = sc.cup(t)
+        Pb = (Ps @ p["R"].T + p["t"] - c["t"]) @ c["R"]
+        m = (np.hypot(Pb[:, 0], Pb[:, 1]) < rmax) & (Pb[:, 2] < CUP_RIM0 + 0.012) & (Pb[:, 2] > zf - 0.012)
+        d, w, ov = 0.012, None, 0.0
+        if m.any():
+            Q = Pb[m]
+            dd = np.concatenate([cup_sdf(Q[i:i + 4000], prof, hP, hr) for i in range(0, len(Q), 4000)])
+            j = int(np.argmin(dd))
+            d, w = min(d, float(dd[j])), Q[j]
+            rq = np.hypot(Q[:, 0], Q[:, 1])
+            band = (rq >= sc.R_disc) & (rq <= sc.R_disc + CUP_WALL)
+            if band.any():
+                ov = max(0.0, float(np.max(CUP_RIM0 - Q[band, 2])))
+        out["t"].append(float(t)); out["d_min"].append(d); out["rim_low"].append(c["rim_low"])
+        out["tilt_deg"].append(c["tilt_deg"]); out["s"].append(c["s"]); out["where"].append(w); out["overlap"].append(ov)
+    return {k: (np.array(v) if k != "where" else v) for k, v in out.items()}
 
 
 # ----------------------------------------------------------------------------------------------------------- checks
